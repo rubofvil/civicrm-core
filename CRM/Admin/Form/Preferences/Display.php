@@ -104,6 +104,11 @@ class CRM_Admin_Form_Preferences_Display extends CRM_Admin_Form_Preferences {
           'html_type' => NULL,
           'weight' => 11,
         ),
+        'activate_second_last_name' => array(
+          'html_type' => 'checkbox',
+          'title' => ts('Show second Last name'),
+          'weight' => 6,
+        ),
       ),
     );
 

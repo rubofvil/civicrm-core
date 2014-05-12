@@ -200,6 +200,14 @@
       <td>&nbsp;</td>
       <td class="description">{ts}Sort name format for individual contact display names.{/ts}</td>
     </tr>
+    <tr class="crm-preferences-display-form-block-second_last_name">
+      <td class="label">{$form.activate_second_last_name.label}</td>
+      <td>{$form.activate_second_last_name.html}</td>
+    </tr>
+    <tr class="crm-preferences-display-form-block-description-second_last_name">
+      <td>&nbsp;</td>
+      <td class="description">{ts}You can add the second Last name in "Individual Display Name Format" and in "Individual Sort Name Format" with &#123;contact.last_name_1&#125;. {/ts}</td>
+    </tr>
   </table>
   <div class="crm-submit-buttons">{include file="CRM/common/formButtons.tpl" location="bottom"}</div>
 </div>
