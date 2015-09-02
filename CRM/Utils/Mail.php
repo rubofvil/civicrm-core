@@ -151,11 +151,22 @@ class CRM_Utils_Mail {
 
     if (!empty($attachments)) {
       foreach ($attachments as $fileID => $attach) {
-        $msg->addAttachment(
-          $attach['fullPath'],
-          $attach['mime_type'],
-          $attach['cleanName']
-        );
+        if(isset($attach['is_image'])  &&  $attach['is_image'] = TRUE ){
+          $msg->addHTMLImage(
+            $attach['fullPath'],
+            $attach['c_type'],          
+            $attach['name'],
+            $attach['is_file'],
+            $attach['content_id']
+          );          
+        }
+        else{
+          $msg->addAttachment(
+            $attach['fullPath'],
+            $attach['mime_type'],
+            $attach['cleanName']
+          );
+        }        
       }
     }
 
