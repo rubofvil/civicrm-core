@@ -661,4 +661,81 @@ SELECT event_queue_id, time_stamp FROM mail_{$type}_temp";
 
   //----------- civicrm_mailing_create ----------
 
+  /**
+  * Test the civicrm_mailing with "is_bulkmail"
+  *  
+  */
+  public function testMailerIsBulkMailSelect() {
+    $paramsContacts = array(
+      1 => array(
+        'first_name' => 'Alice',
+        'last_name' => 'Person',
+        'contact_type' => 'Individual',
+        'api.email.create.1' => array(
+          'email' => 'alice@example.org',
+          'is_primary' => 1,                     
+        ),
+        'api.email.create.2' => array(
+          'email' => 'alice2@example.org',
+          'is_bulkmail' => 1,          
+        ),       
+      ),
+      2 => array(
+        'first_name' => 'Paquito',
+        'last_name' => 'Garcia',
+        'contact_type' => 'Individual',
+        'api.email.create.1' => array(
+          'email' => 'paquito@example.org',
+          'is_bulkmail' => 1,                   
+        ),                
+        'api.email.create.2' => array(
+          'email' => 'p.garcia@example.org',
+          'is_primary' => 1,           
+        ),                
+      ),
+    );
+    $contactsIncludeMailing = array();
+    foreach ($paramsContacts as $paramContact) {
+      $contact = $this->callAPIAndDocument('Contact', 'create', $paramContact, __FUNCTION__, __FILE__);
+      $contactsIncludeMailing[] = $contact["id"];
+    }   
+
+    //Verify if mail created like is_bulkmail is correctly saved
+    $email = $this->callAPISuccess('Email', 'get', array('email' => "paquito@example.org"));
+    $emailValues = array_shift($email["values"]);
+    $this->assertTrue($emailValues["is_bulkmail"] == 1);
+    if($emailValues["is_bulkmail"] != 1) {          
+      $this->callAPISuccess('Email', 'update', array("id" => $email["id"], "is_bulkmail" => 1));      
+    }
+    
+    //Create a group to include in mailing
+    $groupInc = $this->groupCreate(array('name' => 'Example include group', 'title' => 'Example include group'));
+    
+    $paramsCreateContact = array(
+      'group_id' => $groupInc
+    );
+    foreach ($contactsIncludeMailing as $key => $contactIncludeMailing) {
+      $paramsCreateContact['contact_id.' . $key] = $contactIncludeMailing;
+      $paramsCreateContact['contact_id'] = $contactIncludeMailing; //Need to be filled at least one time, mandatory field
+    }  
+
+    $this->callAPISuccess('GroupContact', 'create', $paramsCreateContact);    
+      
+    $createParamsMailing = $this->_params;
+    $createParamsMailing['groups']['include'] = array($groupInc);        
+    $createParamsMailing['api.mailing_job.create'] = 1;
+    $createResult = $this->callAPISuccess('Mailing', 'create', $createParamsMailing);
+    
+
+    $sql = "select COUNT(*) from civicrm_mailing_recipients cmr
+      INNER JOIN civicrm_email ce ON ce.id = cmr.email_id 
+      WHERE 
+        is_bulkmail = 1 AND 
+        mailing_id = %1
+      ";
+    
+    $this->assertDBQuery(count($paramsContacts), $sql, array(
+      1 => array($createResult['id'], 'Integer'),
+    ));     
+  }
 }
