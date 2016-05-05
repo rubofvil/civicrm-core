@@ -906,6 +906,17 @@ class CRM_Contact_BAO_Query {
     }
 
     $locationTypes = CRM_Core_PseudoConstant::get('CRM_Core_DAO_Address', 'location_type_id');
+    foreach ($this->_params as $keyParam => $param) {      
+      $isEmailParam = preg_match("/^email-(\d+)$/", $param[0], $matches);
+      if($isEmailParam > 0){        
+        if(!isset($this->_returnProperties['location'][$locationTypes[$matches[1]]])) {
+          $this->_returnProperties['location'][$locationTypes[$matches[1]]] = array(
+            "location_type" => $matches[1],
+            "email" => 1,
+          );         
+        }        
+      }
+    } 
     $processed = array();
     $index = 0;
 
