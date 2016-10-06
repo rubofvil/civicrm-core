@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 class CRM_Utils_Check_Component_Security extends CRM_Utils_Check_Component {
 
@@ -246,7 +246,7 @@ class CRM_Utils_Check_Component_Security extends CRM_Utils_Check_Component {
       if (file_exists($file[0])) {
         $messages[] = new CRM_Utils_Check_Message(
           __FUNCTION__,
-          ts('File \'%1\' presents a security risk and should be deleted.', array(1 => $file)),
+          ts('File \'%1\' presents a security risk and should be deleted.', array(1 => $file[0])),
           ts('Unsafe Files'),
           $file[1],
           'fa-lock'
@@ -255,6 +255,28 @@ class CRM_Utils_Check_Component_Security extends CRM_Utils_Check_Component {
     }
     return $messages;
   }
+
+  /**
+   * Discourage use of remote profile forms.
+   */
+  public function checkRemoteProfile() {
+    $messages = array();
+
+    if (Civi::settings()->get('remote_profile_submissions')) {
+      $messages[] = new CRM_Utils_Check_Message(
+        __FUNCTION__,
+        ts('Warning: External profile support (aka "HTML Snippet" support) is enabled in <a href="%1">system settings</a>. This setting may be prone to abuse. If you must retain it, consider HTTP throttling or other protections.',
+          array(1 => CRM_Utils_System::url('civicrm/admin/setting/misc', 'reset=1'))
+        ),
+        ts('Remote Profiles Enabled'),
+        \Psr\Log\LogLevel::WARNING,
+        'fa-lock'
+      );
+    }
+
+    return $messages;
+  }
+
 
   /**
    * Check that the sysadmin has not modified the Cxn

@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -105,9 +105,8 @@ function _civicrm_api3_attachment_create_spec(&$spec) {
  * @see Civi\API\Subscriber\DynamicFKAuthorization
  */
 function civicrm_api3_attachment_create($params) {
-
   if (empty($params['id'])) {
-    // When creating we need either entity_table or field_name
+    // When creating we need either entity_table or field_name.
     civicrm_api3_verify_one_mandatory($params, NULL, array('entity_table', 'field_name'));
   }
 

@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  * $Id$
  *
  */
@@ -41,7 +41,7 @@ class CRM_Export_BAO_Export {
   // increase this number a lot to avoid making too many queries
   // LIMIT is not much faster than a no LIMIT query
   // CRM-7675
-  const EXPORT_ROW_COUNT = 10000;
+  const EXPORT_ROW_COUNT = 100000;
 
   /**
    * Get Querymode based on ExportMode
@@ -98,6 +98,7 @@ class CRM_Export_BAO_Export {
    */
   public static function defaultReturnProperty($exportMode) {
     // hack to add default return property based on export mode
+    $property = NULL;
     if ($exportMode == CRM_Export_Form_Select::CONTRIBUTE_EXPORT) {
       $property = 'contribution_id';
     }
@@ -118,9 +119,6 @@ class CRM_Export_BAO_Export {
     }
     elseif ($exportMode == CRM_Export_Form_Select::ACTIVITY_EXPORT) {
       $property = 'activity_id';
-    }
-    elseif ($exportMode == CRM_Export_Form_Select::CONTACT_EXPORT) {
-      $property = 'contact_id';
     }
     return $property;
   }
@@ -174,37 +172,40 @@ class CRM_Export_BAO_Export {
    *   Group By Clause
    */
   public static function getGroupBy($exportMode, $queryMode, $returnProperties, $query) {
+    $groupBy = '';
     if (!empty($returnProperties['tags']) || !empty($returnProperties['groups']) ||
       CRM_Utils_Array::value('notes', $returnProperties) ||
       // CRM-9552
       ($queryMode & CRM_Contact_BAO_Query::MODE_CONTACTS && $query->_useGroupBy)
     ) {
-      $groupBy = " GROUP BY contact_a.id";
+      $groupBy = "contact_a.id";
     }
 
     switch ($exportMode) {
       case CRM_Export_Form_Select::CONTRIBUTE_EXPORT:
-        $groupBy = 'GROUP BY civicrm_contribution.id';
+        $groupBy = 'civicrm_contribution.id';
         if (CRM_Contribute_BAO_Query::isSoftCreditOptionEnabled()) {
           // especial group by  when soft credit columns are included
-          $groupBy = 'GROUP BY contribution_search_scredit_combined.id, contribution_search_scredit_combined.scredit_id';
+          $groupBy = array('contribution_search_scredit_combined.id', 'contribution_search_scredit_combined.scredit_id');
         }
         break;
 
       case CRM_Export_Form_Select::EVENT_EXPORT:
-        $groupBy = 'GROUP BY civicrm_participant.id';
+        $groupBy = 'civicrm_participant.id';
         break;
 
       case CRM_Export_Form_Select::MEMBER_EXPORT:
-        $groupBy = " GROUP BY civicrm_membership.id";
+        $groupBy = "civicrm_membership.id";
         break;
     }
 
     if ($queryMode & CRM_Contact_BAO_Query::MODE_ACTIVITY) {
-      $groupBy = " GROUP BY civicrm_activity.id ";
+      $groupBy = "civicrm_activity.id ";
     }
 
-    $groupBy = !empty($groupBy) ? $groupBy : '';
+    if (!empty($groupBy)) {
+      $groupBy = CRM_Contact_BAO_Query::getGroupByFromSelectColumns($query->_select, $groupBy);
+    }
 
     return $groupBy;
   }
@@ -434,7 +435,10 @@ class CRM_Export_BAO_Export {
           }
         }
       }
-      $returnProperties[self::defaultReturnProperty($exportMode)] = 1;
+      $defaultExportMode = self::defaultReturnProperty($exportMode);
+      if ($defaultExportMode) {
+        $returnProperties[$defaultExportMode] = 1;
+      }
     }
     else {
       $primary = TRUE;
@@ -560,7 +564,7 @@ INSERT INTO {$componentTable} SELECT distinct gc.contact_id FROM civicrm_group_c
     list($select, $from, $where, $having) = $query->query();
 
     if ($mergeSameHousehold == 1) {
-      if (!$returnProperties['id']) {
+      if (empty($returnProperties['id'])) {
         $returnProperties['id'] = 1;
       }
 
@@ -702,14 +706,14 @@ INSERT INTO {$componentTable} SELECT distinct gc.contact_id FROM civicrm_group_c
 
     $queryString .= $groupBy;
 
-    // always add contact_a.id to the ORDER clause
-    // so the order is deterministic
-    //CRM-15301
-    if (strpos('contact_a.id', $order) === FALSE) {
-      $order .= ", contact_a.id";
-    }
-
     if ($order) {
+      // always add contact_a.id to the ORDER clause
+      // so the order is deterministic
+      //CRM-15301
+      if (strpos('contact_a.id', $order) === FALSE) {
+        $order .= ", contact_a.id";
+      }
+
       list($field, $dir) = explode(' ', $order, 2);
       $field = trim($field);
       if (!empty($returnProperties[$field])) {
@@ -757,17 +761,20 @@ INSERT INTO {$componentTable} SELECT distinct gc.contact_id FROM civicrm_group_c
 
     // for CRM-3157 purposes
     $i18n = CRM_Core_I18n::singleton();
+
     list($outputColumns, $headerRows, $sqlColumns, $metadata) = self::getExportStructureArrays($returnProperties, $query, $phoneTypes, $imProviders, $contactRelationshipTypes, $relationQuery, $selectedPaymentFields);
 
-    while (1) {
+    $limitReached = FALSE;
+    while (!$limitReached) {
       $limitQuery = "{$queryString} LIMIT {$offset}, {$rowCount}";
       $dao = CRM_Core_DAO::executeQuery($limitQuery);
-      if ($dao->N <= 0) {
-        break;
-      }
+      // If this is less than our limit by the end of the iteration we do not need to run the query again to
+      // check if some remain.
+      $rowsThisIteration = 0;
 
       while ($dao->fetch()) {
         $count++;
+        $rowsThisIteration++;
         $row = array();
 
         //convert the pseudo constants
@@ -803,10 +810,10 @@ INSERT INTO {$componentTable} SELECT distinct gc.contact_id FROM civicrm_group_c
             elseif ($field == 'provider_id' || $field == 'im_provider') {
               $fieldValue = CRM_Utils_Array::value($fieldValue, $imProviders);
             }
-            elseif ($field == 'master_id') {
+            elseif (strstr($field, 'master_id')) {
               $masterAddressId = NULL;
-              if (isset($iterationDAO->master_id)) {
-                $masterAddressId = $iterationDAO->master_id;
+              if (isset($iterationDAO->$field)) {
+                $masterAddressId = $iterationDAO->$field;
               }
               // get display name of contact that address is shared.
               $fieldValue = CRM_Contact_BAO_Contact::getMasterDisplayName($masterAddressId, $iterationDAO->contact_id);
@@ -1084,6 +1091,9 @@ INSERT INTO {$componentTable} SELECT distinct gc.contact_id FROM civicrm_group_c
         }
       }
       $dao->free();
+      if ($rowsThisIteration < self::EXPORT_ROW_COUNT) {
+        $limitReached = TRUE;
+      }
       $offset += $rowCount;
     }
 
@@ -1117,14 +1127,16 @@ INSERT INTO {$componentTable} SELECT distinct gc.contact_id FROM civicrm_group_c
       if (empty($exportParams['suppress_csv_for_testing'])) {
         self::writeCSVFromTable($exportTempTable, $headerRows, $sqlColumns, $exportMode);
       }
+      else {
+        // return tableName and sqlColumns in test context
+        return array($exportTempTable, $sqlColumns);
+      }
 
       // delete the export temp table and component table
       $sql = "DROP TABLE IF EXISTS {$exportTempTable}";
       CRM_Core_DAO::executeQuery($sql);
-      // Do not exit in test context.
-      if (empty($exportParams['suppress_csv_for_testing'])) {
-        CRM_Utils_System::civiExit();
-      }
+
+      CRM_Utils_System::civiExit();
     }
     else {
       CRM_Core_Error::fatal(ts('No records to export'));
@@ -1339,7 +1351,7 @@ INSERT INTO {$componentTable} SELECT distinct gc.contact_id FROM civicrm_group_c
         // to accommodate different systems - CRM-13739
         static $notRealIDFields = NULL;
         if ($notRealIDFields == NULL) {
-          $notRealIDFields = array('trxn_id', 'componentpaymentfield_transaction_id');
+          $notRealIDFields = array('trxn_id', 'componentpaymentfield_transaction_id', 'phone_type_id');
         }
 
         if (in_array($fieldName, $notRealIDFields)) {
@@ -1368,7 +1380,8 @@ INSERT INTO {$componentTable} SELECT distinct gc.contact_id FROM civicrm_group_c
 
             switch ($query->_fields[$field]['data_type']) {
               case 'String':
-                $length = empty($query->_fields[$field]['text_length']) ? 255 : $query->_fields[$field]['text_length'];
+                // May be option labels, which could be up to 512 characters
+                $length = max(512, CRM_Utils_Array::value('text_length', $query->_fields[$field]));
                 $sqlColumns[$fieldName] = "$fieldName varchar($length)";
                 break;
 
@@ -1388,7 +1401,7 @@ INSERT INTO {$componentTable} SELECT distinct gc.contact_id FROM civicrm_group_c
             }
           }
           else {
-            $sqlColumns[$fieldName] = "$fieldName varchar(255)";
+            $sqlColumns[$fieldName] = "$fieldName text";
           }
         }
       }
@@ -1481,7 +1494,7 @@ CREATE TABLE {$exportTempTable} (
     }
 
     $sql .= "
-) ENGINE=MyISAM DEFAULT CHARACTER SET utf8 COLLATE utf8_unicode_ci
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8 COLLATE utf8_unicode_ci
 ";
 
     CRM_Core_DAO::executeQuery($sql);

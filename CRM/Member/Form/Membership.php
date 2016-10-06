@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 
 /**
@@ -243,7 +243,7 @@ class CRM_Member_Form_Membership extends CRM_Member_Form {
 
     if (!$this->_memType) {
       $params = CRM_Utils_Request::exportValues();
-      if (isset($params['membership_type_id'][1])) {
+      if (!empty($params['membership_type_id'][1])) {
         $this->_memType = $params['membership_type_id'][1];
       }
     }
@@ -479,26 +479,25 @@ class CRM_Member_Form_Membership extends CRM_Member_Form {
 
     if ($this->_action & CRM_Core_Action::DELETE) {
       $this->addButtons(array(
-          array(
-            'type' => 'next',
-            'name' => ts('Delete'),
-            'spacing' => '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;',
-            'isDefault' => TRUE,
-          ),
-          array(
-            'type' => 'cancel',
-            'name' => ts('Cancel'),
-          ),
-        )
-      );
+        array(
+          'type' => 'next',
+          'name' => ts('Delete'),
+          'spacing' => '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;',
+          'isDefault' => TRUE,
+        ),
+        array(
+          'type' => 'cancel',
+          'name' => ts('Cancel'),
+        ),
+      ));
       return;
     }
 
     if ($this->_context == 'standalone') {
       $this->addEntityRef('contact_id', ts('Contact'), array(
-          'create' => TRUE,
-          'api' => array('extra' => array('email')),
-        ), TRUE);
+        'create' => TRUE,
+        'api' => array('extra' => array('email')),
+      ), TRUE);
     }
 
     $selOrgMemType[0][0] = $selMemTypeOrg[0] = ts('- select -');
@@ -530,13 +529,18 @@ class CRM_Member_Form_Membership extends CRM_Member_Form {
           $selOrgMemType[$memberOfContactId][$key] = CRM_Utils_Array::value('name', $values);
         }
       }
+      $totalAmount = CRM_Utils_Array::value('minimum_fee', $values);
+      //CRM-18827 - override the default value if total_amount is submitted
+      if (!empty($this->_submitValues['total_amount'])) {
+        $totalAmount = $this->_submitValues['total_amount'];
+      }
       // build membership info array, which is used when membership type is selected to:
       // - set the payment information block
       // - set the max related block
       $allMembershipInfo[$key] = array(
         'financial_type_id' => CRM_Utils_Array::value('financial_type_id', $values),
-        'total_amount' => CRM_Utils_Money::format($values['minimum_fee'], NULL, '%a'),
-        'total_amount_numeric' => CRM_Utils_Array::value('minimum_fee', $values),
+        'total_amount' => CRM_Utils_Money::format($totalAmount, NULL, '%a'),
+        'total_amount_numeric' => $totalAmount,
         'auto_renew' => CRM_Utils_Array::value('auto_renew', $values),
         'has_related' => isset($values['relationship_type_id']),
         'max_related' => CRM_Utils_Array::value('max_related', $values),
@@ -1000,22 +1004,10 @@ class CRM_Member_Form_Membership extends CRM_Member_Form {
     $form->assign('customValues', $customValues);
 
     if ($form->_mode) {
-      // assign the address formatted up for display
-      $addressParts = array(
-        "street_address-{$form->_bltID}",
-        "city-{$form->_bltID}",
-        "postal_code-{$form->_bltID}",
-        "state_province-{$form->_bltID}",
-        "country-{$form->_bltID}",
-      );
-      $addressFields = array();
-      foreach ($addressParts as $part) {
-        list($n, $id) = explode('-', $part);
-        if (isset($form->_params['billing_' . $part])) {
-          $addressFields[$n] = $form->_params['billing_' . $part];
-        }
-      }
-      $form->assign('address', CRM_Utils_Address::format($addressFields));
+      $form->assign('address', CRM_Utils_Address::getFormattedBillingAddressFieldsFromParameters(
+        $form->_params,
+        $form->_bltID
+      ));
 
       $date = CRM_Utils_Date::format($form->_params['credit_card_exp_date']);
       $date = CRM_Utils_Date::mysqlToIso($date);
@@ -1192,7 +1184,7 @@ class CRM_Member_Form_Membership extends CRM_Member_Form {
     $lineItem = array($this->_priceSetId => array());
 
     CRM_Price_BAO_PriceSet::processAmount($this->_priceSet['fields'],
-      $formValues, $lineItem[$this->_priceSetId]);
+      $formValues, $lineItem[$this->_priceSetId], NULL, $this->_priceSetId);
 
     if (CRM_Utils_Array::value('tax_amount', $formValues)) {
       $params['tax_amount'] = $formValues['tax_amount'];

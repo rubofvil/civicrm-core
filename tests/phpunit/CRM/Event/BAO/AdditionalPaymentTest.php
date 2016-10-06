@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -25,21 +25,17 @@
  +--------------------------------------------------------------------+
  */
 
-
-require_once 'CiviTest/CiviUnitTestCase.php';
-require_once 'CiviTest/Contact.php';
-require_once 'CiviTest/Event.php';
-require_once 'CiviTest/Participant.php';
-
 /**
  * Class CRM_Event_BAO_AdditionalPaymentTest
+ * @group headless
  */
 class CRM_Event_BAO_AdditionalPaymentTest extends CiviUnitTestCase {
 
   public function setUp() {
     parent::setUp();
-    $this->_contactId = Contact::createIndividual();
-    $this->_eventId = Event::create($this->_contactId);
+    $this->_contactId = $this->individualCreate();
+    $event = $this->eventCreate();
+    $this->_eventId = $event['id'];
   }
 
   public function tearDown() {

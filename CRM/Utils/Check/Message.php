@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 class CRM_Utils_Check_Message {
   /**
@@ -233,8 +233,8 @@ class CRM_Utils_Check_Message {
    */
   private function checkStatusPreference() {
     $this->hiddenUntil = FALSE;
-    // Debug, info & notice can't be hidden
-    if ($this->level < 3) {
+    // Debug & info can't be hidden
+    if ($this->level < 2) {
       return FALSE;
     }
     $statusPreferenceParams = array(

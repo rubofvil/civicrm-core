@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -79,7 +79,7 @@
  * @endcode
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 class CRM_Utils_SQL_Select implements ArrayAccess {
 
@@ -125,6 +125,7 @@ class CRM_Utils_SQL_Select implements ArrayAccess {
   private $limit = NULL;
   private $offset = NULL;
   private $params = array();
+  private $distinct = NULL;
 
   // Public to work-around PHP 5.3 limit.
   public $strict = NULL;
@@ -178,7 +179,7 @@ class CRM_Utils_SQL_Select implements ArrayAccess {
    * @param CRM_Utils_SQL_Select $other
    * @param array|NULL $parts
    *   ex: 'joins', 'wheres'
-   * @return $this
+   * @return CRM_Utils_SQL_Select
    */
   public function merge($other, $parts = NULL) {
     if ($other === NULL) {
@@ -257,6 +258,19 @@ class CRM_Utils_SQL_Select implements ArrayAccess {
   }
 
   /**
+   * Return only distinct values
+   *
+   * @param bool $isDistinct allow DISTINCT select or not
+   * @return CRM_Utils_SQL_Select
+   */
+  public function distinct($isDistinct = TRUE) {
+    if ($isDistinct) {
+      $this->distinct = 'DISTINCT ';
+    }
+    return $this;
+  }
+
+  /**
    * Limit results by adding extra condition(s) to the WHERE clause
    *
    * @param string|array $exprs list of SQL expressions
@@ -326,7 +340,7 @@ class CRM_Utils_SQL_Select implements ArrayAccess {
    * @param array|string $keys
    *   Key name, or an array of key-value pairs.
    * @param null|mixed $value
-   * @return $this
+   * @return \CRM_Utils_SQL_Select
    */
   public function param($keys, $value = NULL) {
     if ($this->mode === self::INTERPOLATE_AUTO) {
@@ -375,7 +389,7 @@ class CRM_Utils_SQL_Select implements ArrayAccess {
    *   The name of the other table (which receives new data).
    * @param array $fields
    *   The fields to fill in the other table (in order).
-   * @return $this
+   * @return CRM_Utils_SQL_Select
    * @see insertIntoField
    */
   public function insertInto($table, $fields = array()) {
@@ -387,7 +401,7 @@ class CRM_Utils_SQL_Select implements ArrayAccess {
   /**
    * @param array $fields
    *   The fields to fill in the other table (in order).
-   * @return $this
+   * @return CRM_Utils_SQL_Select
    */
   public function insertIntoField($fields) {
     $fields = (array) $fields;
@@ -435,7 +449,7 @@ class CRM_Utils_SQL_Select implements ArrayAccess {
    * In strict mode, unknown variables will generate exceptions.
    *
    * @param bool $strict
-   * @return $this
+   * @return CRM_Utils_SQL_Select
    */
   public function strict($strict = TRUE) {
     $this->strict = $strict;
@@ -536,7 +550,7 @@ class CRM_Utils_SQL_Select implements ArrayAccess {
       $sql .= ")\n";
     }
     if ($this->selects) {
-      $sql .= 'SELECT ' . implode(', ', $this->selects) . "\n";
+      $sql .= 'SELECT ' . $this->distinct . implode(', ', $this->selects) . "\n";
     }
     else {
       $sql .= 'SELECT *' . "\n";

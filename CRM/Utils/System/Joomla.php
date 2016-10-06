@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 
 /**
@@ -430,13 +430,30 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
   }
 
   /**
-   * FIXME: Do something
-   *
-   * @param \obj $user
+   * @param \string $username
+   * @param \string $password
    *
    * @return bool
    */
-  public function loadUser($user) {
+  public function loadUser($username, $password = NULL) {
+    $uid = JUserHelper::getUserId($username);
+    if (empty($uid)) {
+      return FALSE;
+    }
+    $contactID = CRM_Core_BAO_UFMatch::getContactId($uid);
+    if (!empty($password)) {
+      $instance = JFactory::getApplication('site');
+      $params = array(
+        'username' => $username,
+        'password' => $password,
+      );
+      //perform the login action
+      $instance->login($params);
+    }
+
+    $session = CRM_Core_Session::singleton();
+    $session->set('ufID', $uid);
+    $session->set('userID', $contactID);
     return TRUE;
   }
 
@@ -586,6 +603,14 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
   }
 
   /**
+   * @inheritDoc
+   */
+  public function getTimeZoneString() {
+    $timezone = JFactory::getConfig()->get('offset');
+    return !$timezone ? date_default_timezone_get() : $timezone;
+  }
+
+  /**
    * Get a list of all installed modules, including enabled and disabled ones
    *
    * @return array
@@ -661,9 +686,24 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
   }
 
   /**
+   * Determine the location of the CMS root.
+   *
+   * @return string|NULL
+   *   local file system path to CMS root, or NULL if it cannot be determined
+   */
+  public function cmsRootPath() {
+    list($url, $siteName, $siteRoot) = $this->getDefaultSiteSettings();
+    $includePath = "$siteRoot/libraries/cms/version";
+    if (file_exists("$includePath/version.php")) {
+      return $siteRoot;
+    }
+    return NULL;
+  }
+
+  /**
    * @inheritDoc
    */
-  public function getDefaultSiteSettings($dir) {
+  public function getDefaultSiteSettings($dir = NULL) {
     $config = CRM_Core_Config::singleton();
     $url = preg_replace(
       '|/administrator|',

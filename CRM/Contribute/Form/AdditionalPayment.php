@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 
 /**
@@ -382,7 +382,20 @@ class CRM_Contribute_Form_AdditionalPayment extends CRM_Contribute_Form_Abstract
       $this->processCreditCard($submittedValues);
     }
     else {
+      $defaults = array();
+      $contribution = civicrm_api3('Contribution', 'getsingle', array(
+        'return' => array("contribution_status_id"),
+        'id' => $this->_contributionId,
+      ));
+      $contributionStatusId = CRM_Utils_Array::value('contribution_status_id', $contribution);
       $result = CRM_Contribute_BAO_Contribution::recordAdditionalPayment($this->_contributionId, $submittedValues, $this->_paymentType, $participantId);
+      // Fetch the contribution & do proportional line item assignment
+      $params = array('id' => $this->_contributionId);
+      $contribution = CRM_Contribute_BAO_Contribution::retrieve($params, $defaults, $params);
+      $lineItems = CRM_Price_BAO_LineItem::getLineItemsByContributionID($this->_contributionId);
+      if (!empty($lineItems)) {
+        CRM_Contribute_BAO_Contribution::addPayments($lineItems, array($contribution), $contributionStatusId);
+      }
 
       // email sending
       if (!empty($result) && !empty($submittedValues['is_email_receipt'])) {
@@ -513,28 +526,12 @@ class CRM_Contribute_Form_AdditionalPayment extends CRM_Contribute_Form_Abstract
       $this->_params['invoiceID'] = $this->_params['invoice_id'];
     }
 
-    // billing name and Address
-    $name = CRM_Utils_Array::value('billing_first_name', $params);
-    if (!empty($params['billing_middle_name'])) {
-      $name .= " {$params['billing_middle_name']}";
-    }
-    $name .= ' ' . CRM_Utils_Array::value('billing_last_name', $params);
-    $name = trim($name);
-    $this->assign('billingName', $name);
+    $this->assignBillingName($params);
+    $this->assign('address', CRM_Utils_Address::getFormattedBillingAddressFieldsFromParameters(
+      $params,
+      $this->_bltID
+    ));
 
-    //assign the address formatted up for display
-    $addressParts = array(
-      "street_address" => "billing_street_address-{$this->_bltID}",
-      "city" => "billing_city-{$this->_bltID}",
-      "postal_code" => "billing_postal_code-{$this->_bltID}",
-      "state_province" => "state_province-{$this->_bltID}",
-      "country" => "country-{$this->_bltID}",
-    );
-    $addressFields = array();
-    foreach ($addressParts as $name => $field) {
-      $addressFields[$name] = CRM_Utils_Array::value($field, $params);
-    }
-    $this->assign('address', CRM_Utils_Address::format($addressFields));
     $date = CRM_Utils_Date::format($params['credit_card_exp_date']);
     $date = CRM_Utils_Date::mysqlToIso($date);
     $this->assign('credit_card_type', CRM_Utils_Array::value('credit_card_type', $params));

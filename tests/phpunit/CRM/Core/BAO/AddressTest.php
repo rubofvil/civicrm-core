@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -25,12 +25,9 @@
  +--------------------------------------------------------------------+
  */
 
-
-require_once 'CiviTest/CiviUnitTestCase.php';
-require_once 'CiviTest/Contact.php';
-
 /**
  * Class CRM_Core_BAO_AddressTest
+ * @group headless
  */
 class CRM_Core_BAO_AddressTest extends CiviUnitTestCase {
   public function setUp() {
@@ -43,7 +40,7 @@ class CRM_Core_BAO_AddressTest extends CiviUnitTestCase {
    * Create() method (create and update modes)
    */
   public function testCreate() {
-    $contactId = Contact::createIndividual();
+    $contactId = $this->individualCreate();
 
     $params = array();
     $params['address']['1'] = array(
@@ -92,20 +89,20 @@ class CRM_Core_BAO_AddressTest extends CiviUnitTestCase {
 
     $block = CRM_Core_BAO_Address::create($params, $fixAddress, $entity = NULL);
 
-    $cid = $this->assertDBNotNull('CRM_Core_DAO_Address', $contactId, 'id', 'contact_id',
+    $this->assertDBNotNull('CRM_Core_DAO_Address', $contactId, 'id', 'contact_id',
       'Database check for updated address by contactId.'
     );
-    $addressId = $this->assertDBNotNull('CRM_Core_DAO_Address', '120 Terminal Road', 'id', 'street_address',
+    $this->assertDBNotNull('CRM_Core_DAO_Address', '120 Terminal Road', 'id', 'street_address',
       'Database check for updated address by street_name.'
     );
-    Contact::delete($contactId);
+    $this->contactDelete($contactId);
   }
 
   /**
    * Add() method ( )
    */
   public function testAdd() {
-    $contactId = Contact::createIndividual();
+    $contactId = $this->individualCreate();
 
     $fixParams = array(
       'street_address' => 'E 906N Pine Pl W',
@@ -137,14 +134,14 @@ class CRM_Core_BAO_AddressTest extends CiviUnitTestCase {
     $this->assertEquals($addAddress->geo_code_1, '31.694842', 'In line' . __LINE__);
     $this->assertEquals($addAddress->geo_code_2, '-106.29998', 'In line' . __LINE__);
     $this->assertEquals($addAddress->country_id, '1228', 'In line' . __LINE__);
-    Contact::delete($contactId);
+    $this->contactDelete($contactId);
   }
 
   /**
    * AllAddress() method ( )
    */
   public function testallAddress() {
-    $contactId = Contact::createIndividual();
+    $contactId = $this->individualCreate();
 
     $fixParams = array(
       'street_address' => 'E 906N Pine Pl W',
@@ -195,14 +192,14 @@ class CRM_Core_BAO_AddressTest extends CiviUnitTestCase {
 
     $this->assertEquals(count($allAddress), 2, 'Checking number of returned addresses.');
 
-    Contact::delete($contactId);
+    $this->contactDelete($contactId);
   }
 
   /**
    * AllAddress() method ( ) with null value
    */
   public function testnullallAddress() {
-    $contactId = Contact::createIndividual();
+    $contactId = $this->individualCreate();
 
     $fixParams = array(
       'street_address' => 'E 906N Pine Pl W',
@@ -233,14 +230,14 @@ class CRM_Core_BAO_AddressTest extends CiviUnitTestCase {
 
     $this->assertEquals($allAddress, NULL, 'Checking null for returned addresses.');
 
-    Contact::delete($contactId);
+    $this->contactDelete($contactId);
   }
 
   /**
    * GetValues() method (get Address fields)
    */
   public function testGetValues() {
-    $contactId = Contact::createIndividual();
+    $contactId = $this->individualCreate();
 
     $params = array();
     $params['address']['1'] = array(
@@ -273,7 +270,7 @@ class CRM_Core_BAO_AddressTest extends CiviUnitTestCase {
     $this->assertEquals($address[1]['id'], $addressId);
     $this->assertEquals($address[1]['contact_id'], $contactId);
     $this->assertEquals($address[1]['street_address'], 'Oberoi Garden');
-    Contact::delete($contactId);
+    $this->contactDelete($contactId);
   }
 
   /**

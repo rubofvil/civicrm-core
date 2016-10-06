@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  * $Id$
  *
  */
@@ -130,7 +130,7 @@ class CRM_Event_Form_Search extends CRM_Core_Form_Search {
       );
     }
 
-    $this->_queryParams = CRM_Contact_BAO_Query::convertFormValues($this->_formValues);
+    $this->_queryParams = CRM_Contact_BAO_Query::convertFormValues($this->_formValues, 0, FALSE, NULL, array('event_id'));
     $selector = new CRM_Event_Selector_Search($this->_queryParams,
       $this->_action,
       NULL,
@@ -215,9 +215,12 @@ class CRM_Event_Form_Search extends CRM_Core_Form_Search {
         // CRM-15379
         if (!empty($this->_formValues['participant_fee_id'])) {
           $participant_fee_id = $this->_formValues['participant_fee_id'];
-          $feeLabel = CRM_Core_DAO::getFieldValue('CRM_Price_DAO_PriceFieldValue', $participant_fee_id, 'label');
-          $feeLabel = CRM_Core_DAO::escapeString(trim($feeLabel));
-          $seatClause[] = "( participant.fee_level LIKE '%$feeLabel%' )";
+          foreach ($participant_fee_id as $k => &$val) {
+            $val = CRM_Core_DAO::getFieldValue('CRM_Price_DAO_PriceFieldValue', $val, 'label');
+            $val = CRM_Core_DAO::escapeString(trim($val));
+          }
+          $feeLabel = implode('|', $participant_fee_id);
+          $seatClause[] = "( participant.fee_level REGEXP '{$feeLabel}' )";
         }
 
         $seatClause = implode(' AND ', $seatClause);
@@ -294,6 +297,7 @@ class CRM_Event_Form_Search extends CRM_Core_Form_Search {
 
     if (!empty($_POST)) {
       $this->_formValues = $this->controller->exportValues($this->_name);
+      CRM_Contact_BAO_Query::processSpecialFormValue($this->_formValues, array('participant_status_id'));
     }
 
     if (empty($this->_formValues)) {
@@ -314,7 +318,7 @@ class CRM_Event_Form_Search extends CRM_Core_Form_Search {
 
     CRM_Core_BAO_CustomValue::fixCustomFieldValue($this->_formValues);
 
-    $this->_queryParams = CRM_Contact_BAO_Query::convertFormValues($this->_formValues);
+    $this->_queryParams = CRM_Contact_BAO_Query::convertFormValues($this->_formValues, 0, FALSE, NULL, array('event_id'));
 
     $this->set('formValues', $this->_formValues);
     $this->set('queryParams', $this->_queryParams);
@@ -337,7 +341,7 @@ class CRM_Event_Form_Search extends CRM_Core_Form_Search {
       );
     }
 
-    $this->_queryParams = CRM_Contact_BAO_Query::convertFormValues($this->_formValues);
+    $this->_queryParams = CRM_Contact_BAO_Query::convertFormValues($this->_formValues, 0, FALSE, NULL, array('event_id'));
 
     $selector = new CRM_Event_Selector_Search($this->_queryParams,
       $this->_action,
@@ -426,7 +430,7 @@ class CRM_Event_Form_Search extends CRM_Core_Form_Search {
       elseif (is_array($status) && !array_key_exists('IN', $status)) {
         $statusTypes = array_keys($status);
       }
-      $this->_formValues['participant_status_id'] = is_array($statusTypes) ? array_keys($statusTypes) : $statusTypes;
+      $this->_formValues['participant_status_id'] = is_array($statusTypes) ? array('IN' => array_keys($statusTypes)) : $statusTypes;
     }
 
     $role = CRM_Utils_Request::retrieve('role', 'String',

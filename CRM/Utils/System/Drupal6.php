@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 
 /**
@@ -285,6 +285,14 @@ class CRM_Utils_System_Drupal6 extends CRM_Utils_System_DrupalBase {
   public function mapConfigToSSL() {
     global $base_url;
     $base_url = str_replace('http://', 'https://', $base_url);
+  }
+
+  protected function getUsersTableName() {
+    $userFrameworkUsersTableName = Civi::settings()->get('userFrameworkUsersTableName');
+    if (empty($userFrameworkUsersTableName)) {
+      $userFrameworkUsersTableName = 'users';
+    }
+    return $userFrameworkUsersTableName;
   }
 
   /**

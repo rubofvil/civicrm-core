@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -34,17 +34,10 @@
  */
 
 /**
- *  Include class definitions
- */
-require_once 'CiviTest/CiviUnitTestCase.php';
-require_once 'CiviTest/CiviMailUtils.php';
-
-require_once 'HTML/QuickForm/Page.php';
-
-/**
  *  Test CRM_Member_Form_Membership functions.
  *
  * @package   CiviCRM
+ * @group headless
  */
 class CRM_Member_Form_MembershipTest extends CiviUnitTestCase {
 
@@ -87,6 +80,11 @@ class CRM_Member_Form_MembershipTest extends CiviUnitTestCase {
    * @var array
    */
   protected $paymentInstruments = array();
+
+  /**
+   * @var CiviMailUtils
+   */
+  protected $mut;
 
   /**
    * Test setup for every test.
@@ -433,6 +431,7 @@ class CRM_Member_Form_MembershipTest extends CiviUnitTestCase {
    */
   public function testSubmit() {
     $form = $this->getForm();
+    $this->mut = new CiviMailUtils($this, TRUE);
     $form->_mode = 'test';
     $this->createLoggedInUser();
     $params = array(
@@ -451,7 +450,6 @@ class CRM_Member_Form_MembershipTest extends CiviUnitTestCase {
       'soft_credit_type_id' => '',
       'soft_credit_contact_id' => '',
       'from_email_address' => '"Demonstrators Anonymous" <info@example.org>',
-      'receipt_text_signup' => 'Thank you text',
       'payment_processor_id' => $this->_paymentProcessorID,
       'credit_card_number' => '4111111111111111',
       'cvv2' => '123',
@@ -467,6 +465,8 @@ class CRM_Member_Form_MembershipTest extends CiviUnitTestCase {
       'billing_state_province_id-5' => '1003',
       'billing_postal_code-5' => '90210',
       'billing_country_id-5' => '1228',
+      'send_receipt' => TRUE,
+      'receipt_text' => 'Receipt text',
     );
     $form->_contactID = $this->_individualId;
     $form->testSubmit($params);
@@ -482,6 +482,13 @@ class CRM_Member_Form_MembershipTest extends CiviUnitTestCase {
       'entity_table' => 'civicrm_membership',
       'contribution_id' => $contribution['id'],
     ), 1);
+
+    $this->_checkFinancialRecords(array('id' => $contribution['id'], 'total_amount' => 50, 'financial_account_id' => 2), 'online');
+    $this->mut->checkMailLog(array(
+      '50',
+      'Receipt text',
+    ));
+    $this->mut->stop();
   }
 
   /**

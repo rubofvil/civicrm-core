@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -348,6 +348,12 @@ function _civicrm_api3_system_get_redacted_mysql() {
   return $result;
 }
 
+/**
+ * Get redacted settings.
+ *
+ * @return array
+ * @throws CiviCRM_API3_Exception
+ */
 function _civicrm_api3_system_get_redacted_settings() {
   static $whitelist = NULL;
   if ($whitelist === NULL) {
@@ -382,4 +388,15 @@ function _civicrm_api3_system_get_whitelist($whitelistFile) {
     }
   );
   return $whitelist;
+}
+
+/**
+ * Update log table structures.
+ *
+ * This updates the engine type if defined in the hook and changes the field type
+ * for log_conn_id to reflect CRM-18193.
+ */
+function civicrm_api3_system_updatelogtables() {
+  $schema = new CRM_Logging_Schema();
+  $schema->updateLogTableSchema();
 }

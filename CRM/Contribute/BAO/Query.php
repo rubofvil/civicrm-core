@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 class CRM_Contribute_BAO_Query {
 
@@ -51,7 +51,7 @@ class CRM_Contribute_BAO_Query {
    * @return array
    *   Associative array of contribution fields
    */
-  public static function &getFields($checkPermission = TRUE) {
+  public static function getFields($checkPermission = TRUE) {
     if (!self::$_contributionFields) {
       self::$_contributionFields = array();
 
@@ -239,7 +239,7 @@ class CRM_Contribute_BAO_Query {
     // Adding address_id in a way that is more easily extendable since the above is a bit ... wordy.
     $supportedBasicReturnValues = array('address_id');
     foreach ($supportedBasicReturnValues as $fieldName) {
-      if (!empty($query->_returnProperties[$fieldName])) {
+      if (!empty($query->_returnProperties[$fieldName]) && empty($query->_select[$fieldName])) {
         $query->_select[$fieldName] = "civicrm_contribution.{$fieldName} as $fieldName";
         $query->_element[$fieldName] = $query->_tables['civicrm_contribution'] = 1;
       }
@@ -583,6 +583,11 @@ class CRM_Contribute_BAO_Query {
         $query->_tables['civicrm_product'] = $query->_whereTables['civicrm_product'] = 1;
         return;
 
+      case 'contribution_is_payment':
+        $query->_where[$grouping][] = " civicrm_financial_trxn.is_payment $op $value";
+        $query->_tables['contribution_financial_trxn'] = $query->_whereTables['contribution_financial_trxn'] = 1;
+        return;
+
       default:
         //all other elements are handle in this case
         $fldName = substr($name, 13);
@@ -820,7 +825,7 @@ class CRM_Contribute_BAO_Query {
                SELECT con.id as id, con.contact_id, cso.id as filter_id, NULL as scredit_id
                  FROM civicrm_contribution con
             LEFT JOIN civicrm_contribution_soft cso ON con.id = cso.contribution_id
-             GROUP BY id, contact_id, scredit_id
+             GROUP BY id, contact_id, scredit_id, cso.id
             UNION ALL
                SELECT scredit.contribution_id as id, scredit.contact_id, scredit.id as filter_id, scredit.id as scredit_id
                  FROM civicrm_contribution_soft as scredit";
@@ -859,7 +864,7 @@ class CRM_Contribute_BAO_Query {
    * kills a small kitten so add carefully.
    */
   public static function selectorReturnProperties() {
-    return array(
+    $properties = array(
       'contact_type' => 1,
       'contact_sub_type' => 1,
       'sort_name' => 1,
@@ -881,7 +886,13 @@ class CRM_Contribute_BAO_Query {
       // on what field to show instead.
       'contribution_product_id' => 1,
       'product_name' => 1,
+      'currency' => 1,
     );
+    if (self::isSoftCreditOptionEnabled()) {
+      $properties = array_merge($properties, self::softCreditReturnProperties());
+    }
+
+    return $properties;
   }
 
   /**
@@ -1009,6 +1020,10 @@ class CRM_Contribute_BAO_Query {
     $form->addElement('text', 'contribution_source', ts('Contribution Source'), CRM_Core_DAO::getAttribute('CRM_Contribute_DAO_Contribution', 'source'));
 
     CRM_Core_Form_Date::buildDateRange($form, 'contribution_date', 1, '_low', '_high', ts('From:'), FALSE);
+    // CRM-17602
+    // This hidden element added for displaying Date Range error correctly. Definitely a dirty hack, but... it works.
+    $form->addElement('hidden', 'contribution_date_range_error');
+    $form->addFormRule(array('CRM_Contribute_BAO_Query', 'formRule'), $form);
 
     $form->add('text', 'contribution_amount_low', ts('From'), array('size' => 8, 'maxlength' => 8));
     $form->addRule('contribution_amount_low', ts('Please enter a valid money value (e.g. %1).', array(1 => CRM_Utils_Money::format('9.99', ' '))), 'money');
@@ -1185,6 +1200,27 @@ class CRM_Contribute_BAO_Query {
       'civicrm_' . $table, $field, $fieldName[1], $title
     );
     return TRUE;
+  }
+
+  /**
+   * Custom form rules.
+   *
+   * @param array $fields
+   * @param array $files
+   * @param CRM_Core_Form $form
+   *
+   * @return bool|array
+   */
+  public static function formRule($fields, $files, $form) {
+    $errors = array();
+
+    if (empty($fields['contribution_date_high']) || empty($fields['contribution_date_low'])) {
+      return TRUE;
+    }
+
+    CRM_Utils_Rule::validDateRange($fields, 'contribution_date', $errors, ts('Date Received'));
+
+    return empty($errors) ? TRUE : $errors;
   }
 
 }

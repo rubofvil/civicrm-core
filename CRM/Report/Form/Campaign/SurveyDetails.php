@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  * $Id$
  *
  */
@@ -204,12 +204,14 @@ class CRM_Report_Form_Campaign_SurveyDetails extends CRM_Report_Form {
           'state_province_id' => array(
             'name' => 'state_province_id',
             'title' => ts('State/Province'),
+            'type' => CRM_Utils_Type::T_INT,
             'operatorType' => CRM_Report_Form::OP_MULTISELECT,
             'options' => CRM_Core_PseudoConstant::stateProvince(),
           ),
           'country_id' => array(
             'name' => 'country_id',
             'title' => ts('Country'),
+            'type' => CRM_Utils_Type::T_INT,
             'operatorType' => CRM_Report_Form::OP_MULTISELECT,
             'options' => CRM_Core_PseudoConstant::country(),
           ),
@@ -221,7 +223,7 @@ class CRM_Report_Form_Campaign_SurveyDetails extends CRM_Report_Form {
             'name' => 'street_number',
             'dbAlias' => 'address_civireport.street_number%2',
           ),
-          'street_number' => array('title' => 'Street Number'),
+          'street_number' => array('title' => ts('Street Number')),
         ),
         'grouping' => 'location-fields',
       ),

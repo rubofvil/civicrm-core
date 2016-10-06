@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 
 /**
@@ -409,8 +409,7 @@ class CRM_Member_Form_MembershipRenewal extends CRM_Member_Form {
       }
     }
     $this->addFormRule(array('CRM_Member_Form_MembershipRenewal', 'formRule'));
-    $this->addElement('checkbox', 'is_different_contribution_contact', ts('Record Payment from a Different
-      Contact?'));
+    $this->addElement('checkbox', 'is_different_contribution_contact', ts('Record Payment from a Different Contact?'));
     $this->addSelect('soft_credit_type_id', array('entity' => 'contribution_soft'));
     $this->addEntityRef('soft_credit_contact_id', ts('Payment From'), array('create' => TRUE));
   }
@@ -463,13 +462,13 @@ class CRM_Member_Form_MembershipRenewal extends CRM_Member_Form {
 
       if ($this->endDate) {
         $statusMsg .= ' ' . ts('The new membership End Date is %1.', array(
-            1 => CRM_Utils_Date::customFormat(substr($this->endDate, 0, 8)),
+          1 => CRM_Utils_Date::customFormat(substr($this->endDate, 0, 8)),
         ));
       }
 
       if ($this->isMailSent) {
         $statusMsg .= ' ' . ts('A renewal confirmation and receipt has been sent to %1.', array(
-            1 => $this->_contributorEmail,
+          1 => $this->_contributorEmail,
         ));
         return $statusMsg;
       }
@@ -610,7 +609,7 @@ class CRM_Member_Form_MembershipRenewal extends CRM_Member_Form {
       $lineItem = array();
       $this->_params = $this->setPriceSetParameters($this->_params);
       CRM_Price_BAO_PriceSet::processAmount($this->_priceSet['fields'],
-        $this->_params, $lineItem[$this->_priceSetId]
+        $this->_params, $lineItem[$this->_priceSetId], NULL, $this->_priceSetId
       );
       //CRM-11529 for quick config backoffice transactions
       //when financial_type_id is passed in form, update the
@@ -689,22 +688,10 @@ class CRM_Member_Form_MembershipRenewal extends CRM_Member_Form {
       $this->assign('mem_start_date', CRM_Utils_Date::customFormat($renewMembership->start_date));
       $this->assign('mem_end_date', CRM_Utils_Date::customFormat($renewMembership->end_date));
       if ($this->_mode) {
-        // assign the address formatted up for display
-        $addressParts = array(
-          "street_address-{$this->_bltID}",
-          "city-{$this->_bltID}",
-          "postal_code-{$this->_bltID}",
-          "state_province-{$this->_bltID}",
-          "country-{$this->_bltID}",
-        );
-        $addressFields = array();
-        foreach ($addressParts as $part) {
-          list($n) = explode('-', $part);
-          if (isset($this->_params['billing_' . $part])) {
-            $addressFields[$n] = $this->_params['billing_' . $part];
-          }
-        }
-        $this->assign('address', CRM_Utils_Address::format($addressFields));
+        $this->assign('address', CRM_Utils_Address::getFormattedBillingAddressFieldsFromParameters(
+          $this->_params,
+          $this->_bltID
+        ));
         $this->assign('contributeMode', 'direct');
         $this->assign('isAmountzero', 0);
         $this->assign('is_pay_later', 0);

@@ -2,7 +2,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -49,7 +49,7 @@
   <table class="campaigns">
     <thead>
     <tr class="columnheader">
-      <th class="hiddenElement">{ts}Campaign ID{/ts}</th>
+      <th>{ts}ID{/ts}</th>
       <th class="hiddenElement">{ts}Campaign Name{/ts}</th>
       <th>{ts}Title{/ts}</th>
       <th>{ts}Description{/ts}</th>
@@ -191,7 +191,7 @@
       "bLengthChange": false,
       "aaSorting": [],
       "aoColumns": [
-        {sClass: 'crm-campaign-id                   hiddenElement' },
+        {sClass: 'crm-campaign-id'                         },
         {sClass: 'crm-campaign-name                 hiddenElement' },
         {sClass: 'crmf-title'                              },
         {sClass: 'crmf-description'                        },

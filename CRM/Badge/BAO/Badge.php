@@ -26,7 +26,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 
 /**
@@ -36,8 +36,14 @@
  */
 class CRM_Badge_BAO_Badge {
 
+  /**
+   * @var bool
+   */
   public $debug = FALSE;
 
+  /**
+   * @var int
+   */
   public $border = 0;
 
   /**

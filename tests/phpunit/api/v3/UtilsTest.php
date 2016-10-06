@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -25,13 +25,13 @@
  +--------------------------------------------------------------------+
  */
 
-require_once 'CiviTest/CiviUnitTestCase.php';
 require_once 'CRM/Utils/DeprecatedUtils.php';
 
 /**
  * Test class for API utils
  *
  * @package   CiviCRM
+ * @group headless
  */
 class api_v3_UtilsTest extends CiviUnitTestCase {
   protected $_apiversion = 3;
@@ -200,7 +200,6 @@ class api_v3_UtilsTest extends CiviUnitTestCase {
       $this->fail('Exception raised when it shouldn\'t have been  in line ' . __LINE__);
     }
   }
-
 
   /**
    * Test GET DAO function returns DAO.

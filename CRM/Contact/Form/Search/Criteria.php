@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 class CRM_Contact_Form_Search_Criteria {
   /**
@@ -158,6 +158,13 @@ class CRM_Contact_Form_Search_Criteria {
     );
 
     $componentModes = CRM_Contact_Form_Search::getModeSelect();
+    $enabledComponents = CRM_Core_Component::getEnabledComponents();
+
+    // unset disabled components that must should have been enabled
+    // to the option be viable
+    if (!array_key_exists('CiviMail', $enabledComponents)) {
+      unset($componentModes['8']);
+    }
 
     // unset contributions or participants if user does not have
     // permission on them

@@ -3,7 +3,7 @@
   +--------------------------------------------------------------------+
   | CiviCRM version 4.7                                                |
   +--------------------------------------------------------------------+
-  | Copyright CiviCRM LLC (c) 2004-2015                                |
+  | Copyright CiviCRM LLC (c) 2004-2016                                |
   +--------------------------------------------------------------------+
   | This file is a part of CiviCRM.                                    |
   |                                                                    |
@@ -28,16 +28,13 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
- * $Id$
- *
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 class CRM_Report_Form_Event_ParticipantListing extends CRM_Report_Form_Event {
 
   protected $_summary = NULL;
 
   protected $_contribField = FALSE;
-  protected $_lineitemField = FALSE;
   protected $_groupFilter = TRUE;
   protected $_tagFilter = TRUE;
   protected $_balance = FALSE;
@@ -53,8 +50,7 @@ class CRM_Report_Form_Event_ParticipantListing extends CRM_Report_Form_Event {
   public $_drilldownReport = array('event/income' => 'Link to Detail Report');
 
   /**
-   */
-  /**
+   * Class constructor.
    */
   public function __construct() {
     $this->_autoIncludeIndexedFieldsAsOrderBys = 1;
@@ -163,7 +159,7 @@ class CRM_Report_Form_Event_ParticipantListing extends CRM_Report_Form_Event {
       'civicrm_participant' => array(
         'dao' => 'CRM_Event_DAO_Participant',
         'fields' => array(
-          'participant_id' => array('title' => 'Participant ID'),
+          'participant_id' => array('title' => ts('Participant ID')),
           'participant_record' => array(
             'name' => 'id',
             'no_display' => TRUE,
@@ -187,6 +183,9 @@ class CRM_Report_Form_Event_ParticipantListing extends CRM_Report_Form_Event {
           ),
           'registered_by_id' => array(
             'title' => ts('Registered by Participant ID'),
+          ),
+          'source' => array(
+            'title' => ts('Source'),
           ),
           'participant_fee_level' => NULL,
           'participant_fee_amount' => array('title' => ts('Participant Fee')),
@@ -217,6 +216,7 @@ class CRM_Report_Form_Event_ParticipantListing extends CRM_Report_Form_Event {
           'sid' => array(
             'name' => 'status_id',
             'title' => ts('Participant Status'),
+            'type' => CRM_Utils_Type::T_INT,
             'operatorType' => CRM_Report_Form::OP_MULTISELECT,
             'options' => CRM_Event_PseudoConstant::participantStatus(NULL, NULL, 'label'),
           ),
@@ -227,7 +227,7 @@ class CRM_Report_Form_Event_ParticipantListing extends CRM_Report_Form_Event {
             'options' => CRM_Event_PseudoConstant::participantRole(),
           ),
           'participant_register_date' => array(
-            'title' => 'Registration Date',
+            'title' => ts('Registration Date'),
             'operatorType' => CRM_Report_Form::OP_DATE,
           ),
           'fee_currency' => array(
@@ -239,6 +239,11 @@ class CRM_Report_Form_Event_ParticipantListing extends CRM_Report_Form_Event {
           ),
           'registered_by_id' => array(
             'title' => ts('Registered by Participant ID'),
+            'type' => CRM_Utils_Type::T_STRING,
+            'operator' => 'like',
+          ),
+          'source' => array(
+            'title' => ts('Source'),
             'type' => CRM_Utils_Type::T_STRING,
             'operator' => 'like',
           ),
@@ -270,19 +275,31 @@ class CRM_Report_Form_Event_ParticipantListing extends CRM_Report_Form_Event {
       'civicrm_event' => array(
         'dao' => 'CRM_Event_DAO_Event',
         'fields' => array(
-          'event_type_id' => array('title' => ts('Event Type')),
-          'event_start_date' => array('title' => ts('Event Start Date')),
+          'event_type_id' => array(
+            'title' => ts('Event Type'),
+          ),
+          'event_start_date' => array(
+            'title' => ts('Event Start Date'),
+          ),
+          'event_end_date' => array(
+            'title' => ts('Event End Date'),
+          ),
         ),
         'grouping' => 'event-fields',
         'filters' => array(
           'eid' => array(
             'name' => 'event_type_id',
             'title' => ts('Event Type'),
+            'type' => CRM_Utils_Type::T_INT,
             'operatorType' => CRM_Report_Form::OP_MULTISELECT,
             'options' => CRM_Core_OptionGroup::values('event_type'),
           ),
           'event_start_date' => array(
             'title' => ts('Event Start Date'),
+            'operatorType' => CRM_Report_Form::OP_DATE,
+          ),
+          'event_end_date' => array(
+            'title' => ts('Event End Date'),
             'operatorType' => CRM_Report_Form::OP_DATE,
           ),
         ),
@@ -326,11 +343,12 @@ class CRM_Report_Form_Event_ParticipantListing extends CRM_Report_Form_Event {
         'grouping' => 'contrib-fields',
         'filters' => array(
           'receive_date' => array(
-            'title' => 'Payment Date',
+            'title' => ts('Payment Date'),
             'operatorType' => CRM_Report_Form::OP_DATE,
           ),
           'financial_type_id' => array(
             'title' => ts('Financial Type'),
+            'type' => CRM_Utils_Type::T_INT,
             'operatorType' => CRM_Report_Form::OP_MULTISELECT,
             'options' => CRM_Contribute_PseudoConstant::financialType(),
           ),
@@ -343,6 +361,7 @@ class CRM_Report_Form_Event_ParticipantListing extends CRM_Report_Form_Event {
           ),
           'payment_instrument_id' => array(
             'title' => ts('Payment Type'),
+            'type' => CRM_Utils_Type::T_INT,
             'operatorType' => CRM_Report_Form::OP_MULTISELECT,
             'options' => CRM_Contribute_PseudoConstant::paymentInstrument(),
           ),
@@ -361,6 +380,7 @@ class CRM_Report_Form_Event_ParticipantListing extends CRM_Report_Form_Event {
           'price_field_value_id' => array(
             'name' => 'price_field_value_id',
             'title' => ts('Fee Level'),
+            'type' => CRM_Utils_Type::T_INT,
             'operatorType' => CRM_Report_Form::OP_MULTISELECT,
             'options' => $this->getPriceLevels(),
           ),
@@ -377,7 +397,7 @@ class CRM_Report_Form_Event_ParticipantListing extends CRM_Report_Form_Event {
         'title' => ts('Blank column at the End'),
         'type' => 'select',
         'options' => array(
-          '' => '-select-',
+          '' => ts('-select-'),
           1 => ts('One'),
           2 => ts('Two'),
           3 => ts('Three'),
@@ -399,6 +419,7 @@ class CRM_Report_Form_Event_ParticipantListing extends CRM_Report_Form_Event {
         'title' => ts('Campaign'),
         'operatorType' => CRM_Report_Form::OP_MULTISELECT,
         'options' => $this->activeCampaigns,
+        'type' => CRM_Utils_Type::T_INT,
       );
       $this->_columns['civicrm_participant']['order_bys']['campaign_id'] = array(
         'title' => ts('Campaign'),
@@ -452,9 +473,6 @@ ORDER BY  cv.label
       $this->_columnHeaders['blankColumnBegin']['title'] = '_ _ _ _';
     }
     foreach ($this->_columns as $tableName => $table) {
-      if ($tableName == 'civicrm_line_item') {
-        $this->_lineitemField = TRUE;
-      }
       if (array_key_exists('fields', $table)) {
         foreach ($table['fields'] as $fieldName => $field) {
           if (!empty($field['required']) ||
@@ -465,6 +483,11 @@ ORDER BY  cv.label
             }
             if ($fieldName == 'total_paid' || $fieldName == 'balance') {
               $this->_balance = TRUE;
+              // modify the select if filtered by fee_level as the from clause
+              // already selects the total_amount from civicrm_contribution table
+              if (!empty($this->_params['price_field_value_id_value'])) {
+                $field['dbAlias'] = str_replace('SUM(ft.total_amount)', 'ft.total_amount', $field['dbAlias']);
+              }
             }
             $alias = "{$tableName}_{$fieldName}";
             $select[] = "{$field['dbAlias']} as $alias";
@@ -485,6 +508,7 @@ ORDER BY  cv.label
       }
     }
 
+    $this->_selectClauses = $select;
     $this->_select = "SELECT " . implode(', ', $select) . " ";
   }
 
@@ -527,7 +551,7 @@ ORDER BY  cv.label
                     ON (pp.contribution_id  = {$this->_aliases['civicrm_contribution']}.id)
       ";
     }
-    if ($this->_lineitemField) {
+    if (!empty($this->_params['price_field_value_id_value'])) {
       $this->_from .= "
             LEFT JOIN civicrm_line_item line_item_civireport
                   ON line_item_civireport.entity_table = 'civicrm_participant' AND
@@ -613,7 +637,7 @@ ORDER BY  cv.label
   }
 
   public function groupBy() {
-    $this->_groupBy = "GROUP BY {$this->_aliases['civicrm_participant']}.id";
+    $this->_groupBy = CRM_Contact_BAO_Query::getGroupByFromSelectColumns($this->_selectClauses, "{$this->_aliases['civicrm_participant']}.id");
   }
 
   public function postProcess() {

@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -25,10 +25,13 @@
  +--------------------------------------------------------------------+
  */
 
+use Dompdf\Dompdf;
+use Dompdf\Options;
+
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 
 /**
@@ -245,6 +248,7 @@ class CRM_Contribute_Form_Task_Invoice extends CRM_Contribute_Form_Task {
     $contributionStatusID = CRM_Contribute_PseudoConstant::contributionStatus(NULL, 'name');
     $refundedStatusId = CRM_Utils_Array::key('Refunded', $contributionStatusID);
     $cancelledStatusId = CRM_Utils_Array::key('Cancelled', $contributionStatusID);
+    $pendingStatusId = CRM_Utils_Array::key('Pending', $contributionStatusID);
 
     // getting data from admin page
     $prefixValue = Civi::settings()->get('contribution_invoice_settings');
@@ -428,6 +432,7 @@ class CRM_Contribute_Form_Task_Invoice extends CRM_Contribute_Form_Task {
         'lineItem' => $lineItem,
         'dataArray' => $dataArray,
         'refundedStatusId' => $refundedStatusId,
+        'pendingStatusId' => $pendingStatusId,
         'cancelledStatusId' => $cancelledStatusId,
         'contribution_status_id' => $contribution->contribution_status_id,
         'subTotal' => $subTotal,
@@ -640,8 +645,10 @@ class CRM_Contribute_Form_Task_Invoice extends CRM_Contribute_Form_Task {
    *   Name of file which is in pdf format
    */
   static public function putFile($html, $name = 'Invoice.pdf') {
-    require_once "vendor/dompdf/dompdf/dompdf_config.inc.php";
-    $doc = new DOMPDF();
+    $options = new Options();
+    $options->set('isRemoteEnabled', TRUE);
+
+    $doc = new DOMPDF($options);
     $doc->load_html($html);
     $doc->render();
     $html = $doc->output();

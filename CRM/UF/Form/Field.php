@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 
 /**
@@ -183,18 +183,17 @@ class CRM_UF_Form_Field extends CRM_Core_Form {
   public function buildQuickForm() {
     if ($this->_action & CRM_Core_Action::DELETE) {
       $this->addButtons(array(
-          array(
-            'type' => 'next',
-            'name' => ts('Delete Profile Field'),
-            'spacing' => '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;',
-            'isDefault' => TRUE,
-          ),
-          array(
-            'type' => 'cancel',
-            'name' => ts('Cancel'),
-          ),
-        )
-      );
+        array(
+          'type' => 'next',
+          'name' => ts('Delete Profile Field'),
+          'spacing' => '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;',
+          'isDefault' => TRUE,
+        ),
+        array(
+          'type' => 'cancel',
+          'name' => ts('Cancel'),
+        ),
+      ));
       return;
     }
 
@@ -434,8 +433,8 @@ class CRM_UF_Form_Field extends CRM_Core_Form {
     //CRM-4363
     $js = array('onChange' => "mixProfile();");
     // should the field appear in selectors (as a column)?
-    $this->add('checkbox', 'in_selector', ts('Results Column?'), NULL, NULL, $js);
-    $this->add('checkbox', 'is_searchable', ts('Searchable?'), NULL, NULL, $js);
+    $this->add('advcheckbox', 'in_selector', ts('Results Column?'), NULL, NULL, $js);
+    $this->add('advcheckbox', 'is_searchable', ts('Searchable?'), NULL, NULL, $js);
 
     $attributes = CRM_Core_DAO::getAttribute('CRM_Core_DAO_UFField');
 
@@ -446,14 +445,11 @@ class CRM_UF_Form_Field extends CRM_Core_Form {
     $this->add('textarea', 'help_pre', ts('Field Pre Help'), $attributes['help_pre']);
     $this->add('textarea', 'help_post', ts('Field Post Help'), $attributes['help_post']);
 
-    $this->add('checkbox', 'is_required', ts('Required?'));
+    $this->add('advcheckbox', 'is_required', ts('Required?'));
 
-    $this->add('checkbox', 'is_multi_summary', ts('Include in multi-record listing?'));
-    $this->add('checkbox', 'is_active', ts('Active?'));
-    $this->add('checkbox', 'is_view', ts('View Only?'));
-
-    // $this->add( 'checkbox', 'is_registration', ts( 'Display in Registration Form?' ) );
-    //$this->add( 'checkbox', 'is_match'       , ts( 'Key to Match Contacts?'        ) );
+    $this->add('advcheckbox', 'is_multi_summary', ts('Include in multi-record listing?'));
+    $this->add('advcheckbox', 'is_active', ts('Active?'));
+    $this->add('advcheckbox', 'is_view', ts('View Only?'));
 
     $this->add('text', 'label', ts('Field Label'), $attributes['label']);
 
@@ -464,24 +460,23 @@ class CRM_UF_Form_Field extends CRM_Core_Form {
 
     // add buttons
     $this->addButtons(array(
-        array(
-          'type' => 'next',
-          'name' => ts('Save'),
-          'isDefault' => TRUE,
-          'js' => $js,
-        ),
-        array(
-          'type' => 'next',
-          'name' => ts('Save and New'),
-          'subName' => 'new',
-          'js' => $js,
-        ),
-        array(
-          'type' => 'cancel',
-          'name' => ts('Cancel'),
-        ),
-      )
-    );
+      array(
+        'type' => 'next',
+        'name' => ts('Save'),
+        'isDefault' => TRUE,
+        'js' => $js,
+      ),
+      array(
+        'type' => 'next',
+        'name' => ts('Save and New'),
+        'subName' => 'new',
+        'js' => $js,
+      ),
+      array(
+        'type' => 'cancel',
+        'name' => ts('Cancel'),
+      ),
+    ));
 
     $this->addFormRule(array('CRM_UF_Form_Field', 'formRule'), $this);
 
@@ -560,9 +555,9 @@ class CRM_UF_Form_Field extends CRM_Core_Form {
       $config = CRM_Core_Config::singleton();
       $showBestResult = FALSE;
       if (in_array($ufField->field_name, array(
-          'country',
-          'state_province',
-        )) && count($config->countryLimit) > 1
+        'country',
+        'state_province',
+      )) && count($config->countryLimit) > 1
       ) {
         // get state or country field weight if exists
         $field = 'state_province';
@@ -788,11 +783,11 @@ class CRM_UF_Form_Field extends CRM_Core_Form {
     }
 
     if ($in_selector && in_array($entityName, array(
-        'Contribution',
-        'Participant',
-        'Membership',
-        'Activity',
-      ))
+      'Contribution',
+      'Participant',
+      'Membership',
+      'Activity',
+    ))
     ) {
       $errors['in_selector'] = ts("'In Selector' cannot be checked for %1 fields.", array(1 => $entityName));
     }
@@ -982,9 +977,9 @@ class CRM_UF_Form_Field extends CRM_Core_Form {
           if (CRM_Contact_BAO_ContactType::isaSubType($profileType)) {
             if ($fieldType != $profileType) {
               $errors['field_name'] = ts('Cannot add or update profile field type "%1" with combination of "%2".', array(
-                  1 => $fieldType,
-                  2 => $profileType,
-                ));
+                1 => $fieldType,
+                2 => $profileType,
+              ));
             }
           }
           else {
@@ -994,9 +989,9 @@ class CRM_UF_Form_Field extends CRM_Core_Form {
               $profileType != 'Contact'
             ) {
               $errors['field_name'] = ts('Cannot add or update profile field type "%1" with combination of "%2".', array(
-                  1 => $fieldType,
-                  2 => $profileType,
-                ));
+                1 => $fieldType,
+                2 => $profileType,
+              ));
             }
           }
         }

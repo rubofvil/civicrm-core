@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -25,9 +25,6 @@
  +--------------------------------------------------------------------+
  */
 
-require_once 'CiviTest/CiviUnitTestCase.php';
-
-
 /**
  *  Test APIv3 civicrm_setting_* functions
  *
@@ -38,6 +35,7 @@ require_once 'CiviTest/CiviUnitTestCase.php';
 /**
  * Class contains api test cases for civicrm settings
  *
+ * @group headless
  */
 class api_v3_SettingTest extends CiviUnitTestCase {
 
@@ -52,6 +50,7 @@ class api_v3_SettingTest extends CiviUnitTestCase {
     parent::setUp();
     $params = array(
       'name' => 'Default Domain Name',
+      'domain_version' => '4.7',
     );
     $result = $this->callAPISuccess('domain', 'get', $params);
     if (empty($result['id'])) {
@@ -235,7 +234,7 @@ class api_v3_SettingTest extends CiviUnitTestCase {
   public function testCreateInvalidURLSettings() {
     $params = array(
       'domain_id' => $this->_domainID2,
-      'userFrameworkResourceURL' => 'dfhkd*hfd',
+      'userFrameworkResourceURL' => 'dfhkd hfd',
     );
     $result = $this->callAPIFailure('setting', 'create', $params);
     $params = array(
@@ -515,6 +514,7 @@ class api_v3_SettingTest extends CiviUnitTestCase {
   public function testDefaults() {
     $domparams = array(
       'name' => 'B Team Domain',
+      'domain_version' => '4.7',
     );
     $dom = $this->callAPISuccess('domain', 'create', $domparams);
     $params = array(

@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -146,6 +146,10 @@ function civicrm_api3_group_contact_create($params) {
  * @deprecated
  */
 function civicrm_api3_group_contact_delete($params) {
+  $groupContact = civicrm_api3('GroupContact', 'get', $params);
+  if ($groupContact['count'] == 0) {
+    throw new API_Exception('Cannot Delete GroupContact');
+  }
   $params['status'] = CRM_Utils_Array::value('status', $params, empty($params['skip_undelete']) ? 'Removed' : 'Deleted');
   // "Deleted" isn't a real option so skip the api wrapper to avoid pseudoconstant validation
   return civicrm_api3_group_contact_create($params);

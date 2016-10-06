@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  * $Id$
  *
  */
@@ -72,7 +72,7 @@ class CRM_Price_Page_Field extends CRM_Core_Page {
    * @return array
    *   array of action links that we need to display for the browse screen
    */
-  public function &actionLinks() {
+  public static function &actionLinks() {
     if (!isset(self::$_actionLinks)) {
       self::$_actionLinks = array(
         CRM_Core_Action::UPDATE => array(
@@ -110,8 +110,6 @@ class CRM_Price_Page_Field extends CRM_Core_Page {
 
   /**
    * Browse all price set fields.
-   *
-   * @return void
    */
   public function browse() {
     $resourceManager = CRM_Core_Resources::singleton();
@@ -160,7 +158,7 @@ class CRM_Price_Page_Field extends CRM_Core_Page {
         }
       }
 
-      $action = array_sum(array_keys($this->actionLinks()));
+      $action = array_sum(array_keys(self::actionLinks()));
 
       if ($this->_isSetReserved) {
         $action -= CRM_Core_Action::UPDATE + CRM_Core_Action::DELETE + CRM_Core_Action::ENABLE + CRM_Core_Action::DISABLE;
@@ -218,8 +216,6 @@ class CRM_Price_Page_Field extends CRM_Core_Page {
    *
    * @param string $action
    *   The action to be invoked.
-   *
-   * @return void
    */
   public function edit($action) {
     // create a simple controller for editing price data

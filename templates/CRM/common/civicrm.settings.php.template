@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -54,7 +54,12 @@
  * (Administer::System Settings::Resource URLs).
  */
 if (!defined('CIVICRM_UF')) {
-  define( 'CIVICRM_UF', '%%cms%%');
+  if (getenv('CIVICRM_UF')) {
+    define('CIVICRM_UF', getenv('CIVICRM_UF'));
+  }
+  else {
+    define('CIVICRM_UF', '%%cms%%');
+  }
 }
 
 /**
@@ -64,7 +69,7 @@ if (!defined('CIVICRM_UF')) {
  * Datasource (DSN) format:
  *      define( 'CIVICRM_UF_DSN', 'mysql://cms_db_username:cms_db_password@db_server/cms_database?new_link=true');
  */
-if (!defined('CIVICRM_UF_DSN')) {
+if (!defined('CIVICRM_UF_DSN') && CIVICRM_UF !== 'UnitTests') {
   define( 'CIVICRM_UF_DSN'           , 'mysql://%%CMSdbUser%%:%%CMSdbPass%%@%%CMSdbHost%%/%%CMSdbName%%?new_link=true');
 }
 
@@ -89,8 +94,21 @@ if (!defined('CIVICRM_UF_DSN')) {
  *
  */
 if (!defined('CIVICRM_DSN')) {
-  define( 'CIVICRM_DSN'          , 'mysql://%%dbUser%%:%%dbPass%%@%%dbHost%%/%%dbName%%?new_link=true');
+  if (CIVICRM_UF === 'UnitTests' && isset($GLOBALS['_CV']['TEST_DB_DSN'])) {
+    define('CIVICRM_DSN', $GLOBALS['_CV']['TEST_DB_DSN']);
+  }
+  else {
+    define('CIVICRM_DSN', 'mysql://%%dbUser%%:%%dbPass%%@%%dbHost%%/%%dbName%%?new_link=true');
+  }
 }
+
+/**
+ * CiviCRM DSN Mode
+ * Used to determine if you want CiviCRM to automatically change the dsn to mysqli if its avaliable.
+ * Uncomment and edit below as necessary
+ */
+// define ('DB_DSN_MODE', 'auto');
+
 
 /**
  * CiviCRM Logging Database
@@ -202,10 +220,10 @@ if (!defined('CIVICRM_UF_BASEURL')) {
  //  global $civicrm_setting;
 
  // Override the Temporary Files directory.
- // $civicrm_setting['Directory Preferences']['customFileUploadDir'] = '/path/to/upload';
+ // $civicrm_setting['Directory Preferences']['uploadDir'] = '/path/to/upload-dir' ;
 
  // Override the custom files upload directory.
- // $civicrm_setting['Directory Preferences']['uploadDir'] = '/path/to/upload-dir' ;
+ // $civicrm_setting['Directory Preferences']['customFileUploadDir'] = '/path/to/custom-dir';
 
  // Override the images directory.
  // $civicrm_setting['Directory Preferences']['imageUploadDir'] = '/path/to/image-upload-dir' ;
@@ -237,8 +255,18 @@ if (!defined('CIVICRM_UF_BASEURL')) {
  // Disable automatic download / installation of extensions
  // $civicrm_setting['Extension Preferences']['ext_repo_url'] = false;
 
+ // set triggers to be managed offline per CRM-18212
+ // $civicrm_setting['CiviCRM Preferences']['logging_no_trigger_permission'] = 1;
+
  // Override the CMS root path defined by cmsRootPath.
  // define('CIVICRM_CMSDIR', '/path/to/install/root/');
+
+ // Opt-out of announcements by the CiviCRM core team for releases, paid services, events, etc. Separate each preferred optout category with a comma:
+ //   "offers": paid service offers
+ //   "asks": requests for donations or membership signup/renewal to CiviCRM
+ //   "releases": major release announcements
+ //   "events": announcements of local/national upcoming events
+ // $civicrm_setting['CiviCRM Preferences']['communityMessagesUrl'] = 'https://alert.civicrm.org/alert?prot=1&ver={ver}&uf={uf}&sid={sid}&lang={lang}&co={co}&optout=offers,asks';
 
 
 /**
@@ -312,14 +340,16 @@ if (!defined('CIVICRM_DB_CACHE_HOST')) {
 }
 
 /**
- * Change this if you are not using the standard port for your cache server
+ * Change this if you are not using the standard port for your cache server.
+ *
+ * The standard port for Memcache & APCCache is 11211. For Redis it is 6379.
  */
 if (!defined('CIVICRM_DB_CACHE_PORT')) {
   define('CIVICRM_DB_CACHE_PORT', 11211 );
 }
 
 /**
- * Change this if your cache server requires a password (currently only works 
+ * Change this if your cache server requires a password (currently only works
  * with Redis)
  */
 if (!defined('CIVICRM_DB_CACHE_PASSWORD')) {
@@ -383,6 +413,11 @@ if (!defined('CIVICRM_DB_CACHE_PREFIX')) {
 // if (!defined('CIVICRM_MYSQL_STRICT')) {
 // define('CIVICRM_MYSQL_STRICT', TRUE );
 // }
+
+if (CIVICRM_UF === 'UnitTests') {
+  if (!defined('CIVICRM_CONTAINER_CACHE')) define('CIVICRM_CONTAINER_CACHE', 'auto');
+  if (!defined('CIVICRM_MYSQL_STRICT')) define('CIVICRM_MYSQL_STRICT', true);
+}
 
 /**
  *

@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -25,10 +25,14 @@
  +--------------------------------------------------------------------+
  */
 
-require_once 'CiviTest/CiviUnitTestCase.php';
-
 /**
  * Class CRM_Core_BAO_ActionScheduleTest
+ * @group ActionSchedule
+ * @group headless
+ *
+ * There are additional tests for some specific entities in other classes:
+ * @see CRM_Activity_ActionMappingTest
+ * @see CRM_Contribute_ActionMapping_ByTypeTest
  */
 class CRM_Core_BAO_ActionScheduleTest extends CiviUnitTestCase {
 
@@ -40,7 +44,6 @@ class CRM_Core_BAO_ActionScheduleTest extends CiviUnitTestCase {
   public function setUp() {
     parent::setUp();
 
-    require_once 'CiviTest/CiviMailUtils.php';
     $this->mut = new CiviMailUtils($this, TRUE);
 
     $this->fixtures['rolling_membership'] = array(
@@ -1187,6 +1190,7 @@ class CRM_Core_BAO_ActionScheduleTest extends CiviUnitTestCase {
   public function testContactModifiedAnniversary() {
     $contact = $this->callAPISuccess('Contact', 'create', $this->fixtures['contact_birthdate']);
     $this->_testObjects['CRM_Contact_DAO_Contact'][] = $contact['id'];
+    $modifiedDate = $this->callAPISuccess('Contact', 'getvalue', array('id' => $contact['id'], 'return' => 'modified_date'));
     $actionSchedule = $this->fixtures['sched_contact_mod_anniv'];
     $actionScheduleDao = CRM_Core_BAO_ActionSchedule::add($actionSchedule);
     $this->assertTrue(is_numeric($actionScheduleDao->id));
@@ -1198,7 +1202,7 @@ class CRM_Core_BAO_ActionScheduleTest extends CiviUnitTestCase {
       ),
       array(
         // On the eve of 3 years after they were modified, send an email.
-        'time' => date('Y-m-d H:i:s', strtotime($contact['values'][$contact['id']]['modified_date'] . ' +3 years -23 hours')),
+        'time' => date('Y-m-d H:i:s', strtotime($modifiedDate . ' +3 years -1 day')),
         'recipients' => array(array('test-bday@example.com')),
       ),
     ));
@@ -1288,6 +1292,13 @@ class CRM_Core_BAO_ActionScheduleTest extends CiviUnitTestCase {
          // After the 2-week of the changed join date 2012-03-29, send an email
         'time' => '2012-04-12 01:00:00',
         'recipients' => array(array('member@example.com')),
+      ),
+    ));
+    $this->assertCronRuns(array(
+      array(
+        // It should not re-send on the same day
+        'time' => '2012-04-12 01:00:00',
+        'recipients' => array(),
       ),
     ));
   }

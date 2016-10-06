@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -132,8 +132,10 @@ class ChainSubscriber implements EventSubscriberInterface {
             //'entity_table' will be set to 'contact' & 'id' to the contact id
             //from the parent call. in this case 'contact_id' will also be
             //set to the parent's id
-            $subParams["entity_id"] = $parentAPIValues['id'];
-            $subParams['entity_table'] = 'civicrm_' . $lowercase_entity;
+            if (!($subEntity == 'line_item' && $lowercase_entity == 'contribution' && $action != 'create')) {
+              $subParams["entity_id"] = $parentAPIValues['id'];
+              $subParams['entity_table'] = 'civicrm_' . $lowercase_entity;
+            }
 
             $crm16084 = FALSE;
             if ($subEntity == 'relationship' && $lowercase_entity == 'contact') {

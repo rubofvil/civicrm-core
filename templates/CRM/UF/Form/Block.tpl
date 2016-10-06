@@ -2,7 +2,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -43,7 +43,7 @@
           {/if}
         {/if}
 
-        {if $mode ne 8 && $action ne 1028 && $action ne 4}
+        {if $mode ne 8 && $action ne 1028 && $action ne 4 && !$hideFieldset}
         <fieldset class="crm-profile crm-profile-id-{$field.group_id} crm-profile-name-{$field.groupName}"><legend>{$field.groupTitle}</legend>
         {/if}
 
@@ -120,8 +120,7 @@
                 {include file="CRM/Profile/Form/GreetingType.tpl"}
               {elseif ($n eq 'group' && $form.group) || ($n eq 'tag' && $form.tag)}
                 {include file="CRM/Contact/Form/Edit/TagsAndGroups.tpl" type=$n title=null context="profile"}
-              {elseif ( ( $field.data_type eq 'Date' ) or
-                ( $n|substr:-5:5 eq '_date' ) ) AND
+              {elseif ( $n|substr:-5:5 eq '_date' ) AND
               ( $form.formName neq 'Confirm' )  AND
               ( $form.formName neq 'ThankYou' ) }
                 {include file="CRM/common/jcalendar.tpl" elementName=$n}
@@ -171,7 +170,7 @@
       </div>
     {/if}
 
-    {if $mode ne 8 && $action neq 1028}
+    {if $mode ne 8 && $action neq 1028 && !$hideFieldset}
     </fieldset>
     {/if}
 

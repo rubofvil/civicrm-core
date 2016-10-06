@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  * $Id$
  *
  */
@@ -40,6 +40,19 @@ class CRM_Report_Form_Contribute_TopDonor extends CRM_Report_Form {
     'Individual',
     'Contribution',
   );
+
+  /**
+   * This report has not been optimised for group filtering.
+   *
+   * The functionality for group filtering has been improved but not
+   * all reports have been adjusted to take care of it. This report has not
+   * and will run an inefficient query until fixed.
+   *
+   * CRM-19170
+   *
+   * @var bool
+   */
+  protected $groupFilterNotOptimised = TRUE;
 
   public $_drilldownReport = array('contribute/detail' => 'Link to Detail Report');
 
@@ -139,10 +152,12 @@ class CRM_Report_Form_Contribute_TopDonor extends CRM_Report_Form {
         'filters' => array(
           'sort_name' => array(
             'title' => ts('Participant Name'),
+            'type' => CRM_Utils_Type::T_STRING,
             'operator' => 'like',
           ),
           'id' => array(
             'title' => ts('Contact ID'),
+            'type' => CRM_Utils_Type::T_INT,
             'no_display' => TRUE,
           ),
           'birth_date' => array(
@@ -151,16 +166,18 @@ class CRM_Report_Form_Contribute_TopDonor extends CRM_Report_Form {
           ),
           'contact_type' => array(
             'title' => ts('Contact Type'),
+            'type' => CRM_Utils_Type::T_STRING,
           ),
           'contact_sub_type' => array(
             'title' => ts('Contact Subtype'),
+            'type' => CRM_Utils_Type::T_STRING,
           ),
           'receive_date' => array(
             'default' => 'this.year',
             'operatorType' => CRM_Report_Form::OP_DATE,
           ),
           'currency' => array(
-            'title' => 'Currency',
+            'title' => ts('Currency'),
             'operatorType' => CRM_Report_Form::OP_MULTISELECT,
             'options' => CRM_Core_OptionGroup::values('currencies_enabled'),
             'default' => NULL,
@@ -174,6 +191,7 @@ class CRM_Report_Form_Contribute_TopDonor extends CRM_Report_Form {
           'financial_type_id' => array(
             'name' => 'financial_type_id',
             'title' => ts('Financial Type'),
+            'type' => CRM_Utils_Type::T_INT,
             'operatorType' => CRM_Report_Form::OP_MULTISELECT,
             'options' => CRM_Financial_BAO_FinancialType::getAvailableFinancialTypes(),
           ),
@@ -270,8 +288,9 @@ class CRM_Report_Form_Contribute_TopDonor extends CRM_Report_Form {
         }
       }
     }
+    $this->_selectClauses = $select;
 
-    $this->_select = " SELECT * FROM ( SELECT " . implode(', ', $select) . " ";
+    $this->_select = " SELECT " . implode(', ', $select) . " ";
   }
 
   /**
@@ -369,7 +388,7 @@ class CRM_Report_Form_Contribute_TopDonor extends CRM_Report_Form {
   }
 
   public function groupBy() {
-    $this->_groupBy = "GROUP BY {$this->_aliases['civicrm_contact']}.id, {$this->_aliases['civicrm_contribution']}.currency";
+    $this->_groupBy = CRM_Contact_BAO_Query::getGroupByFromSelectColumns($this->_selectClauses, array("{$this->_aliases['civicrm_contact']}.id", "{$this->_aliases['civicrm_contribution']}.currency"));
   }
 
   public function postProcess() {
@@ -379,22 +398,13 @@ class CRM_Report_Form_Contribute_TopDonor extends CRM_Report_Form {
     // get the acl clauses built before we assemble the query
     $this->buildACLClause($this->_aliases['civicrm_contact']);
 
-    $this->select();
-
-    $this->from();
-    $this->getPermissionedFTQuery($this);
-
-    $this->where();
-
-    $this->groupBy();
-
-    $this->limit();
+    $this->buildQuery();
 
     //set the variable value rank, rows = 0
     $setVariable = " SET @rows:=0, @rank=0 ";
     CRM_Core_DAO::singleValueQuery($setVariable);
 
-    $sql = " {$this->_select} {$this->_from}  {$this->_where} {$this->_groupBy}
+    $sql = "SELECT * FROM ( {$this->_select} {$this->_from}  {$this->_where} {$this->_groupBy}
                      ORDER BY civicrm_contribution_total_amount_sum DESC
                  ) as abc {$this->_outerCluase} $this->_limit
                ";

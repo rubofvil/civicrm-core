@@ -3,7 +3,7 @@
   +--------------------------------------------------------------------+
   | CiviCRM version 4.7                                                |
   +--------------------------------------------------------------------+
-  | Copyright CiviCRM LLC (c) 2004-2015                                |
+  | Copyright CiviCRM LLC (c) 2004-2016                                |
   +--------------------------------------------------------------------+
   | This file is a part of CiviCRM.                                    |
   |                                                                    |
@@ -29,8 +29,12 @@
  * Our base DAO class. All DAO classes should inherit from this class.
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
+
+if (!defined('DB_DSN_MODE')) {
+  define('DB_DSN_MODE', 'auto');
+}
 
 require_once 'PEAR.php';
 require_once 'DB/DataObject.php';
@@ -107,11 +111,22 @@ class CRM_Core_DAO extends DB_DataObject {
     if (defined('CIVICRM_DAO_DEBUG')) {
       self::DebugLevel(CIVICRM_DAO_DEBUG);
     }
-    CRM_Core_DAO::setFactory(new CRM_Contact_DAO_Factory());
+    $factory = new CRM_Contact_DAO_Factory();
+    CRM_Core_DAO::setFactory($factory);
     if (CRM_Utils_Constant::value('CIVICRM_MYSQL_STRICT', CRM_Utils_System::isDevelopment())) {
       CRM_Core_DAO::executeQuery('SET SESSION sql_mode = STRICT_TRANS_TABLES');
     }
     CRM_Core_DAO::executeQuery('SET NAMES utf8');
+    CRM_Core_DAO::executeQuery('SET @uniqueID = %1', array(1 => array(CRM_Utils_Request::id(), 'String')));
+  }
+
+  /**
+   * @return DB_common
+   */
+  public static function getConnection() {
+    global $_DB_DATAOBJECT;
+    $dao = new CRM_Core_DAO();
+    return $_DB_DATAOBJECT['CONNECTIONS'][$dao->_database_dsn_md5];
   }
 
   /**
@@ -137,26 +152,26 @@ class CRM_Core_DAO extends DB_DataObject {
       if ($fkDAO->find(TRUE)) {
         $this->$dbName = $fkDAO->id;
       }
-      unset($fkDAO);
+      $fkDAO->free();
     }
 
     elseif (in_array($FKClassName, CRM_Core_DAO::$_testEntitiesToSkip)) {
       $depObject = new $FKClassName();
       $depObject->find(TRUE);
       $this->$dbName = $depObject->id;
-      unset($depObject);
+      $depObject->free();
     }
     elseif ($daoName == 'CRM_Member_DAO_MembershipType' && $fieldName == 'member_of_contact_id') {
       // FIXME: the fields() metadata is not specific enough
       $depObject = CRM_Core_DAO::createTestObject($FKClassName, array('contact_type' => 'Organization'));
       $this->$dbName = $depObject->id;
-      unset($depObject);
+      $depObject->free();
     }
     else {
       //if it is required we need to generate the dependency object first
       $depObject = CRM_Core_DAO::createTestObject($FKClassName, CRM_Utils_Array::value($dbName, $params, 1));
       $this->$dbName = $depObject->id;
-      unset($depObject);
+      $depObject->free();
     }
   }
 
@@ -452,7 +467,7 @@ class CRM_Core_DAO extends DB_DataObject {
    *
    * @param bool $hook
    *
-   * @return $this
+   * @return CRM_Core_DAO
    */
   public function save($hook = TRUE) {
     if (!empty($this->id)) {
@@ -510,6 +525,7 @@ class CRM_Core_DAO extends DB_DataObject {
 
     $event = new \Civi\Core\DAO\Event\PostDelete($this, $result);
     \Civi::service('dispatcher')->dispatch("DAO::post-delete", $event);
+    $this->free();
 
     return $result;
   }
@@ -755,48 +771,22 @@ LIKE %1
   }
 
   /**
-   * Returns the storage engine used by given table-name(optional).
-   * Otherwise scans all the tables and return an array of all the
-   * distinct storage engines being used.
-   *
-   * @param string $tableName
-   *
-   * @param int $maxTablesToCheck
-   * @param string $fieldName
+   * Scans all the tables using a slow query and table name.
    *
    * @return array
    */
-  public static function getStorageValues($tableName = NULL, $maxTablesToCheck = 10, $fieldName = 'Engine') {
-    $values = array();
-    $query = "SHOW TABLE STATUS LIKE %1";
+  public static function getTableNames() {
+    $dao = CRM_Core_DAO::executeQuery(
+      "SELECT TABLE_NAME
+       FROM information_schema.TABLES
+       WHERE TABLE_SCHEMA = '" . CRM_Core_DAO::getDatabaseName() . "'
+         AND TABLE_NAME LIKE 'civicrm_%'
+         AND TABLE_NAME NOT LIKE 'civicrm_import_job_%'
+         AND TABLE_NAME NOT LIKE '%_temp%'
+      ");
 
-    $params = array();
-
-    if (isset($tableName)) {
-      $params = array(1 => array($tableName, 'String'));
-    }
-    else {
-      $params = array(1 => array('civicrm_%', 'String'));
-    }
-
-    $dao = CRM_Core_DAO::executeQuery($query, $params);
-
-    $count = 0;
     while ($dao->fetch()) {
-      if (isset($values[$dao->$fieldName]) ||
-        // ignore import and other temp tables
-        strpos($dao->Name, 'civicrm_import_job_') !== FALSE ||
-        strpos($dao->Name, '_temp') !== FALSE
-      ) {
-        continue;
-      }
-      $values[$dao->$fieldName] = 1;
-      $count++;
-      if ($maxTablesToCheck &&
-        $count >= $maxTablesToCheck
-      ) {
-        break;
-      }
+      $values[] = $dao->TABLE_NAME;
     }
     $dao->free();
     return $values;
@@ -808,12 +798,25 @@ LIKE %1
    * @return bool
    */
   public static function isDBMyISAM($maxTablesToCheck = 10) {
-    // show error if any of the tables, use 'MyISAM' storage engine.
-    $engines = self::getStorageValues(NULL, $maxTablesToCheck);
-    if (array_key_exists('MyISAM', $engines)) {
-      return TRUE;
-    }
-    return FALSE;
+    return CRM_Core_DAO::singleValueQuery(
+      "SELECT count(*)
+       FROM information_schema.TABLES
+       WHERE ENGINE = 'MyISAM'
+         AND TABLE_SCHEMA = '" . CRM_Core_DAO::getDatabaseName() . "'
+         AND TABLE_NAME LIKE 'civicrm_%'
+         AND TABLE_NAME NOT LIKE 'civicrm_import_job_%'
+         AND TABLE_NAME NOT LIKE '%_temp%'
+      ");
+  }
+
+  /**
+   * Get the name of the CiviCRM database.
+   *
+   * @return string
+   */
+  public static function getDatabaseName() {
+    $daoObj = new CRM_Core_DAO();
+    return $daoObj->database();
   }
 
   /**
@@ -1010,6 +1013,24 @@ FROM   civicrm_domain
   }
 
   /**
+   * Get all the result records as mapping between columns.
+   *
+   * @param string $keyColumn
+   *   Ex: "name"
+   * @param string $valueColumn
+   *   Ex: "label"
+   * @return array
+   *   Ex: ["foo" => "The Foo Bar", "baz" => "The Baz Qux"]
+   */
+  public function fetchMap($keyColumn, $valueColumn) {
+    $result = array();
+    while ($this->fetch()) {
+      $result[$this->{$keyColumn}] = $this->{$valueColumn};
+    }
+    return $result;
+  }
+
+  /**
    * Given a DAO name, a column name and a column value, find the record and GET the value of another column in that record
    *
    * @param string $daoName
@@ -1167,6 +1188,64 @@ FROM   civicrm_domain
   }
 
   /**
+   * execute an unbuffered query.  This is a wrapper around new functionality
+   * exposed with CRM-17748.
+   *
+   * @param string $query query to be executed
+   *
+   * @return Object CRM_Core_DAO object that points to an unbuffered result set
+   * @static
+   * @access public
+   */
+  static public function executeUnbufferedQuery(
+    $query,
+    $params = array(),
+    $abort = TRUE,
+    $daoName = NULL,
+    $freeDAO = FALSE,
+    $i18nRewrite = TRUE,
+    $trapException = FALSE
+  ) {
+    $queryStr = self::composeQuery($query, $params, $abort);
+    //CRM_Core_Error::debug( 'q', $queryStr );
+    if (!$daoName) {
+      $dao = new CRM_Core_DAO();
+    }
+    else {
+      $dao = new $daoName();
+    }
+
+    if ($trapException) {
+      CRM_Core_Error::ignoreException();
+    }
+
+    // set the DAO object to use an unbuffered query
+    $dao->setOptions(array('result_buffering' => 0));
+
+    $result = $dao->query($queryStr, $i18nRewrite);
+
+    if ($trapException) {
+      CRM_Core_Error::setCallback();
+    }
+
+    if (is_a($result, 'DB_Error')) {
+      return $result;
+    }
+
+    // since it is unbuffered, ($dao->N==0) is true.  This blocks the standard fetch() mechanism.
+    $dao->N = TRUE;
+
+    if ($freeDAO ||
+      preg_match('/^(insert|update|delete|create|drop|replace)/i', $queryStr)
+    ) {
+      // we typically do this for insert/update/delete stataments OR if explicitly asked to
+      // free the dao
+      $dao->free();
+    }
+    return $dao;
+  }
+
+  /**
    * Execute a query.
    *
    * @param string $query
@@ -1263,14 +1342,16 @@ FROM   civicrm_domain
   }
 
   /**
-   * @param $query
+   * Compose the query by merging the parameters into it.
+   *
+   * @param string $query
    * @param array $params
    * @param bool $abort
    *
    * @return string
    * @throws Exception
    */
-  public static function composeQuery($query, &$params, $abort = TRUE) {
+  public static function composeQuery($query, $params, $abort = TRUE) {
     $tr = array();
     foreach ($params as $key => $item) {
       if (is_numeric($key)) {
@@ -1331,9 +1412,7 @@ FROM   civicrm_domain
 
     foreach ($ids as $id) {
       if (isset($_DB_DATAOBJECT['RESULTS'][$id])) {
-        if (is_resource($_DB_DATAOBJECT['RESULTS'][$id]->result)) {
-          mysql_free_result($_DB_DATAOBJECT['RESULTS'][$id]->result);
-        }
+        $_DB_DATAOBJECT['RESULTS'][$id]->free();
         unset($_DB_DATAOBJECT['RESULTS'][$id]);
       }
 
@@ -1573,26 +1652,21 @@ SELECT contact_id
    */
   public static function escapeString($string) {
     static $_dao = NULL;
-
     if (!$_dao) {
-      // If this is an atypical case (e.g. preparing .sql files
-      // before Civi has been installed), then we fallback to
-      // DB-less escaping helper (mysql_real_escape_string).
-      // Note: In typical usage, escapeString() will only
-      // check one conditional ("if !$_dao") rather than
-      // two conditionals ("if !defined(DSN)")
+      // If this is an atypical case (e.g. preparing .sql file before CiviCRM
+      // has been installed), then we fallback DB-less str_replace escaping, as
+      // we can't use mysqli_real_escape_string, as there is no DB connection.
+      // Note: In typical usage, escapeString() will only check one conditional
+      // ("if !$_dao") rather than two conditionals ("if !defined(DSN)")
       if (!defined('CIVICRM_DSN')) {
-        if (function_exists('mysql_real_escape_string')) {
-          return mysql_real_escape_string($string);
-        }
-        else {
-          throw new CRM_Core_Exception("Cannot generate SQL. \"mysql_real_escape_string\" is missing. Have you installed PHP \"mysql\" extension?");
-        }
+        // See http://php.net/manual/en/mysqli.real-escape-string.php for the
+        // list of characters mysqli_real_escape_string escapes.
+        $search = array("\\", "\x00", "\n", "\r", "'", '"', "\x1a");
+        $replace = array("\\\\", "\\0", "\\n", "\\r", "\'", '\"', "\\Z");
+        return str_replace($search, $replace, $string);
       }
-
       $_dao = new CRM_Core_DAO();
     }
-
     return $_dao->escape($string);
   }
 
@@ -1826,8 +1900,8 @@ SELECT contact_id
     $errorScope = CRM_Core_TemporaryErrorScope::ignoreException();
     $dao = new CRM_Core_DAO();
     if ($view) {
-      $dao->query('CREATE OR REPLACE VIEW civicrm_domain_view AS SELECT * FROM civicrm_domain');
-      if (PEAR::getStaticProperty('DB_DataObject', 'lastError')) {
+      $result = $dao->query('CREATE OR REPLACE VIEW civicrm_domain_view AS SELECT * FROM civicrm_domain');
+      if (PEAR::getStaticProperty('DB_DataObject', 'lastError') || is_a($result, 'DB_Error')) {
         return FALSE;
       }
     }
@@ -1884,25 +1958,12 @@ SELECT contact_id
    * @param string $tableName
    *   the specific table requiring a rebuild; or NULL to rebuild all tables.
    * @param bool $force
+   * @deprecated
    *
    * @see CRM-9716
    */
   public static function triggerRebuild($tableName = NULL, $force = FALSE) {
-    $info = array();
-
-    $logging = new CRM_Logging_Schema();
-    $logging->triggerInfo($info, $tableName, $force);
-
-    CRM_Core_I18n_Schema::triggerInfo($info, $tableName);
-    CRM_Contact_BAO_Contact::triggerInfo($info, $tableName);
-
-    CRM_Utils_Hook::triggerInfo($info, $tableName);
-
-    // drop all existing triggers on all tables
-    $logging->dropTriggers($tableName);
-
-    // now create the set of new triggers
-    self::createTriggers($info, $tableName);
+    Civi::service('sql_triggers')->rebuild($tableName, $force);
   }
 
   /**
@@ -1927,15 +1988,10 @@ SELECT contact_id
    *
    * @param string $tableName
    *   the specific table requiring a rebuild; or NULL to rebuild all tables.
+   * @deprecated
    */
   public static function dropTriggers($tableName = NULL) {
-    $info = array();
-
-    $logging = new CRM_Logging_Schema();
-    $logging->triggerInfo($info, $tableName);
-
-    // drop all existing triggers on all tables
-    $logging->dropTriggers($tableName);
+    Civi::service('sql_triggers')->dropTriggers($tableName);
   }
 
   /**
@@ -1943,110 +1999,10 @@ SELECT contact_id
    *   per hook_civicrm_triggerInfo.
    * @param string $onlyTableName
    *   the specific table requiring a rebuild; or NULL to rebuild all tables.
+   * @deprecated
    */
   public static function createTriggers(&$info, $onlyTableName = NULL) {
-    // Validate info array, should probably raise errors?
-    if (is_array($info) == FALSE) {
-      return;
-    }
-
-    $triggers = array();
-
-    // now enumerate the tables and the events and collect the same set in a different format
-    foreach ($info as $value) {
-
-      // clean the incoming data, skip malformed entries
-      // TODO: malformed entries should raise errors or get logged.
-      if (isset($value['table']) == FALSE ||
-        isset($value['event']) == FALSE ||
-        isset($value['when']) == FALSE ||
-        isset($value['sql']) == FALSE
-      ) {
-        continue;
-      }
-
-      if (is_string($value['table']) == TRUE) {
-        $tables = array($value['table']);
-      }
-      else {
-        $tables = $value['table'];
-      }
-
-      if (is_string($value['event']) == TRUE) {
-        $events = array(strtolower($value['event']));
-      }
-      else {
-        $events = array_map('strtolower', $value['event']);
-      }
-
-      $whenName = strtolower($value['when']);
-
-      foreach ($tables as $tableName) {
-        if (!isset($triggers[$tableName])) {
-          $triggers[$tableName] = array();
-        }
-
-        foreach ($events as $eventName) {
-          $template_params = array('{tableName}', '{eventName}');
-          $template_values = array($tableName, $eventName);
-
-          $sql = str_replace($template_params,
-            $template_values,
-            $value['sql']
-          );
-          $variables = str_replace($template_params,
-            $template_values,
-            CRM_Utils_Array::value('variables', $value)
-          );
-
-          if (!isset($triggers[$tableName][$eventName])) {
-            $triggers[$tableName][$eventName] = array();
-          }
-
-          if (!isset($triggers[$tableName][$eventName][$whenName])) {
-            // We're leaving out cursors, conditions, and handlers for now
-            // they are kind of dangerous in this context anyway
-            // better off putting them in stored procedures
-            $triggers[$tableName][$eventName][$whenName] = array(
-              'variables' => array(),
-              'sql' => array(),
-            );
-          }
-
-          if ($variables) {
-            $triggers[$tableName][$eventName][$whenName]['variables'][] = $variables;
-          }
-
-          $triggers[$tableName][$eventName][$whenName]['sql'][] = $sql;
-        }
-      }
-    }
-
-    // now spit out the sql
-    foreach ($triggers as $tableName => $tables) {
-      if ($onlyTableName != NULL && $onlyTableName != $tableName) {
-        continue;
-      }
-      foreach ($tables as $eventName => $events) {
-        foreach ($events as $whenName => $parts) {
-          $varString = implode("\n", $parts['variables']);
-          $sqlString = implode("\n", $parts['sql']);
-          $validName = CRM_Core_DAO::shortenSQLName($tableName, 48, TRUE);
-          $triggerName = "{$validName}_{$whenName}_{$eventName}";
-          $triggerSQL = "CREATE TRIGGER $triggerName $whenName $eventName ON $tableName FOR EACH ROW BEGIN $varString $sqlString END";
-
-          CRM_Core_DAO::executeQuery("DROP TRIGGER IF EXISTS $triggerName");
-          CRM_Core_DAO::executeQuery(
-            $triggerSQL,
-            array(),
-            TRUE,
-            NULL,
-            FALSE,
-            FALSE
-          );
-        }
-      }
-    }
+    Civi::service('sql_triggers')->createTriggers($info, $onlyTableName);
   }
 
   /**
@@ -2184,6 +2140,7 @@ SELECT contact_id
 
   /**
    * Get options for the called BAO object's field.
+   *
    * This function can be overridden by each BAO to add more logic related to context.
    * The overriding function will generally call the lower-level CRM_Core_PseudoConstant::get
    *
@@ -2499,6 +2456,27 @@ SELECT contact_id
       }
     }
     return $clauses;
+  }
+
+  /**
+   * ensure database name is 'safe', i.e. only contains word characters (includes underscores)
+   * and dashes, and contains at least one [a-z] case insenstive.
+   *
+   * @param $database
+   *
+   * @return bool
+   */
+  public static function requireSafeDBName($database) {
+    $matches = array();
+    preg_match(
+      "/^[\w\-]*[a-z]+[\w\-]*$/i",
+      $database,
+      $matches
+    );
+    if (empty($matches)) {
+      return FALSE;
+    }
+    return TRUE;
   }
 
 }

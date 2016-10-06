@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  * $Id$
  *
  */
@@ -60,6 +60,18 @@ class CRM_Price_BAO_PriceFieldValue extends CRM_Price_DAO_PriceFieldValue {
       if (!empty($params['label']) && $prevLabel != $params['label']) {
         self::updateAmountAndFeeLevel($id, $prevLabel, $params['label']);
       }
+    }
+    // CRM-16189
+    $priceFieldID = CRM_Utils_Array::value('price_field_id', $params);
+    if (!$priceFieldID) {
+      $priceFieldID = CRM_Core_DAO::getFieldValue('CRM_Price_BAO_PriceFieldValue', $id, 'price_field_id');
+    }
+    if (!empty($params['financial_type_id'])) {
+      CRM_Financial_BAO_FinancialAccount::validateFinancialType(
+        $params['financial_type_id'],
+        $priceFieldID,
+        'PriceField'
+      );
     }
     if (!empty($params['is_default'])) {
       $query = 'UPDATE civicrm_price_field_value SET is_default = 0 WHERE  price_field_id = %1';
@@ -310,21 +322,22 @@ WHERE cpse.id IS NOT NULL {$where}";
     $lineItem->label = $prevLabel;
     $lineItem->find();
     while ($lineItem->fetch()) {
-      $lineItem->label = $newLabel;
-      $lineItem->save();
+      $lineItemParams['id'] = $lineItem->id;
+      $lineItemParams['label'] = $newLabel;
+      CRM_Price_BAO_LineItem::create($lineItemParams);
+
       // update amount and fee level in civicrm_contribution and civicrm_participant
       $params = array(
         1 => array(CRM_Core_DAO::VALUE_SEPARATOR . $prevLabel . ' -', 'String'),
         2 => array(CRM_Core_DAO::VALUE_SEPARATOR . $newLabel . ' -', 'String'),
       );
+      // Update contribution
       if (!empty($lineItem->contribution_id)) {
         CRM_Core_DAO::executeQuery("UPDATE `civicrm_contribution` SET `amount_level` = REPLACE(amount_level, %1, %2) WHERE id = {$lineItem->contribution_id}", $params);
-        $participantIds = CRM_Event_BAO_Participant::getParticipantIds($lineItem->contribution_id);
-        foreach ($participantIds as $key => $id) {
-          if (!empty($id)) {
-            CRM_Core_DAO::executeQuery("UPDATE `civicrm_participant` SET `fee_level` = REPLACE(fee_level, %1, %2) WHERE id = {$id}", $params);
-          }
-        }
+      }
+      // Update participant
+      if ($lineItem->entity_table == 'civicrm_participant') {
+        CRM_Core_DAO::executeQuery("UPDATE `civicrm_participant` SET `fee_level` = REPLACE(fee_level, %1, %2) WHERE id = {$lineItem->entity_id}", $params);
       }
     }
   }

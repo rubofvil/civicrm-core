@@ -3,7 +3,7 @@
   +--------------------------------------------------------------------+
   | CiviCRM version 4.7                                                |
   +--------------------------------------------------------------------+
-  | Copyright CiviCRM LLC (c) 2004-2015                                |
+  | Copyright CiviCRM LLC (c) 2004-2016                                |
   +--------------------------------------------------------------------+
   | This file is a part of CiviCRM.                                    |
   |                                                                    |
@@ -72,7 +72,6 @@ function civicrm_api3_verify_one_mandatory($params, $daoName = NULL, $keyoptions
  * @throws \API_Exception
  */
 function civicrm_api3_verify_mandatory($params, $daoName = NULL, $keys = array(), $verifyDAO = TRUE) {
-
   $unmatched = array();
   if ($daoName != NULL && $verifyDAO && empty($params['id'])) {
     $unmatched = _civicrm_api3_check_required_fields($params, $daoName, TRUE);
@@ -99,7 +98,7 @@ function civicrm_api3_verify_mandatory($params, $daoName = NULL, $keys = array()
           $optionset[] = $subkey;
         }
         else {
-          // as long as there is one match then we don't need to rtn anything
+          // As long as there is one match we don't need to return anything.
           $match = 1;
         }
       }
@@ -109,7 +108,7 @@ function civicrm_api3_verify_mandatory($params, $daoName = NULL, $keys = array()
     }
     else {
       // Disallow empty values except for the number zero.
-      // TODO: create a utility for this since it's needed in many places
+      // TODO: create a utility for this since it's needed in many places.
       if (!array_key_exists($key, $params) || (empty($params[$key]) && $params[$key] !== 0 && $params[$key] !== '0')) {
         $unmatched[] = $key;
       }
@@ -131,14 +130,17 @@ function civicrm_api3_verify_mandatory($params, $daoName = NULL, $keys = array()
 function civicrm_api3_create_error($msg, $data = array()) {
   $data['is_error'] = 1;
   $data['error_message'] = $msg;
+
   // we will show sql to privileged user only (not sure of a specific
   // security hole here but seems sensible - perhaps should apply to the trace as well?)
-  if (isset($data['sql']) && CRM_Core_Permission::check('Administer CiviCRM')) {
-    // Isn't this redundant?
-    $data['debug_information'] = $data['sql'];
-  }
-  else {
-    unset($data['sql']);
+  if (isset($data['sql'])) {
+    if (CRM_Core_Permission::check('Administer CiviCRM') || CIVICRM_UF == 'UnitTests') {
+      // Isn't this redundant?
+      $data['debug_information'] = $data['sql'];
+    }
+    else {
+      unset($data['sql']);
+    }
   }
   return $data;
 }
@@ -351,7 +353,7 @@ function _civicrm_api3_get_DAO($name) {
     return 'CRM_SMS_DAO_Provider';
   }
   // FIXME: DAO names should follow CamelCase convention
-  if ($name == 'Im' || $name == 'Acl') {
+  if ($name == 'Im' || $name == 'Acl' || $name == 'Pcp') {
     $name = strtoupper($name);
   }
   $dao = CRM_Core_DAO_AllCoreTables::getFullName($name);
@@ -625,7 +627,8 @@ function _civicrm_api3_get_using_query_object($entity, $params, $additional_opti
     $smartGroupCache,
     $getCount,
     $skipPermissions,
-    $mode
+    $mode,
+    $entity
   );
 
   return $entities;
@@ -1454,9 +1457,14 @@ function _civicrm_api3_basic_delete($bao_name, &$params) {
   _civicrm_api3_check_edit_permissions($bao_name, array('id' => $params['id']));
   $args = array(&$params['id']);
   if (method_exists($bao_name, 'del')) {
-    $bao = call_user_func_array(array($bao_name, 'del'), $args);
-    if ($bao !== FALSE) {
-      return civicrm_api3_create_success(TRUE);
+    $dao = new $bao_name();
+    $dao->id = $params['id'];
+    if ($dao->find()) {
+      $bao = call_user_func_array(array($bao_name, 'del'), $args);
+      if ($bao !== FALSE) {
+        return civicrm_api3_create_success();
+      }
+      throw new API_Exception('Could not delete entity id ' . $params['id']);
     }
     throw new API_Exception('Could not delete entity id ' . $params['id']);
   }
@@ -1498,7 +1506,7 @@ function _civicrm_api3_basic_delete($bao_name, &$params) {
  */
 function _civicrm_api3_custom_data_get(&$returnArray, $checkPermission, $entity, $entity_id, $groupID = NULL, $subType = NULL, $subName = NULL) {
   $groupTree = CRM_Core_BAO_CustomGroup::getTree($entity,
-    CRM_Core_DAO::$_nullObject,
+    NULL,
     $entity_id,
     $groupID,
     NULL,
@@ -1534,11 +1542,100 @@ function _civicrm_api3_custom_data_get(&$returnArray, $checkPermission, $entity,
 }
 
 /**
+ * Used by the Validate API.
+ * @param string $entity
+ * @param string $action
+ * @param array $params
+ *
+ * @return array $errors
+ */
+function _civicrm_api3_validate($entity, $action, $params) {
+  $errors = array();
+  $fields = civicrm_api3($entity, 'getfields', array('sequential' => 1, 'api_action' => $action));
+  $fields = $fields['values'];
+
+  // Check for required fields.
+  foreach ($fields as $values) {
+    if (!empty($values['api.required']) && empty($params[$values['name']])) {
+      $errors[$values['name']] = array(
+        'message' => "Mandatory key(s) missing from params array: " . $values['name'],
+        'code' => "mandatory_missing",
+      );
+    }
+  }
+
+  // Select only the fields which have been input as a param.
+  $finalfields = array();
+  foreach ($fields as $values) {
+    if (array_key_exists($values['name'], $params)) {
+      $finalfields[] = $values;
+    }
+  }
+
+  // This derives heavily from the function "_civicrm_api3_validate_fields".
+  // However, the difference is that try-catch blocks are nested in the loop, making it
+  // possible for us to get all errors in one go.
+  foreach ($finalfields as $fieldInfo) {
+    $fieldName = $fieldInfo['name'];
+    try {
+      _civicrm_api3_validate_switch_cases($fieldName, $fieldInfo, $entity, $params);
+    }
+    catch (Exception $e) {
+      $errors[$fieldName] = array(
+        'message' => $e->getMessage(),
+        'code' => 'incorrect_value',
+      );
+    }
+  }
+
+  return array($errors);
+}
+/**
+ * Used by the Validate API.
+ * @param array $fieldInfo
+ * @param string $entity
+ * @param array $params
+ *
+ * @throws Exception
+ */
+function _civicrm_api3_validate_switch_cases($fieldName, $fieldInfo, $entity, $params) {
+  switch (CRM_Utils_Array::value('type', $fieldInfo)) {
+    case CRM_Utils_Type::T_INT:
+      _civicrm_api3_validate_integer($params, $fieldName, $fieldInfo, $entity);
+      break;
+
+    case CRM_Utils_Type::T_DATE:
+    case CRM_Utils_Type::T_DATE + CRM_Utils_Type::T_TIME:
+    case CRM_Utils_Type::T_TIMESTAMP:
+      //field is of type date or datetime
+      _civicrm_api3_validate_date($params, $fieldName, $fieldInfo);
+      break;
+
+    case CRM_Utils_Type::T_TEXT:
+      _civicrm_api3_validate_html($params, $fieldName, $fieldInfo);
+      break;
+
+    case CRM_Utils_Type::T_STRING:
+      _civicrm_api3_validate_string($params, $fieldName, $fieldInfo, $entity);
+      break;
+
+    case CRM_Utils_Type::T_MONEY:
+      list($fieldValue, $op) = _civicrm_api3_field_value_check($params, $fieldName);
+
+      foreach ((array) $fieldValue as $fieldvalue) {
+        if (!CRM_Utils_Rule::money($fieldvalue) && !empty($fieldvalue)) {
+          throw new Exception($fieldName . " is  not a valid amount: " . $params[$fieldName]);
+        }
+      }
+      break;
+  }
+}
+
+/**
  * Validate fields being passed into API.
  *
  * This function relies on the getFields function working accurately
- * for the given API. If error mode is set to TRUE then it will also check
- * foreign keys
+ * for the given API.
  *
  * As of writing only date was implemented.
  *
@@ -1548,12 +1645,10 @@ function _civicrm_api3_custom_data_get(&$returnArray, $checkPermission, $entity,
  *   -.
  * @param array $fields
  *   Response from getfields all variables are the same as per civicrm_api.
- * @param bool $errorMode
- *   ErrorMode do intensive post fail checks?.
  *
  * @throws Exception
  */
-function _civicrm_api3_validate_fields($entity, $action, &$params, $fields, $errorMode = FALSE) {
+function _civicrm_api3_validate_fields($entity, $action, &$params, $fields) {
   //CRM-15792 handle datetime for custom fields below code handles chain api call
   $chainApikeys = array_flip(preg_grep("/^api./", array_keys($params)));
   if (!empty($chainApikeys) && is_array($chainApikeys)) {
@@ -1588,7 +1683,7 @@ function _civicrm_api3_validate_fields($entity, $action, &$params, $fields, $err
         _civicrm_api3_validate_date($dateParams, $fieldName, $fieldInfo);
         break;
 
-      case 32:
+      case CRM_Utils_Type::T_TEXT:
         //blob
         _civicrm_api3_validate_html($params, $fieldName, $fieldInfo);
         break;
@@ -1609,21 +1704,38 @@ function _civicrm_api3_validate_fields($entity, $action, &$params, $fields, $err
         }
         break;
     }
+  }
+}
 
-    // intensive checks - usually only called after DB level fail
-    if (!empty($errorMode) && strtolower($action) == 'create') {
-      if (!empty($fieldInfo['FKClassName'])) {
-        if (!empty($fieldValue)) {
-          _civicrm_api3_validate_constraint($params, $fieldName, $fieldInfo);
-        }
-        elseif (!empty($fieldInfo['required'])) {
-          throw new Exception("DB Constraint Violation - possibly $fieldName should possibly be marked as mandatory for this API. If so, please raise a bug report");
-        }
+/**
+ * Validate foreign key values of fields being passed into API.
+ *
+ * This function relies on the getFields function working accurately
+ * for the given API.
+ *
+ * @param string $entity
+ * @param string $action
+ * @param array $params
+ *
+ * @param array $fields
+ *   Response from getfields all variables are the same as per civicrm_api.
+ *
+ * @throws Exception
+ */
+function _civicrm_api3_validate_foreign_keys($entity, $action, &$params, $fields) {
+  // intensive checks - usually only called after DB level fail
+  foreach ($fields as $fieldName => $fieldInfo) {
+    if (!empty($fieldInfo['FKClassName'])) {
+      if (!empty($params[$fieldName])) {
+        _civicrm_api3_validate_constraint($params[$fieldName], $fieldName, $fieldInfo);
       }
-      if (!empty($fieldInfo['api.unique'])) {
-        $params['entity'] = $entity;
-        _civicrm_api3_validate_unique_key($params, $fieldName);
+      elseif (!empty($fieldInfo['required'])) {
+        throw new Exception("DB Constraint Violation - possibly $fieldName should possibly be marked as mandatory for this API. If so, please raise a bug report.");
       }
+    }
+    if (!empty($fieldInfo['api.unique'])) {
+      $params['entity'] = $entity;
+      _civicrm_api3_validate_unique_key($params, $fieldName);
     }
   }
 }

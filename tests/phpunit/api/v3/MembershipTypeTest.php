@@ -3,7 +3,7 @@
   +--------------------------------------------------------------------+
   | CiviCRM version 4.7                                                |
   +--------------------------------------------------------------------+
-  | Copyright CiviCRM LLC (c) 2004-2015                                |
+  | Copyright CiviCRM LLC (c) 2004-2016                                |
   +--------------------------------------------------------------------+
   | This file is a part of CiviCRM.                                    |
   |                                                                    |
@@ -25,10 +25,9 @@
   +--------------------------------------------------------------------+
  */
 
-require_once 'CiviTest/CiviUnitTestCase.php';
-
 /**
  * Class api_v3_MembershipTypeTest
+ * @group headless
  */
 class api_v3_MembershipTypeTest extends CiviUnitTestCase {
   protected $_contactID;
@@ -78,7 +77,7 @@ class api_v3_MembershipTypeTest extends CiviUnitTestCase {
     $membershipType = $this->callAPIAndDocument('membership_type', 'get', $params, __FUNCTION__, __FILE__);
     $this->assertEquals($membershipType['values'][$id]['name'], 'General');
     $this->assertEquals($membershipType['values'][$id]['member_of_contact_id'], $this->_contactID);
-    $this->assertEquals($membershipType['values'][$id]['financial_type_id'], 1);
+    $this->assertEquals($membershipType['values'][$id]['financial_type_id'], $this->getFinancialTypeId('Member Dues'));
     $this->assertEquals($membershipType['values'][$id]['duration_unit'], 'year');
     $this->assertEquals($membershipType['values'][$id]['duration_interval'], '1');
     $this->assertEquals($membershipType['values'][$id]['period_type'], 'rolling');

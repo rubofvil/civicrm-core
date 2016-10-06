@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 
 /**
@@ -572,6 +572,21 @@ WHERE participant.contact_id = %1 AND  note.entity_table = 'civicrm_participant'
     while ($contactNoteId->fetch()) {
       self::del($contactNoteId->id, FALSE);
     }
+  }
+
+  /**
+   * Whitelist of possible values for the entity_table field
+   * @return array
+   */
+  public static function entityTables() {
+    $tables = array(
+      'civicrm_relationship',
+      'civicrm_contact',
+      'civicrm_participant',
+      'civicrm_contribution',
+    );
+    // Identical keys & values
+    return array_combine($tables, $tables);
   }
 
 }

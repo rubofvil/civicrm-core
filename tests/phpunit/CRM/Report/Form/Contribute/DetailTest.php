@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -24,8 +24,6 @@
  | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
  +--------------------------------------------------------------------+
  */
-
-require_once 'CiviTest/CiviReportTestCase.php';
 
 /**
  *  Test report outcome
@@ -69,7 +67,6 @@ class CRM_Report_Form_Contribute_DetailTest extends CiviReportTestCase {
 
   public function setUp() {
     parent::setUp();
-    $this->foreignKeyChecksOff();
     $this->quickCleanup($this->_tablesToTruncate);
   }
 

@@ -32,14 +32,13 @@
 /**
  *  Include class definitions
  */
-require_once 'CiviTest/CiviUnitTestCase.php';
-
 
 /**
  * Test APIv3 civicrm_activity_* functions
  *
  * @package CiviCRM_APIv3
  * @subpackage API_Activity
+ * @group headless
  */
 class api_v3_ActivityTest extends CiviUnitTestCase {
   protected $_params;
@@ -107,7 +106,10 @@ class api_v3_ActivityTest extends CiviUnitTestCase {
       'civicrm_uf_match',
     );
     $this->quickCleanup($tablesToTruncate, TRUE);
-    $this->callAPISuccess('option_value', 'delete', array('id' => $this->test_activity_type_id));
+    $type = $this->callAPISuccess('optionValue', 'get', array('id' => $this->test_activity_type_id));
+    if (!empty($type['count'])) {
+      $this->callAPISuccess('option_value', 'delete', array('id' => $this->test_activity_type_id));
+    }
   }
 
   /**
@@ -313,18 +315,20 @@ class api_v3_ActivityTest extends CiviUnitTestCase {
       'details' => 'a test activity',
       'status_id' => 1,
       'activity_type_id' => 29,
-      'priority_id' => 1,
     );
 
     $result = $this->callAPISuccess('activity', 'create', $params);
 
-    $result = $this->callAPISuccess('activity', 'get', array('id' => $result['id']));
-    $this->assertEquals($result['values'][$result['id']]['duration'], 120);
-    $this->assertEquals($result['values'][$result['id']]['subject'], 'Make-it-Happen Meeting');
-    $this->assertEquals($result['values'][$result['id']]['activity_date_time'], '2011-03-16 00:00:00');
-    $this->assertEquals($result['values'][$result['id']]['location'], 'Pennsylvania');
-    $this->assertEquals($result['values'][$result['id']]['details'], 'a test activity');
-    $this->assertEquals($result['values'][$result['id']]['status_id'], 1);
+    $result = $this->callAPISuccess('activity', 'getsingle', array('id' => $result['id']));
+    $this->assertEquals($result['duration'], 120);
+    $this->assertEquals($result['subject'], 'Make-it-Happen Meeting');
+    $this->assertEquals($result['activity_date_time'], '2011-03-16 00:00:00');
+    $this->assertEquals($result['location'], 'Pennsylvania');
+    $this->assertEquals($result['details'], 'a test activity');
+    $this->assertEquals($result['status_id'], 1);
+
+    $priorities = $this->callAPISuccess('activity', 'getoptions', array('field' => 'priority_id'));
+    $this->assertEquals($result['priority_id'], array_search('Normal', $priorities['values']));
   }
 
   /**

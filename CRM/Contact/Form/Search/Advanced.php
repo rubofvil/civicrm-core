@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 
 /**
@@ -381,11 +381,56 @@ class CRM_Contact_Form_Search_Advanced extends CRM_Contact_Form_Search {
     if (!is_array($defaults)) {
       $defaults = array();
     }
-
+    $this->loadDefaultCountryBasedOnState($defaults);
     if ($this->_ssID && empty($_POST)) {
       $defaults = array_merge($defaults, CRM_Contact_BAO_SavedSearch::getFormValues($this->_ssID));
     }
+
+    /*
+     * CRM-18656 - reverse the normalisation of 'contact_taglist' done in
+     * self::normalizeFormValues(). Remove tagset tags from the default
+     * 'contact_tags' and put them in 'contact_taglist[N]' where N is the
+     * id of the tagset.
+     */
+    if (isset($defaults['contact_tags'])) {
+      foreach ($defaults['contact_tags'] as $key => $tagId) {
+        if (!is_array($tagId)) {
+          $parentId = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_Tag', $tagId, 'parent_id');
+          $element = "contact_taglist[$parentId]";
+          if ($this->elementExists($element)) {
+            // This tag is a tagset
+            unset($defaults['contact_tags'][$key]);
+            if (!isset($defaults[$element])) {
+              $defaults[$element] = array();
+            }
+            $defaults[$element][] = $tagId;
+          }
+        }
+      }
+      if (empty($defaults['contact_tags'])) {
+        unset($defaults['contact_tags']);
+      }
+    }
+
     return $defaults;
+  }
+
+  /**
+   * Set the default country for the form.
+   *
+   * For performance reasons country might be removed from the form CRM-18125
+   * but we need to include it in our defaults or the state will not be visible.
+   *
+   * @param array $defaults
+   */
+  public function loadDefaultCountryBasedOnState(&$defaults) {
+    if (!empty($defaults['state_province'])) {
+      $defaults['country'] = CRM_Core_DAO::singleValueQuery(
+        "SELECT country_id FROM civicrm_state_province
+         WHERE id = %1",
+        array(1 => array($defaults['state_province'][0], 'Integer'))
+      );
+    }
   }
 
 }

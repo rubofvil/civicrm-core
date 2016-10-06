@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,9 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
- * $Id$
- *
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 
 /**
@@ -91,8 +89,7 @@ class CRM_Price_Form_Field extends CRM_Core_Form {
   }
 
   /**
-   * Set default values for the form. Note that in edit/view mode
-   * the default values are retrieved from the database
+   * Set default values for the form.
    *
    * @return array
    *   array of default values
@@ -238,6 +235,10 @@ class CRM_Price_Form_Field extends CRM_Core_Form {
     $this->registerRule('price', 'callback', 'money', 'CRM_Utils_Rule');
     $this->addRule('price', ts('must be a monetary value'), 'money');
 
+    $this->add('text', 'non_deductible_amount', ts('Non-deductible Amount'), NULL);
+    $this->registerRule('non_deductible_amount', 'callback', 'money', 'CRM_Utils_Rule');
+    $this->addRule('non_deductible_amount', ts('Please enter a monetary value for this field.'), 'money');
+
     if ($this->_action == CRM_Core_Action::UPDATE) {
       $this->freeze('html_type');
     }
@@ -346,22 +347,21 @@ class CRM_Price_Form_Field extends CRM_Core_Form {
 
     // add buttons
     $this->addButtons(array(
-        array(
-          'type' => 'next',
-          'name' => ts('Save'),
-          'isDefault' => TRUE,
-        ),
-        array(
-          'type' => 'next',
-          'name' => ts('Save and New'),
-          'subName' => 'new',
-        ),
-        array(
-          'type' => 'cancel',
-          'name' => ts('Cancel'),
-        ),
-      )
-    );
+      array(
+        'type' => 'next',
+        'name' => ts('Save'),
+        'isDefault' => TRUE,
+      ),
+      array(
+        'type' => 'next',
+        'name' => ts('Save and New'),
+        'subName' => 'new',
+      ),
+      array(
+        'type' => 'cancel',
+        'name' => ts('Cancel'),
+      ),
+    ));
     // is public?
     $this->add('select', 'visibility_id', ts('Visibility'), CRM_Core_PseudoConstant::visibility());
 
@@ -403,15 +403,23 @@ class CRM_Price_Form_Field extends CRM_Core_Form {
      *  Incomplete row checking is also required.
      */
     if (($form->_action & CRM_Core_Action::ADD || $form->_action & CRM_Core_Action::UPDATE) &&
-      $fields['html_type'] == 'Text' && $fields['price'] == NULL
+      $fields['html_type'] == 'Text'
     ) {
-      $errors['price'] = ts('Price is a required field');
-    }
-
-    if (($form->_action & CRM_Core_Action::ADD || $form->_action & CRM_Core_Action::UPDATE) &&
-      $fields['html_type'] == 'Text' && $fields['financial_type_id'] == ''
-    ) {
-      $errors['financial_type_id'] = ts('Financial Type is a required field');
+      if ($fields['price'] == NULL) {
+        $errors['price'] = ts('Price is a required field');
+      }
+      if ($fields['financial_type_id'] == '') {
+        $errors['financial_type_id'] = ts('Financial Type is a required field');
+      }
+      else {
+        // CRM-16189
+        try {
+          CRM_Financial_BAO_FinancialAccount::validateFinancialType($fields['financial_type_id'], $form->_sid);
+        }
+        catch (CRM_Core_Exception $e) {
+          $errors['financial_type_id'] = $e->getMessage();
+        }
+      }
     }
 
     //avoid the same price field label in Within PriceSet
@@ -528,6 +536,13 @@ class CRM_Price_Form_Field extends CRM_Core_Form {
           }
 
           $_flagOption = $_emptyRow = 0;
+          // CRM-16189
+          try {
+            CRM_Financial_BAO_FinancialAccount::validateFinancialType($fields['option_financial_type_id'][$index], $form->_fid, 'PriceField');
+          }
+          catch(CRM_Core_Exception $e) {
+            $errors["option_financial_type_id[{$index}]"] = $e->getMessage();
+          }
         }
 
         if (!empty($memTypesIDS)) {

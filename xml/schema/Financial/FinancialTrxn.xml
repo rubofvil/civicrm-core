@@ -141,7 +141,7 @@
       <table>civicrm_currency</table>
       <keyColumn>name</keyColumn>
       <labelColumn>full_name</labelColumn>
-      <nameColumn>numeric_code</nameColumn>
+      <nameColumn>name</nameColumn>
     </pseudoconstant>
     <html>
       <type>Select</type>
@@ -180,7 +180,7 @@
   </index>
   <field>
     <name>trxn_result_code</name>
-    <title>Transaction result Code</title>
+    <title>Transaction Result Code</title>
     <type>varchar</type>
     <length>255</length>
     <comment>processor result code</comment>
@@ -192,7 +192,10 @@
     <type>int unsigned</type>
     <import>true</import>
     <export>true</export>
-    <comment>pseudo FK to civicrm_option_value of financial_item status option_group</comment>
+    <pseudoconstant>
+      <optionGroupName>contribution_status</optionGroupName>
+    </pseudoconstant>
+    <comment>pseudo FK to civicrm_option_value of contribution_status_id option_group</comment>
     <headerPattern>/status/i</headerPattern>
     <add>4.3</add>
   </field>

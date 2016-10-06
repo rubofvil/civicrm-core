@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -31,7 +31,7 @@
  * abstract class.
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 class CRM_Mailing_Info extends CRM_Core_Component_Info {
 
@@ -72,6 +72,14 @@ class CRM_Mailing_Info extends CRM_Core_Component_Info {
       return array();
     }
 
+    $reportIds = array();
+    $reportTypes = array('detail', 'opened', 'bounce', 'clicks');
+    foreach ($reportTypes as $report) {
+      $result = civicrm_api3('ReportInstance', 'get', array(
+        'sequential' => 1,
+        'report_id' => 'mailing/' . $report));
+      $reportIds[$report] = $result['values'][0]['id'];
+    }
     $result = array();
     $result['crmMailing'] = array(
       'ext' => 'civicrm',
@@ -174,10 +182,12 @@ class CRM_Mailing_Info extends CRM_Core_Component_Info {
             )),
           'visibility' => CRM_Utils_Array::makeNonAssociative(CRM_Core_SelectValues::groupVisibility()),
           'workflowEnabled' => CRM_Mailing_Info::workflowEnabled(),
+          'reportIds' => $reportIds,
         ),
       ))
       ->addPermissions(array(
         'view all contacts',
+        'edit all contacts',
         'access CiviMail',
         'create mailings',
         'schedule mailings',
@@ -240,20 +250,14 @@ class CRM_Mailing_Info extends CRM_Core_Component_Info {
     );
 
     if (self::workflowEnabled() || $getAllUnconditionally) {
-      $permissions[] = array(
-        'create mailings' => array(
-          ts('create mailings'),
-        ),
+      $permissions['create mailings'] = array(
+        ts('create mailings'),
       );
-      $permissions[] = array(
-        'schedule mailings' => array(
-          ts('schedule mailings'),
-        ),
+      $permissions['schedule mailings'] = array(
+        ts('schedule mailings'),
       );
-      $permissions[] = array(
-        'approve mailings' => array(
-          ts('approve mailings'),
-        ),
+      $permissions['approve mailings'] = array(
+        ts('approve mailings'),
       );
     }
 

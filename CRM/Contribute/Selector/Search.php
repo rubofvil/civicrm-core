@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 
 /**
@@ -311,7 +311,7 @@ class CRM_Contribute_Selector_Search extends CRM_Core_Selector_Base implements C
   public function &getRows($action, $offset, $rowCount, $sort, $output = NULL) {
     if ($this->_includeSoftCredits) {
       // especial sort order when rows include soft credits
-      $sort = "civicrm_contribution.receive_date DESC, civicrm_contribution.id, civicrm_contribution_soft.id";
+      $sort = $sort->orderBy() . ", civicrm_contribution.id, civicrm_contribution_soft.id";
     }
     $result = $this->_query->searchQuery($offset, $rowCount, $sort,
       FALSE, FALSE,
@@ -418,6 +418,12 @@ class CRM_Contribute_Selector_Search extends CRM_Core_Selector_Base implements C
 
       if ($result->is_pay_later && CRM_Utils_Array::value('contribution_status_name', $row) == 'Pending') {
         $row['contribution_status'] .= ' (' . ts('Pay Later') . ')';
+        $links[CRM_Core_Action::ADD] = array(
+          'name' => ts('Pay with Credit Card'),
+          'url' => 'civicrm/contact/view/contribution',
+          'qs' => 'reset=1&action=update&id=%%id%%&cid=%%cid%%&context=%%cxt%%&mode=live',
+          'title' => ts('Pay with Credit Card'),
+        );
       }
       elseif (CRM_Utils_Array::value('contribution_status_name', $row) == 'Pending') {
         $row['contribution_status'] .= ' (' . ts('Incomplete Transaction') . ')';

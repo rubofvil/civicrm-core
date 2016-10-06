@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -48,6 +48,33 @@ abstract class CRM_Core_Payment {
   protected $_component;
 
   /**
+   * Parameters to append to the notify url.
+   *
+   * The notify url is passed to the payment processor and the processor uses it for return ping backs or redirection.
+   *
+   * @var array
+   */
+  protected $notifyUrlParameters = array();
+
+  /**
+   * Get notify url parameters.
+   *
+   * @return array
+   */
+  public function getNotifyUrlParameters() {
+    return $this->notifyUrlParameters;
+  }
+
+  /**
+   * Set notify url parameters.
+   *
+   * @param array $notifyUrlParameters
+   */
+  public function setNotifyUrlParameters($notifyUrlParameters) {
+    $this->notifyUrlParameters = $notifyUrlParameters;
+  }
+
+  /**
    * How are we getting billing information.
    *
    * We are trying to completely deprecate these parameters.
@@ -83,13 +110,25 @@ abstract class CRM_Core_Payment {
   protected $_paymentProcessor;
 
   /**
-   * Base url of the calling form.
-   *
-   * This is used for processors that need to return the browser back to the CiviCRM site.
+   * Base url of the calling form (offsite processors).
    *
    * @var string
    */
   protected $baseReturnUrl;
+
+  /**
+   * Return url upon success (offsite processors).
+   *
+   * @var string
+   */
+  protected $successUrl;
+
+  /**
+   * Return url upon failure (offsite processors).
+   *
+   * @var string
+   */
+  protected $cancelUrl;
 
   /**
    * The profile configured to show on the billing form.
@@ -108,13 +147,39 @@ abstract class CRM_Core_Payment {
   protected $billingProfile;
 
   /**
-   * Set Base return URL.
+   * Set base return path (offsite processors).
+   *
+   * This is only useful with an internal civicrm form.
    *
    * @param string $url
-   *   Url of site to return browser to.
+   *   Internal civicrm path.
    */
   public function setBaseReturnUrl($url) {
     $this->baseReturnUrl = $url;
+  }
+
+  /**
+   * Set success return URL (offsite processors).
+   *
+   * This overrides $baseReturnUrl
+   *
+   * @param string $url
+   *   Full url of site to return browser to upon success.
+   */
+  public function setSuccessUrl($url) {
+    $this->successUrl = $url;
+  }
+
+  /**
+   * Set cancel return URL (offsite processors).
+   *
+   * This overrides $baseReturnUrl
+   *
+   * @param string $url
+   *   Full url of site to return browser to upon failure.
+   */
+  public function setCancelUrl($url) {
+    $this->cancelUrl = $url;
   }
 
   /**
@@ -328,7 +393,7 @@ abstract class CRM_Core_Payment {
   public function validatePaymentInstrument($values, &$errors) {
     CRM_Core_Form::validateMandatoryFields($this->getMandatoryFields(), $values, $errors);
     if ($this->_paymentProcessor['payment_type'] == 1) {
-      CRM_Core_Payment_Form::validateCreditCard($values, $errors);
+      CRM_Core_Payment_Form::validateCreditCard($this->_paymentProcessor['id'], $values, $errors);
     }
   }
 
@@ -416,6 +481,51 @@ abstract class CRM_Core_Payment {
       return array();
     }
     return $this->_paymentProcessor['payment_type'] == 1 ? $this->getCreditCardFormFields() : $this->getDirectDebitFormFields();
+  }
+
+  /**
+   * Get an array of the fields that can be edited on the recurring contribution.
+   *
+   * Some payment processors support editing the amount and other scheduling details of recurring payments, especially
+   * those which use tokens. Others are fixed. This function allows the processor to return an array of the fields that
+   * can be updated from the contribution recur edit screen.
+   *
+   * The fields are likely to be a subset of these
+   *  - 'amount',
+   *  - 'installments',
+   *  - 'frequency_interval',
+   *  - 'frequency_unit',
+   *  - 'cycle_day',
+   *  - 'next_sched_contribution_date',
+   *  - 'end_date',
+   * - 'failure_retry_day',
+   *
+   * The form does not restrict which fields from the contribution_recur table can be added (although if the html_type
+   * metadata is not defined in the xml for the field it will cause an error.
+   *
+   * Open question - would it make sense to return membership_id in this - which is sometimes editable and is on that
+   * form (UpdateSubscription).
+   *
+   * @return array
+   */
+  public function getEditableRecurringScheduleFields() {
+    if (method_exists($this, 'changeSubscriptionAmount')) {
+      return array('amount');
+    }
+  }
+
+  /**
+   * Get the help text to present on the recurring update page.
+   *
+   * This should reflect what can or cannot be edited.
+   *
+   * @return string
+   */
+  public function getRecurringScheduleUpdateHelpText() {
+    if (!in_array('amount', $this->getEditableRecurringScheduleFields())) {
+      return ts('Updates made using this form will change the recurring contribution information stored in your CiviCRM database, but will NOT be sent to the payment processor. You must enter the same changes using the payment processor web site.');
+    }
+    return ts('Use this form to change the amount or number of installments for this recurring contribution. Changes will be automatically sent to the payment processor. You can not change the contribution frequency.');
   }
 
   /**
@@ -774,14 +884,18 @@ abstract class CRM_Core_Payment {
   }
 
   /**
-   * Get url to return to after cancelled or failed transaction
+   * Get url to return to after cancelled or failed transaction.
    *
-   * @param $qfKey
-   * @param $participantID
+   * @param string $qfKey
+   * @param int $participantID
    *
    * @return string cancel url
    */
   public function getCancelUrl($qfKey, $participantID) {
+    if (isset($this->cancelUrl)) {
+      return $this->cancelUrl;
+    }
+
     if ($this->_component == 'event') {
       return CRM_Utils_System::url($this->getBaseReturnUrl(), array(
         'reset' => 1,
@@ -809,6 +923,10 @@ abstract class CRM_Core_Payment {
    * @return string
    */
   protected function getReturnSuccessUrl($qfKey) {
+    if (isset($this->successUrl)) {
+      return $this->successUrl;
+    }
+
     return CRM_Utils_System::url($this->getBaseReturnUrl(), array(
       '_qf_ThankYou_display' => 1,
       'qfKey' => $qfKey,
@@ -828,6 +946,10 @@ abstract class CRM_Core_Payment {
    *   URL for a failing transactor to be redirected to.
    */
   protected function getReturnFailUrl($key, $participantID = NULL, $eventID = NULL) {
+    if (isset($this->cancelUrl)) {
+      return $this->cancelUrl;
+    }
+
     $test = $this->_is_test ? '&action=preview' : '';
     if ($this->_component == "event") {
       return CRM_Utils_System::url('civicrm/event/register',
@@ -871,8 +993,10 @@ abstract class CRM_Core_Payment {
   protected function getNotifyUrl() {
     $url = CRM_Utils_System::url(
       'civicrm/payment/ipn/' . $this->_paymentProcessor['id'],
-      array(),
-      TRUE
+      $this->getNotifyUrlParameters(),
+      TRUE,
+      NULL,
+      FALSE
     );
     return (stristr($url, '.')) ? $url : '';
   }
@@ -1288,6 +1412,15 @@ INNER JOIN civicrm_contribution con ON ( con.contribution_recur_id = rec.id )
    * @return bool
    */
   public function supportsEditRecurringContribution() {
+    return FALSE;
+  }
+
+  /**
+   * Should a receipt be sent out for a pending payment.
+   *
+   * e.g for traditional pay later & ones with a delayed settlement a pending receipt makes sense.
+   */
+  public function isSendReceiptForPending() {
     return FALSE;
   }
 

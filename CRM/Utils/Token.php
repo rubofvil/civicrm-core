@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 
 /**
@@ -988,7 +988,7 @@ class CRM_Utils_Token {
     if (preg_match('/\{action\.subscribeUrl\}/', $str)) {
       $url = CRM_Utils_System::url('civicrm/mailing/subscribe',
         'reset=1',
-        TRUE, NULL, TRUE, TRUE
+        TRUE, NULL, FALSE, TRUE
       );
       $str = preg_replace('/\{action\.subscribeUrl\}/', $url, $str);
     }
@@ -998,9 +998,8 @@ class CRM_Utils_Token {
         $gid = substr($value, 21, -1);
         $url = CRM_Utils_System::url('civicrm/mailing/subscribe',
           "reset=1&gid={$gid}",
-          TRUE, NULL, TRUE, TRUE
+          TRUE, NULL, FALSE, TRUE
         );
-        $url = str_replace('&amp;', '&', $url);
         $str = preg_replace('/' . preg_quote($value) . '/', $url, $str);
       }
     }

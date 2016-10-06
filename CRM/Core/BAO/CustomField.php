@@ -3,7 +3,7 @@
   +--------------------------------------------------------------------+
   | CiviCRM version 4.7                                                |
   +--------------------------------------------------------------------+
-  | Copyright CiviCRM LLC (c) 2004-2015                                |
+  | Copyright CiviCRM LLC (c) 2004-2016                                |
   +--------------------------------------------------------------------+
   | This file is a part of CiviCRM.                                    |
   |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 
 /**
@@ -211,6 +211,7 @@ class CRM_Core_BAO_CustomField extends CRM_Core_DAO_CustomField {
         $optionGroup->name = "{$columnName}_" . date('YmdHis');
         $optionGroup->title = $params['label'];
         $optionGroup->is_active = 1;
+        $optionGroup->data_type = $params['data_type'];
         $optionGroup->save();
         $params['option_group_id'] = $optionGroup->id;
         if (!empty($params['option_value']) && is_array($params['option_value'])) {
@@ -864,6 +865,12 @@ class CRM_Core_BAO_CustomField extends CRM_Core_DAO_CustomField {
           $qf->add('text', $elementName . '_to', ts('To'), $field->attributes);
         }
         else {
+          if ($field->text_length) {
+            $field->attributes .= ' maxlength=' . $field->text_length;
+            if ($field->text_length < 20) {
+              $field->attributes .= ' size=' . $field->text_length;
+            }
+          }
           $element = $qf->add('text', $elementName, $label,
             $field->attributes,
             $useRequired && !$search
@@ -898,10 +905,15 @@ class CRM_Core_BAO_CustomField extends CRM_Core_DAO_CustomField {
 
       case 'Select Date':
         $attr = array('data-crm-custom' => $dataCrmCustomVal);
+        //CRM-18379: Fix for date range of 'Select Date' custom field when include in profile.
+        $minYear = isset($field->start_date_years) ? (date('Y') - $field->start_date_years) : NULL;
+        $maxYear = isset($field->end_date_years) ? (date('Y') + $field->end_date_years) : NULL;
+
         $params = array(
           'date' => $field->date_format,
-          'minDate' => isset($field->start_date_years) ? (date('Y') - $field->start_date_years) . '-01-01' : NULL,
-          'maxDate' => isset($field->end_date_years) ? (date('Y') + $field->end_date_years) . '-01-01' : NULL,
+          'minDate' => isset($minYear) ? $minYear . '-01-01' : NULL,
+          //CRM-18487 - max date should be the last date of the year.
+          'maxDate' => isset($maxYear) ? $maxYear . '-12-31' : NULL,
           'time' => $field->time_format ? $field->time_format * 12 : FALSE,
         );
         if ($field->is_search_range && $search) {
@@ -1002,7 +1014,7 @@ class CRM_Core_BAO_CustomField extends CRM_Core_DAO_CustomField {
         if ($field->text_length) {
           $attributes['maxlength'] = $field->text_length;
         }
-        $element = $qf->add('wysiwyg', $elementName, $label, $attributes, $search);
+        $element = $qf->add('wysiwyg', $elementName, $label, $attributes, $useRequired && !$search);
         break;
 
       case 'Autocomplete-Select':
@@ -1018,6 +1030,10 @@ class CRM_Core_BAO_CustomField extends CRM_Core_DAO_CustomField {
           }
         }
         if ($field->data_type == 'ContactReference') {
+          // break if contact does not have permission to access ContactReference
+          if (!CRM_Core_Permission::check('access contact reference fields')) {
+            break;
+          }
           $attributes['class'] = (isset($attributes['class']) ? $attributes['class'] . ' ' : '') . 'crm-form-contact-reference huge';
           $attributes['data-api-entity'] = 'Contact';
           $element = $qf->add('text', $elementName, $label, $attributes, $useRequired && !$search);
@@ -1230,14 +1246,30 @@ class CRM_Core_BAO_CustomField extends CRM_Core_DAO_CustomField {
           }
           else {
             // In other contexts show a paperclip icon
-            $icons = CRM_Core_BAO_File::paperIconAttachment('*', $value);
-            $display = $icons[$value];
+            if (CRM_Utils_Rule::integer($value)) {
+              $icons = CRM_Core_BAO_File::paperIconAttachment('*', $value);
+              $display = $icons[$value];
+            }
+            else {
+              //CRM-18396, if filename is passed instead
+              $display = $value;
+            }
           }
         }
         break;
 
       case 'TextArea':
         $display = nl2br($display);
+        break;
+
+      case 'Text':
+        if ($field['data_type'] == 'Money' && isset($value)) {
+          //$value can also be an array(while using IN operator from search builder or api).
+          foreach ((array) $value as $val) {
+            $disp[] = CRM_Utils_Money::format($val, NULL, NULL, TRUE);
+          }
+          $display = implode(', ', $disp);
+        }
         break;
     }
     return $display;
@@ -1619,14 +1651,27 @@ SELECT id
       $fName = $value['name'];
       $mimeType = $value['type'];
 
+      // If we are already passing the file id as a value then retrieve and set the file data
+      if (CRM_Utils_Rule::integer($value)) {
+        $fileDAO = new CRM_Core_DAO_File();
+        $fileDAO->id = $value;
+        $fileDAO->find(TRUE);
+        if ($fileDAO->N) {
+          $fileID = $value;
+          $fName = $fileDAO->uri;
+          $mimeType = $fileDAO->mime_type;
+        }
+      }
+
       $filename = pathinfo($fName, PATHINFO_BASENAME);
 
-      // rename this file to go into the secure directory
-      if (!rename($fName, $config->customFileUploadDir . $filename)) {
+      // rename this file to go into the secure directory only if
+      // user has uploaded new file not existing verfied on the basis of $fileID
+      if (empty($fileID) && !rename($fName, $config->customFileUploadDir . $filename)) {
         CRM_Core_Error::statusBounce(ts('Could not move custom file to custom upload directory'));
       }
 
-      if ($customValueId) {
+      if ($customValueId && empty($fileID)) {
         $query = "
 SELECT $columnName
   FROM $tableName
@@ -1643,7 +1688,7 @@ SELECT $columnName
 
       $fileDAO->uri = $filename;
       $fileDAO->mime_type = $mimeType;
-      $fileDAO->upload_date = date('Ymdhis');
+      $fileDAO->upload_date = date('YmdHis');
       $fileDAO->save();
       $fileId = $fileDAO->id;
       $value = $filename;

@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 
 /**
@@ -1189,7 +1189,7 @@ SELECT DISTINCT 'civicrm_contact', contact_a.id, contact_a.id, '$cacheKey', cont
   /**
    * @return CRM_Contact_BAO_Query
    */
-  public function &getQuery() {
+  public function getQuery() {
     return $this->_query;
   }
 
@@ -1222,7 +1222,7 @@ SELECT DISTINCT 'civicrm_contact', contact_a.id, contact_a.id, '$cacheKey', cont
     if (!$displayRelationshipType) {
       $query = new CRM_Contact_BAO_Query($params,
         CRM_Contact_BAO_Query::NO_RETURN_PROPERTIES,
-        array('contact_id'), FALSE, FALSE, 1,
+        NULL, FALSE, FALSE, 1,
         FALSE, TRUE, TRUE, NULL,
         $queryOperator
       );
@@ -1230,7 +1230,7 @@ SELECT DISTINCT 'civicrm_contact', contact_a.id, contact_a.id, '$cacheKey', cont
     else {
       $query = new CRM_Contact_BAO_Query($params,
         CRM_Contact_BAO_Query::NO_RETURN_PROPERTIES,
-        array('contact_id'), FALSE, FALSE, 1,
+        NULL, FALSE, FALSE, 1,
         FALSE, TRUE, TRUE, $displayRelationshipType,
         $queryOperator
       );

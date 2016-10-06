@@ -3,7 +3,7 @@
 +--------------------------------------------------------------------+
 | CiviCRM version 4.7                                                |
 +--------------------------------------------------------------------+
-| Copyright CiviCRM LLC (c) 2004-2015                                |
+| Copyright CiviCRM LLC (c) 2004-2016                                |
 +--------------------------------------------------------------------+
 | This file is a part of CiviCRM.                                    |
 |                                                                    |
@@ -30,12 +30,11 @@
  * File for the CRM_Contact_Imports_Parser_ContactTest class.
  */
 
-require_once 'CiviTest/CiviUnitTestCase.php';
-
 /**
  *  Test contact import parser.
  *
  * @package CiviCRM
+ * @group headless
  */
 class CRM_Contact_Imports_Parser_ContactTest extends CiviUnitTestCase {
   protected $_tablesToTruncate = array();

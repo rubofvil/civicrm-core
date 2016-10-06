@@ -77,7 +77,7 @@
   </foreignKey>
   <field>
     <name>financial_type_id</name>
-    <title>Financial Type ID</title>
+    <title>Financial Type</title>
     <export>false</export>
     <type>int unsigned</type>
     <comment>FK to Financial Type for (total_amount - non_deductible_amount).</comment>
@@ -178,6 +178,12 @@
      <type>Text</type>
    </html>
   </field>
+  <index>
+    <name>index_total_amount_receive_date</name>
+    <fieldName>total_amount</fieldName>
+    <fieldName>receive_date</fieldName>
+    <add>4.7</add>
+  </index>
   <field>
     <name>fee_amount</name>
     <type>decimal</type>
@@ -242,7 +248,7 @@
       <table>civicrm_currency</table>
       <keyColumn>name</keyColumn>
       <labelColumn>full_name</labelColumn>
-      <nameColumn>numeric_code</nameColumn>
+      <nameColumn>name</nameColumn>
     </pseudoconstant>
     <html>
       <type>Select</type>
@@ -309,6 +315,11 @@
       <type>Text</type>
     </html>
   </field>
+  <index>
+    <name>index_source</name>
+    <fieldName>source</fieldName>
+    <add>4.7</add>
+  </index>
   <field>
     <name>amount_level</name>
     <title>Amount Label</title>
@@ -464,6 +475,11 @@
       <type>Text</type>
     </html>
   </field>
+  <index>
+    <name>index_creditnote_id</name>
+    <fieldName>creditnote_id</fieldName>
+    <add>4.7</add>
+  </index>
   <field>
     <name>tax_amount</name>
     <title>Tax Amount</title>
@@ -483,4 +499,16 @@
     <key>id</key>
     <onDelete>SET NULL</onDelete>
   </foreignKey>
+  <field>
+    <name>revenue_recognition_date</name>
+    <type>datetime</type>
+    <import>true</import>
+    <headerPattern>/revenue(.?date)?/i</headerPattern>
+    <dataPattern>/^\d{4}-?\d{2}-?\d{2} ?(\d{2}:?\d{2}:?(\d{2})?)?$/</dataPattern>
+    <comment>Stores the date when revenue should be recognized.</comment>
+    <html>
+      <type>Select Date</type>
+    </html>
+    <add>4.7</add>
+  </field>
 </table>

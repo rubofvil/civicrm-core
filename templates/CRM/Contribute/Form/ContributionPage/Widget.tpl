@@ -2,7 +2,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -23,6 +23,7 @@
  | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
  +--------------------------------------------------------------------+
 *}
+{crmRegion name="contribute-form-contributionpage-widget-main"}
 <h3>{ts}Configure Widget{/ts}</h3>
 {if $showStatus}
 <div class="messages status no-popup">
@@ -136,3 +137,6 @@
     }
 </script>
 {/literal}
+{/crmRegion}
+{crmRegion name="contribute-form-contributionpage-widget-post}
+{/crmRegion}

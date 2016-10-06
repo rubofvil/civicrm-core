@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  * $Id$
  *
  */
@@ -411,12 +411,22 @@ class CRM_Core_Permission {
   }
 
   /**
-   * @param $module
+   * Checks that component is enabled and optionally that user has basic perm.
+   *
+   * @param string $module
+   *   Specifies the name of the CiviCRM component.
    * @param bool $checkPermission
+   *   Check not only that module is enabled, but that user has necessary
+   *   permission.
+   * @param bool $requireAllCasesPermOnCiviCase
+   *   Significant only if $module == CiviCase
+   *   Require "access all cases and activities", not just
+   *   "access my cases and activities".
    *
    * @return bool
+   *   Access to specified $module is granted.
    */
-  public static function access($module, $checkPermission = TRUE) {
+  public static function access($module, $checkPermission = TRUE, $requireAllCasesPermOnCiviCase = FALSE) {
     $config = CRM_Core_Config::singleton();
 
     if (!in_array($module, $config->enableComponents)) {
@@ -424,11 +434,17 @@ class CRM_Core_Permission {
     }
 
     if ($checkPermission) {
-      if ($module == 'CiviCase') {
-        return CRM_Case_BAO_Case::accessCiviCase();
-      }
-      else {
-        return CRM_Core_Permission::check("access $module");
+      switch ($module) {
+        case 'CiviCase':
+          $access_all_cases = CRM_Core_Permission::check("access all cases and activities");
+          $access_my_cases  = CRM_Core_Permission::check("access my cases and activities");
+          return $access_all_cases || (!$requireAllCasesPermOnCiviCase && $access_my_cases);
+
+        case 'CiviCampaign':
+          return CRM_Core_Permission::check("administer $module");
+
+        default:
+          return CRM_Core_Permission::check("access $module");
       }
     }
 
@@ -553,30 +569,18 @@ class CRM_Core_Permission {
 
   /**
    * @param bool $all
+   *   Include disabled components
    * @param bool $descriptions
-   *   whether to return descriptions
+   *   Whether to return descriptions
    *
    * @return array
    */
-  public static function &basicPermissions($all = FALSE, $descriptions = FALSE) {
-    if ($descriptions) {
-      static $permissionsDesc = NULL;
-
-      if (!$permissionsDesc) {
-        $permissionsDesc = self::assembleBasicPermissions($all, $descriptions);
-      }
-
-      return $permissionsDesc;
+  public static function basicPermissions($all = FALSE, $descriptions = FALSE) {
+    $cacheKey = implode('-', array($all, $descriptions));
+    if (empty(Civi::$statics[__CLASS__][__FUNCTION__][$cacheKey])) {
+      Civi::$statics[__CLASS__][__FUNCTION__][$cacheKey] = self::assembleBasicPermissions($all, $descriptions);
     }
-    else {
-      static $permissions = NULL;
-
-      if (!$permissions) {
-        $permissions = self::assembleBasicPermissions($all, $descriptions);
-      }
-
-      return $permissions;
-    }
+    return Civi::$statics[__CLASS__][__FUNCTION__][$cacheKey];
   }
 
   /**
@@ -701,6 +705,10 @@ class CRM_Core_Permission {
       'import contacts' => array(
         $prefix . ts('import contacts'),
         ts('Import contacts and activities'),
+      ),
+      'import SQL datasource' => array(
+        $prefix . ts('import SQL datasource'),
+        ts('When importing, consume data directly from a SQL datasource'),
       ),
       'edit groups' => array(
         $prefix . ts('edit groups'),
@@ -844,6 +852,14 @@ class CRM_Core_Permission {
       'view my invoices' => array(
         $prefix . ts('view my invoices'),
         ts('Allow users to view/ download their own invoices'),
+      ),
+      'edit api keys' => array(
+        $prefix . ts('edit api keys'),
+        ts('Edit API keys'),
+      ),
+      'edit own api keys' => array(
+        $prefix . ts('edit own api keys'),
+        ts('Edit user\'s own API keys'),
       ),
     );
 

@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -32,7 +32,7 @@
  * The default values in general, should reflect production values (minimizes chances of screwing up)
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 
 require_once 'Log.php';
@@ -411,6 +411,18 @@ class CRM_Core_Config extends CRM_Core_Config_MagicMerge {
 
     if ($path && preg_match('/^civicrm\/upgrade(\/.*)?$/', $path)) {
       return TRUE;
+    }
+
+    if ($path && preg_match('/^civicrm\/ajax\/l10n-js/', $path)
+      && !empty($_SERVER['HTTP_REFERER'])
+    ) {
+      $ref = parse_url($_SERVER['HTTP_REFERER']);
+      if (
+        (!empty($ref['path']) && preg_match('/civicrm\/upgrade/', $ref['path'])) ||
+        (!empty($ref['query']) && preg_match('/civicrm\/upgrade/', urldecode($ref['query'])))
+      ) {
+        return TRUE;
+      }
     }
 
     return FALSE;

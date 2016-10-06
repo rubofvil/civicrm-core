@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  * $Id$
  *
  */
@@ -71,10 +71,12 @@ class CRM_Dashlet_Page_GettingStarted extends CRM_Core_Page {
    */
   public function run() {
     $context = CRM_Utils_Request::retrieve('context', 'String', $this, FALSE, 'dashlet');
-    $this->assign('context', $context);
 
+    // Assign smarty variables.
+    $this->assign('context', $context);
     $this->assign('gettingStarted', $this->_gettingStarted());
 
+    // Use smarty to generate page.
     return parent::run();
   }
 

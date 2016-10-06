@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -29,7 +29,7 @@
  *
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 
 /**
@@ -146,6 +146,19 @@ class CRM_Event_Form_Registration_AdditionalParticipant extends CRM_Event_Form_R
     //load default campaign from page.
     if (array_key_exists('participant_campaign_id', $this->_fields)) {
       $defaults['participant_campaign_id'] = CRM_Utils_Array::value('campaign_id', $this->_values['event']);
+    }
+
+    //CRM-17865 set custom field defaults
+    if (!empty($this->_fields)) {
+      foreach ($this->_fields as $name => $field) {
+        if ($customFieldID = CRM_Core_BAO_CustomField::getKeyID($name)) {
+          if (!isset($defaults[$name])) {
+            CRM_Core_BAO_CustomField::setProfileDefaults($customFieldID, $name, $defaults,
+              NULL, CRM_Profile_Form::MODE_REGISTER
+            );
+          }
+        }
+      }
     }
 
     return $defaults;

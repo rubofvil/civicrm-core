@@ -3,7 +3,7 @@
  +--------------------------------------------------------------------+
  | CiviCRM version 4.7                                                |
  +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2015                                |
+ | Copyright CiviCRM LLC (c) 2004-2016                                |
  +--------------------------------------------------------------------+
  | This file is a part of CiviCRM.                                    |
  |                                                                    |
@@ -28,7 +28,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2015
+ * @copyright CiviCRM LLC (c) 2004-2016
  */
 
 /**
@@ -91,13 +91,18 @@ class CRM_Contact_BAO_SavedSearch extends CRM_Contact_DAO_SavedSearch {
    * @return array
    *   the values of the posted saved search used as default values in various Search Form
    */
-  public static function &getFormValues($id) {
+  public static function getFormValues($id) {
     $fv = CRM_Core_DAO::getFieldValue('CRM_Contact_DAO_SavedSearch', $id, 'form_values');
     $result = NULL;
     if ($fv) {
       // make sure u unserialize - since it's stored in serialized form
       $result = unserialize($fv);
     }
+
+    //CRM-19250: fetch the default date format to format mysql value as per CRM_Core_Error::addDate()
+    $dateFormat = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_PreferencesDate', 'searchDate', 'date_format', 'name');
+    $dateFormat = empty($dateFormat) ? CRM_Core_Config::singleton()->dateInputFormat : $dateFormat;
+    $dateFormat = CRM_Utils_Array::value($dateFormat, CRM_Core_SelectValues::datePluginToPHPFormats());
 
     $specialFields = array('contact_type', 'group', 'contact_tags', 'member_membership_type_id', 'member_status_id');
     foreach ($result as $element => $value) {
@@ -107,12 +112,27 @@ class CRM_Contact_BAO_SavedSearch extends CRM_Contact_DAO_SavedSearch {
         if (is_array($value) && in_array(key($value), CRM_Core_DAO::acceptedSQLOperators(), TRUE)) {
           $value = CRM_Utils_Array::value(key($value), $value);
         }
-        $result[$id] = $value;
+        if (strpos($id, '_date_low') !== FALSE || strpos($id, '_date_high') !== FALSE) {
+          $entityName = strstr($id, '_date', TRUE);
+          if (!empty($result['relative_dates']) && array_key_exists($entityName, $result['relative_dates'])) {
+            $result["{$entityName}_date_relative"] = $result['relative_dates'][$entityName];
+          }
+          else {
+            $result[$id] = date($dateFormat, strtotime($value));
+            $result["{$entityName}_date_relative"] = 0;
+          }
+        }
+        else {
+          $result[$id] = $value;
+        }
         unset($result[$element]);
         continue;
       }
       if (!empty($value) && is_array($value)) {
         if (in_array($element, $specialFields)) {
+          // Remove the element to minimise support for legacy formats. It is stored in $value
+          // so will be re-set with the right name.
+          unset($result[$element]);
           $element = str_replace('member_membership_type_id', 'membership_type_id', $element);
           $element = str_replace('member_status_id', 'membership_status_id', $element);
           CRM_Contact_BAO_Query::legacyConvertFormValues($element, $value);
@@ -371,6 +391,26 @@ LEFT JOIN civicrm_email ON (contact_a.id = civicrm_email.contact_id AND civicrm_
     }
     else {
       parent::assignTestValues($fieldName, $fieldDef, $counter);
+    }
+  }
+
+  /**
+   * Store relative dates in separate array format
+   *
+   * @param array $queryParams
+   * @param array $formValues
+   */
+  public static function saveRelativeDates(&$queryParams, $formValues) {
+    $relativeDates = array('relative_dates' => array());
+    foreach ($formValues as $id => $value) {
+      if (preg_match('/_date_relative$/', $id) && !empty($value)) {
+        $entityName = strstr($id, '_date', TRUE);
+        $relativeDates['relative_dates'][$entityName] = $value;
+      }
+    }
+    // merge with original queryParams if relative date value(s) found
+    if (count($relativeDates['relative_dates'])) {
+      $queryParams = array_merge($queryParams, $relativeDates);
     }
   }
 
