@@ -1,34 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 class CRM_Contact_BAO_ProximityQuery {
 
@@ -50,9 +34,24 @@ class CRM_Contact_BAO_ProximityQuery {
    * This version has been taken from Drupal's location module: http://drupal.org/project/location
    */
 
+  /**
+   * @var float
+   */
   static protected $_earthFlattening;
+
+  /**
+   * @var float
+   */
   static protected $_earthRadiusSemiMinor;
+
+  /**
+   * @var float
+   */
   static protected $_earthRadiusSemiMajor;
+
+  /**
+   * @var float
+   */
   static protected $_earthEccentricitySQ;
 
   public static function initialize() {
@@ -90,45 +89,6 @@ class CRM_Contact_BAO_ProximityQuery {
   }
 
   /**
-   * Convert longitude and latitude to earth-centered earth-fixed coordinates.
-   * X axis is 0 long, 0 lat; Y axis is 90 deg E; Z axis is north pole.
-   *
-   * @param float $longitude
-   * @param float $latitude
-   * @param float|int $height
-   *
-   * @return array
-   */
-  public static function earthXYZ($longitude, $latitude, $height = 0) {
-    $long = deg2rad($longitude);
-    $lat = deg2rad($latitude);
-
-    $cosLong = cos($long);
-    $cosLat = cos($lat);
-    $sinLong = sin($long);
-    $sinLat = sin($lat);
-
-    $radius = self::$_earthRadiusSemiMajor / sqrt(1 - self::$_earthEccentricitySQ * $sinLat * $sinLat);
-
-    $x = ($radius + $height) * $cosLat * $cosLong;
-    $y = ($radius + $height) * $cosLat * $sinLong;
-    $z = ($radius * (1 - self::$_earthEccentricitySQ) + $height) * $sinLat;
-
-    return array($x, $y, $z);
-  }
-
-  /**
-   * Convert a given angle to earth-surface distance.
-   *
-   * @param float $angle
-   * @param float $latitude
-   * @return float
-   */
-  public static function earthArcLength($angle, $latitude) {
-    return deg2rad($angle) * self::earthRadius($latitude);
-  }
-
-  /**
    * Estimate the min and max longitudes within $distance of a given location.
    *
    * @param float $longitude
@@ -154,10 +114,10 @@ class CRM_Contact_BAO_ProximityQuery {
       $maxLong = $maxLong - pi() * 2;
     }
 
-    return array(
+    return [
       rad2deg($minLong),
       rad2deg($maxLong),
-    );
+    ];
   }
 
   /**
@@ -198,10 +158,10 @@ class CRM_Contact_BAO_ProximityQuery {
       $maxLat = $rightangle;
     }
 
-    return array(
+    return [
       rad2deg($minLat),
       rad2deg($maxLat),
-    );
+    ];
   }
 
   /**
@@ -215,15 +175,12 @@ class CRM_Contact_BAO_ProximityQuery {
   public static function where($latitude, $longitude, $distance, $tablePrefix = 'civicrm_address') {
     self::initialize();
 
-    $params = array();
-    $clause = array();
-
-    list($minLongitude, $maxLongitude) = self::earthLongitudeRange($longitude, $latitude, $distance);
-    list($minLatitude, $maxLatitude) = self::earthLatitudeRange($longitude, $latitude, $distance);
+    [$minLongitude, $maxLongitude] = self::earthLongitudeRange($longitude, $latitude, $distance);
+    [$minLatitude, $maxLatitude] = self::earthLatitudeRange($longitude, $latitude, $distance);
 
     // DONT consider NAN values (which is returned by rad2deg php function)
     // for checking BETWEEN geo_code's criteria as it throws obvious 'NAN' field not found DB: Error
-    $geoCodeWhere = array();
+    $geoCodeWhere = [];
     if (!is_nan($minLatitude)) {
       $geoCodeWhere[] = "{$tablePrefix}.geo_code_1  >= $minLatitude ";
     }
@@ -261,10 +218,10 @@ ACOS(
    * @throws Exception
    */
   public static function process(&$query, &$values) {
-    list($name, $op, $distance, $grouping, $wildcard) = $values;
+    [$name, $op, $distance, $grouping, $wildcard] = $values;
 
     // also get values array for all address related info
-    $proximityVars = array(
+    $proximityVars = [
       'street_address' => 1,
       'city' => 1,
       'postal_code' => 1,
@@ -273,15 +230,15 @@ ACOS(
       'state_province' => 0,
       'country' => 0,
       'distance_unit' => 0,
-    );
+      'geo_code_1' => 0,
+      'geo_code_2' => 0,
+    ];
 
-    $proximityAddress = array();
-    $qill = array();
+    $proximityAddress = [];
+    $qill = [];
     foreach ($proximityVars as $var => $recordQill) {
       $proximityValues = $query->getWhereValues("prox_{$var}", $grouping);
-      if (!empty($proximityValues) &&
-        !empty($proximityValues[2])
-      ) {
+      if (!empty($proximityValues[2])) {
         $proximityAddress[$var] = $proximityValues[2];
         if ($recordQill) {
           $qill[] = $proximityValues[2];
@@ -327,24 +284,23 @@ ACOS(
     }
 
     $qill = ts('Proximity search to a distance of %1 from %2',
-      array(
+      [
         1 => $qillUnits,
         2 => implode(', ', $qill),
-      )
+      ]
     );
-
-    $fnName = isset($config->geocodeMethod) ? $config->geocodeMethod : NULL;
-    if (empty($fnName)) {
-      CRM_Core_Error::fatal(ts('Proximity searching requires you to set a valid geocoding provider'));
-    }
 
     $query->_tables['civicrm_address'] = $query->_whereTables['civicrm_address'] = 1;
 
-    require_once str_replace('_', DIRECTORY_SEPARATOR, $fnName) . '.php';
-    $fnName::format($proximityAddress);
+    if (empty($proximityAddress['geo_code_1']) || empty($proximityAddress['geo_code_2'])) {
+      if (!CRM_Core_BAO_Address::addGeocoderData($proximityAddress)) {
+        throw new CRM_Core_Exception(ts('Proximity searching requires you to set a valid geocoding provider'));
+      }
+    }
+
     if (
-      !is_numeric(CRM_Utils_Array::value('geo_code_1', $proximityAddress)) ||
-      !is_numeric(CRM_Utils_Array::value('geo_code_2', $proximityAddress))
+      !is_numeric($proximityAddress['geo_code_1'] ?? '') ||
+      !is_numeric($proximityAddress['geo_code_2'] ?? '')
     ) {
       // we are setting the where clause to 0 here, so we wont return anything
       $qill .= ': ' . ts('We could not geocode the destination address.');
@@ -365,15 +321,14 @@ ACOS(
 
   /**
    * @param array $input
-   * retun void
    *
-   * @return null
+   * @return void
    */
   public static function fixInputParams(&$input) {
     foreach ($input as $param) {
-      if (CRM_Utils_Array::value('0', $param) == 'prox_distance') {
+      if (($param['0'] ?? NULL) == 'prox_distance') {
         // add prox_ prefix to these
-        $param_alter = array('street_address', 'city', 'postal_code', 'state_province', 'country');
+        $param_alter = ['street_address', 'city', 'postal_code', 'state_province', 'country'];
 
         foreach ($input as $key => $_param) {
           if (in_array($_param[0], $param_alter)) {
@@ -390,7 +345,6 @@ ACOS(
             }
           }
         }
-        return NULL;
       }
     }
   }

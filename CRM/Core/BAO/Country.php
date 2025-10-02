@@ -1,36 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
- * $Id$
- *
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -47,7 +29,7 @@ class CRM_Core_BAO_Country extends CRM_Core_DAO_Country {
     if (!isset(Civi::$statics[__CLASS__]['provinceLimit'])) {
       $countryIsoCodes = CRM_Core_PseudoConstant::countryIsoCode();
       $provinceLimit = Civi::settings()->get('provinceLimit');
-      $country = array();
+      $country = [];
       if (is_array($provinceLimit)) {
         foreach ($provinceLimit as $val) {
           // CRM-12007
@@ -74,8 +56,8 @@ class CRM_Core_BAO_Country extends CRM_Core_DAO_Country {
   public static function countryLimit() {
     if (!isset(Civi::$statics[__CLASS__]['countryLimit'])) {
       $countryIsoCodes = CRM_Core_PseudoConstant::countryIsoCode();
-      $country = array();
-      $countryLimit = Civi::settings()->get('countryLimit');
+      $country = [];
+      $countryLimit = Civi::settings()->get('countryLimit') ?? [];
       if (is_array($countryLimit)) {
         foreach ($countryLimit as $val) {
           // CRM-12007
@@ -105,11 +87,64 @@ class CRM_Core_BAO_Country extends CRM_Core_DAO_Country {
 
     if (!empty($defaultContactCountry) && !$cachedContactCountry) {
       $countryIsoCodes = CRM_Core_PseudoConstant::countryIsoCode();
-      $cachedContactCountry = CRM_Utils_Array::value($defaultContactCountry,
-        $countryIsoCodes
-      );
+      $cachedContactCountry = $countryIsoCodes[$defaultContactCountry] ?? NULL;
     }
     return $cachedContactCountry;
+  }
+
+  /**
+   * Provide list of Pinned countries.
+   *
+   * @param $availableCountries
+   * @return array
+   */
+  public static function pinnedContactCountries($availableCountries) {
+    if (!isset(Civi::$statics[__CLASS__]['cachedPinnedContactCountries'])) {
+      $pinnedContactCountries = Civi::settings()->get('pinnedContactCountries');
+      $pinnedCountries = [];
+      if (!empty($pinnedContactCountries)) {
+        foreach ($pinnedContactCountries as $pinnedContactCountry) {
+          // pinned country must exist in available country list.
+          if (array_key_exists($pinnedContactCountry, $availableCountries)) {
+            $pinnedCountries[$pinnedContactCountry] = $availableCountries[$pinnedContactCountry];
+          }
+        }
+      }
+      Civi::$statics[__CLASS__]['cachedPinnedContactCountries'] = $pinnedCountries;
+    }
+
+    return Civi::$statics[__CLASS__]['cachedPinnedContactCountries'];
+  }
+
+  /**
+   * Provide sorted list of countries with default country with first position
+   * then Pinned countries then rest of countries.
+   *
+   * @param $availableCountries
+   * @return array
+   */
+  public static function _defaultContactCountries($availableCountries) {
+    // localise the country names if in an non-en_US locale
+    $tsLocale = CRM_Core_I18n::getLocale();
+    if ($tsLocale != '' and $tsLocale != 'en_US') {
+      $i18n = CRM_Core_I18n::singleton();
+      $i18n->localizeArray($availableCountries, [
+        'context' => 'country',
+      ]);
+      $availableCountries = CRM_Utils_Array::asort($availableCountries);
+    }
+    $pinnedContactCountries = CRM_Core_BAO_Country::pinnedContactCountries($availableCountries);
+    // if default country is set, percolate it to the top, then pinned countries and then remaining available countries.
+    if ($defaultContactCountry = Civi::settings()->get('defaultContactCountry')) {
+      $default = [$defaultContactCountry => $availableCountries[$defaultContactCountry] ?? NULL];
+      $availableCountries = $default + $pinnedContactCountries + $availableCountries;
+    }
+    elseif (!empty($pinnedContactCountries)) {
+      // if default country is missing then use only pinned countries at the top then rest of the countries.
+      $availableCountries = $pinnedContactCountries + $availableCountries;
+    }
+
+    return $availableCountries;
   }
 
   /**
@@ -137,13 +172,10 @@ class CRM_Core_BAO_Country extends CRM_Core_DAO_Country {
   public static function defaultCurrencySymbol($defaultCurrency = NULL) {
     static $cachedSymbol = NULL;
     if (!$cachedSymbol || $defaultCurrency) {
-      $currency = $defaultCurrency ? $defaultCurrency : Civi::settings()->get('defaultCurrency');
+      $currency = $defaultCurrency ?: Civi::settings()->get('defaultCurrency');
       if ($currency) {
-        $currencySymbols = CRM_Core_PseudoConstant::get('CRM_Contribute_DAO_Contribution', 'currency', array(
-          'labelColumn' => 'symbol',
-          'orderColumn' => TRUE,
-        ));
-        $cachedSymbol = CRM_Utils_Array::value($currency, $currencySymbols, '');
+        $currencySymbols = CRM_Contribute_DAO_Contribution::buildOptions('currency', 'abbreviate');
+        $cachedSymbol = $currencySymbols[$currency] ?? '';
       }
       else {
         $cachedSymbol = '$';
@@ -152,9 +184,15 @@ class CRM_Core_BAO_Country extends CRM_Core_DAO_Country {
     return $cachedSymbol;
   }
 
+  /**
+   * Get the default currency symbol.
+   *
+   * @param string $k Unused variable
+   *
+   * @return string
+   */
   public static function getDefaultCurrencySymbol($k = NULL) {
-    $config = CRM_Core_Config::singleton();
-    return $config->defaultCurrencySymbol(Civi::settings()->get('defaultCurrency'));
+    return CRM_Core_BAO_Country::defaultCurrencySymbol(\Civi::settings()->get('defaultCurrency'));
   }
 
 }

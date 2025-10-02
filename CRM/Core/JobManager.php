@@ -1,62 +1,64 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
+
+use Civi\Api4\Job;
 
 /**
  * This interface defines methods that need to be implemented
  * by every scheduled job (cron task) in CiviCRM.
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 class CRM_Core_JobManager {
 
   /**
-   * @var array ($id => CRM_Core_ScheduledJob)
+   * @var \Psr\Log\LoggerInterface
    */
-  var $jobs = NULL;
+  protected $logger;
+
+  /**
+   * Jobs.
+   *
+   * Format is ($id => CRM_Core_ScheduledJob).
+   *
+   * @var CRM_Core_ScheduledJob[]
+   * @deprecated
+   */
+  public $jobs = NULL;
 
   /**
    * @var CRM_Core_ScheduledJob
    */
-  var $currentJob = NULL;
-
-  var $singleRunParams = array();
-
-  var $_source = NULL;
-
+  public $currentJob = NULL;
 
   /**
-   * Class constructor.
+   * @var array
+   *
+   * @fixme How are these set? What do they do?
    */
-  public function __construct() {
-    $config = CRM_Core_Config::singleton();
-    $config->fatalErrorHandler = 'CRM_Core_JobManager_scheduledJobFatalErrorHandler';
+  public $singleRunParams = [];
 
-    $this->jobs = $this->_getJobs();
+  /**
+   * @var string|null
+   *
+   * @fixme Looks like this is only used by "singleRun"
+   */
+  public $_source = NULL;
+
+  /**
+   * @param \Psr\Log\LoggerInterface|null $logger
+   */
+  public function __construct($logger = NULL) {
+    $this->logger = $logger ?: new CRM_Core_JobLogger();
   }
 
   /**
@@ -64,36 +66,59 @@ class CRM_Core_JobManager {
    */
   public function execute($auth = TRUE) {
 
-    $this->logEntry('Starting scheduled jobs execution');
+    $this->logger->info('Starting scheduled jobs execution', $this->createLogContext());
 
     if ($auth && !CRM_Utils_System::authenticateKey(TRUE)) {
-      $this->logEntry('Could not authenticate the site key.');
+      $this->logger->error('Could not authenticate the site key.', $this->createLogContext());
     }
     require_once 'api/api.php';
 
     // it's not asynchronous at this stage
     CRM_Utils_Hook::cron($this);
-    foreach ($this->jobs as $job) {
-      if ($job->is_active) {
-        if ($job->needsRunning()) {
-          $this->executeJob($job);
-        }
+
+    // Get a list of the jobs that have completed previously
+    $successfulJobs = Job::get(FALSE)
+      ->addWhere('is_active', '=', TRUE)
+      ->addClause('OR', ['last_run', 'IS NULL'], ['last_run', '<=', 'last_run_end', TRUE])
+      ->addOrderBy('name', 'ASC')
+      ->execute()
+      ->indexBy('id')
+      ->getArrayCopy();
+
+    // Get a list of jobs that have not completed previously.
+    // This could be because they are a new job that has not yet run or a job that is fatally crashing (eg. OOM).
+    // If last_run is NULL the job has never run and will be selected above so exclude it here
+    // If last_run_end is NULL the job has never completed successfully.
+    // If last_run_end is < last_run job has completed successfully in the past but is now failing to complete.
+    $maybeUnsuccessfulJobs = Job::get(FALSE)
+      ->addWhere('is_active', '=', TRUE)
+      ->addWhere('last_run', 'IS NOT NULL')
+      ->addClause('OR', ['last_run_end', 'IS NULL'], ['last_run', '>', 'last_run_end', TRUE])
+      ->addOrderBy('name', 'ASC')
+      ->execute()
+      ->indexBy('id')
+      ->getArrayCopy();
+
+    $jobs = array_merge($successfulJobs, $maybeUnsuccessfulJobs);
+    foreach ($jobs as $job) {
+      $temp = ['class' => NULL, 'parameters' => NULL, 'last_run' => NULL];
+      $scheduledJobParams = array_merge($temp, $job);
+      $jobDAO = new CRM_Core_ScheduledJob($scheduledJobParams);
+
+      if ($jobDAO->needsRunning()) {
+        $this->executeJob($jobDAO);
       }
     }
-    $this->logEntry('Finishing scheduled jobs execution.');
+
+    $this->logger->info('Finishing scheduled jobs execution.', $this->createLogContext());
 
     // Set last cron date for the status check
-    $statusPref = array(
+    $statusPref = [
       'name' => 'checkLastCron',
       'check_info' => gmdate('U'),
-    );
+      'prefs' => '',
+    ];
     CRM_Core_BAO_StatusPreference::create($statusPref);
-  }
-
-  /**
-   * Class destructor.
-   */
-  public function __destruct() {
   }
 
   /**
@@ -101,7 +126,7 @@ class CRM_Core_JobManager {
    * @param $action
    */
   public function executeJobByAction($entity, $action) {
-    $job = $this->_getJob(NULL, $entity, $action);
+    $job = $this->getJob(NULL, $entity, $action);
     $this->executeJob($job);
   }
 
@@ -109,7 +134,7 @@ class CRM_Core_JobManager {
    * @param int $id
    */
   public function executeJobById($id) {
-    $job = $this->_getJob($id);
+    $job = $this->getJob($id);
     $this->executeJob($job);
   }
 
@@ -118,7 +143,18 @@ class CRM_Core_JobManager {
    */
   public function executeJob($job) {
     $this->currentJob = $job;
-    $this->logEntry('Starting execution of ' . $job->name);
+
+    // CRM-18231 check if non-production environment.
+    try {
+      CRM_Core_BAO_Setting::isAPIJobAllowedToRun($job->apiParams);
+    }
+    catch (Exception $e) {
+      $this->logger->error('Error while executing ' . $job->name . ': ' . $e->getMessage(), $this->createLogContext());
+      $this->currentJob = FALSE;
+      return FALSE;
+    }
+
+    $this->logger->info('Starting execution of ' . $job->name, $this->createLogContext());
     $job->saveLastRun();
 
     $singleRunParamsKey = strtolower($job->api_entity . '_' . $job->api_action);
@@ -130,35 +166,21 @@ class CRM_Core_JobManager {
       $params = $job->apiParams;
     }
 
+    CRM_Utils_Hook::preJob($job, $params);
     try {
       $result = civicrm_api($job->api_entity, $job->api_action, $params);
     }
-    catch (Exception$e) {
-      $this->logEntry('Error while executing ' . $job->name . ': ' . $e->getMessage());
+    catch (\Throwable $e) {
+      $this->logger->error('Error while executing ' . $job->name . ': ' . $e->getMessage(), $this->createLogContext());
+      $result = $e;
     }
-    $this->logEntry('Finished execution of ' . $job->name . ' with result: ' . $this->_apiResultToMessage($result));
+    CRM_Utils_Hook::postJob($job, $params, $result);
+    $logLevel = ($result instanceof \Throwable || !empty($result['is_error'])) ? \Psr\Log\LogLevel::ERROR : \Psr\Log\LogLevel::INFO;
+    $this->logger->log($logLevel, 'Finished execution of ' . $job->name . ' with result: ' . $this->apiResultToMessage($result), $this->createLogContext());
     $this->currentJob = FALSE;
-  }
 
-  /**
-   * Retrieves the list of jobs from the database,
-   * populates class param.
-   *
-   * @return array
-   *   ($id => CRM_Core_ScheduledJob)
-   */
-  private function _getJobs() {
-    $jobs = array();
-    $dao = new CRM_Core_DAO_Job();
-    $dao->orderBy('name');
-    $dao->domain_id = CRM_Core_Config::domainID();
-    $dao->find();
-    while ($dao->fetch()) {
-      $temp = array();
-      CRM_Core_DAO::storeValues($dao, $temp);
-      $jobs[$dao->id] = new CRM_Core_ScheduledJob($temp);
-    }
-    return $jobs;
+    // Save the job last run end date (if this doesn't get written we know the job crashed and was not caught (eg. OOM).
+    $job->saveLastRunEnd();
   }
 
   /**
@@ -172,9 +194,9 @@ class CRM_Core_JobManager {
    * @return CRM_Core_ScheduledJob
    * @throws Exception
    */
-  private function _getJob($id = NULL, $entity = NULL, $action = NULL) {
+  private function getJob($id = NULL, $entity = NULL, $action = NULL) {
     if (is_null($id) && is_null($action)) {
-      CRM_Core_Error::fatal('You need to provide either id or name to use this method');
+      throw new CRM_Core_Exception('You need to provide either id or name to use this method');
     }
     $dao = new CRM_Core_DAO_Job();
     $dao->id = $id;
@@ -192,7 +214,7 @@ class CRM_Core_JobManager {
    * @param $entity
    * @param $job
    * @param array $params
-   * @param null $source
+   * @param string|null $source
    */
   public function setSingleRunParams($entity, $job, $params, $source = NULL) {
     $this->_source = $source;
@@ -202,39 +224,38 @@ class CRM_Core_JobManager {
   }
 
   /**
+   * Add a log entry.
+   *
+   * NOTE: This signature has been around forever, and it's used a little bit in contrib.
+   * However, you will likely find it more meaningful to call the $logger, as in:
+   *
+   *   $this->logger->warning("Careful!", $this->createLogContext());
+   *   $this->logger->error("Uh oh!", $this->createLogContext());
+   *
    * @param string $message
+   * @deprecated
    */
   public function logEntry($message) {
-    $domainID = CRM_Core_Config::domainID();
-    $dao = new CRM_Core_DAO_JobLog();
+    $this->logger->log(Psr\Log\LogLevel::INFO, $message, $this->createLogContext());
+  }
 
-    $dao->domain_id = $domainID;
-    $dao->description = substr($message, 0, 235);
-    if (strlen($message) > 235) {
-      $dao->description .= " (...)";
-    }
+  private function createLogContext($init = []): array {
+    $context = $init;
     if ($this->currentJob) {
-      $dao->job_id = $this->currentJob->id;
-      $dao->name = $this->currentJob->name;
-      $dao->command = ts("Entity:") . " " . $this->currentJob->api_entity . " " . ts("Action:") . " " . $this->currentJob->api_action;
-      $data = "";
-      if (!empty($this->currentJob->parameters)) {
-        $data .= "\n\nParameters raw (from db settings): \n" . $this->currentJob->parameters;
-      }
+      $context['job'] = $this->currentJob;
       $singleRunParamsKey = strtolower($this->currentJob->api_entity . '_' . $this->currentJob->api_action);
       if (array_key_exists($singleRunParamsKey, $this->singleRunParams)) {
-        $data .= "\n\nParameters raw (" . $this->_source . "): \n" . serialize($this->singleRunParams[$singleRunParamsKey]);
-        $data .= "\n\nParameters parsed (and passed to API method): \n" . serialize($this->singleRunParams[$singleRunParamsKey]);
+        $context['singleRun']['parameters'] = $this->singleRunParams[$singleRunParamsKey];
+        $context['effective']['parameters'] = $this->singleRunParams[$singleRunParamsKey];
       }
       else {
-        $data .= "\n\nParameters parsed (and passed to API method): \n" . serialize($this->currentJob->apiParams);
+        $context['effective']['parameters'] = $this->currentJob->apiParams;
       }
-
-      $data .= "\n\nFull message: \n" . $message;
-
-      $dao->data = $data;
     }
-    $dao->save();
+    if ($this->_source) {
+      $context['source'] = $this->_source;
+    }
+    return $context;
   }
 
   /**
@@ -242,27 +263,27 @@ class CRM_Core_JobManager {
    *
    * @return string
    */
-  private function _apiResultToMessage($apiResult) {
-    $status = $apiResult['is_error'] ? ts('Failure') : ts('Success');
-    $msg = CRM_Utils_Array::value('error_message', $apiResult, 'empty error_message!');
-    $vals = CRM_Utils_Array::value('values', $apiResult, 'empty values!');
+  private function apiResultToMessage($apiResult) {
+    if ($apiResult instanceof \Throwable) {
+      $status = ts('Failure');
+      $msg = $apiResult->getMessage();
+      $vals = 'empty values!';
+      $is_error = TRUE;
+    }
+    else {
+      $status = ($apiResult['is_error'] ?? FALSE) ? ts('Failure') : ts('Success');
+      $msg = $apiResult['error_message'] ?? 'empty error_message!';
+      $vals = $apiResult['values'] ?? 'empty values!';
+      $is_error = ($apiResult['is_error'] ?? FALSE);
+    }
     if (is_array($msg)) {
       $msg = serialize($msg);
     }
     if (is_array($vals)) {
       $vals = serialize($vals);
     }
-    $message = $apiResult['is_error'] ? ', Error message: ' . $msg : " (" . $vals . ")";
+    $message = $is_error ? ', Error message: ' . $msg : " (" . $vals . ")";
     return $status . $message;
   }
 
-}
-
-/**
- * @param $message
- *
- * @throws Exception
- */
-function CRM_Core_JobManager_scheduledJobFatalErrorHandler($message) {
-  throw new Exception("{$message['message']}: {$message['code']}");
 }

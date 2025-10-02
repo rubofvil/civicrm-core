@@ -1,34 +1,19 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
+use Civi\Api4\Event;
 
 /**
  * This class generates form components for processing Event.
@@ -42,19 +27,25 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
    */
   protected $_showHide;
 
-  protected $_profilePostMultiple = array();
-  protected $_profilePostMultipleAdd = array();
+  protected $_profilePostMultiple = [];
+  protected $_profilePostMultipleAdd = [];
+
+  protected $_addProfileBottom;
+  protected $_profileBottomNum;
+  protected $_addProfileBottomAdd;
+  protected $_profileBottomNumAdd;
 
   /**
    * Set variables up before form is built.
    */
   public function preProcess() {
-    $this->_addProfileBottom = CRM_Utils_Array::value('addProfileBottom', $_GET, FALSE);
-    $this->_profileBottomNum = CRM_Utils_Array::value('addProfileNum', $_GET, 0);
-    $this->_addProfileBottomAdd = CRM_Utils_Array::value('addProfileBottomAdd', $_GET, FALSE);
-    $this->_profileBottomNumAdd = CRM_Utils_Array::value('addProfileNumAdd', $_GET, 0);
+    $this->_addProfileBottom = $_GET['addProfileBottom'] ?? FALSE;
+    $this->_profileBottomNum = $_GET['addProfileNum'] ?? 0;
+    $this->_addProfileBottomAdd = $_GET['addProfileBottomAdd'] ?? FALSE;
+    $this->_profileBottomNumAdd = $_GET['addProfileNumAdd'] ?? 0;
 
     parent::preProcess();
+    $this->setSelectedChild('registration');
 
     $this->assign('addProfileBottom', $this->_addProfileBottom);
     $this->assign('profileBottomNum', $this->_profileBottomNum);
@@ -62,7 +53,8 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
     $urlParams = "id={$this->_id}&addProfileBottom=1&qfKey={$this->controller->_key}";
     $this->assign('addProfileParams', $urlParams);
 
-    if ($addProfileBottom = CRM_Utils_Array::value('custom_post_id_multiple', $_POST)) {
+    $addProfileBottom = $_POST['custom_post_id_multiple'] ?? NULL;
+    if ($addProfileBottom) {
       foreach (array_keys($addProfileBottom) as $profileNum) {
         self::buildMultipleProfileBottom($this, $profileNum);
       }
@@ -74,9 +66,10 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
     $urlParamsAdd = "id={$this->_id}&addProfileBottomAdd=1&qfKey={$this->controller->_key}";
     $this->assign('addProfileParamsAdd', $urlParamsAdd);
 
-    if ($addProfileBottomAdd = CRM_Utils_Array::value('additional_custom_post_id_multiple', $_POST)) {
+    $addProfileBottomAdd = $_POST['additional_custom_post_id_multiple'] ?? NULL;
+    if ($addProfileBottomAdd) {
       foreach (array_keys($addProfileBottomAdd) as $profileNum) {
-        self::buildMultipleProfileBottom($this, $profileNum, 'additional_', ts('Profile for Additional Participants'));
+        self::buildMultipleProfileBottom($this, $profileNum, 'additional_', ts('Bottom Profile for Additional Participants'));
       }
     }
   }
@@ -96,28 +89,26 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
 
     $this->setShowHide($defaults);
     if (isset($eventId)) {
-      $params = array('id' => $eventId);
+      $params = ['id' => $eventId];
       CRM_Event_BAO_Event::retrieve($params, $defaults);
 
-      $ufJoinParams = array(
+      $ufJoinParams = [
         'entity_table' => 'civicrm_event',
         'module' => 'CiviEvent',
         'entity_id' => $eventId,
-      );
+      ];
 
-      list($defaults['custom_pre_id'],
-        $defaults['custom_post']
-        ) = CRM_Core_BAO_UFJoin::getUFGroupIds($ufJoinParams);
+      [$defaults['custom_pre_id'], $defaults['custom_post']] = CRM_Core_BAO_UFJoin::getUFGroupIds($ufJoinParams);
 
       // Get the id for the event registration profile
-      $eventRegistrationIdParams = $eventRegistrationIdDefaults = array(
+      $eventRegistrationIdParams = $eventRegistrationIdDefaults = [
         'name' => 'event_registration',
-      );
+      ];
       CRM_Core_BAO_UFGroup::retrieve($eventRegistrationIdParams, $eventRegistrationIdDefaults);
 
       // Set event registration as the default profile if none selected
       if (!$defaults['custom_pre_id'] && count($defaults['custom_post']) == 0) {
-        $defaults['custom_pre_id'] = CRM_Utils_Array::value('id', $eventRegistrationIdDefaults);
+        $defaults['custom_pre_id'] = $eventRegistrationIdDefaults['id'] ?? NULL;
       }
       if (isset($defaults['custom_post']) && is_numeric($defaults['custom_post'])) {
         $defaults['custom_post_id'] = $defaults['custom_post'];
@@ -131,8 +122,7 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
           $defaults["custom_post_id_multiple[$key]"] = $value;
         }
       }
-
-      $this->assign('profilePostMultiple', CRM_Utils_Array::value('custom_post', $defaults));
+      $this->assign('profilePostMultiple', $defaults['custom_post'] ?? NULL);
 
       // CRM-17745: Make max additional participants configurable
       if (empty($defaults['max_additional_participants'])) {
@@ -141,16 +131,13 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
 
       if (!empty($defaults['is_multiple_registrations'])) {
         // CRM-4377: set additional participants’ profiles – set to ‘none’ if explicitly unset (non-active)
-
-        $ufJoinAddParams = array(
+        $ufJoinAddParams = [
           'entity_table' => 'civicrm_event',
           'module' => 'CiviEvent_Additional',
           'entity_id' => $eventId,
-        );
+        ];
 
-        list($defaults['additional_custom_pre_id'],
-          $defaults['additional_custom_post']
-          ) = CRM_Core_BAO_UFJoin::getUFGroupIds($ufJoinAddParams);
+        [$defaults['additional_custom_pre_id'], $defaults['additional_custom_post']] = CRM_Core_BAO_UFJoin::getUFGroupIds($ufJoinAddParams);
 
         if (isset($defaults['additional_custom_post']) && is_numeric($defaults['additional_custom_post'])) {
           $defaults['additional_custom_post_id'] = $defaults['additional_custom_post'];
@@ -161,11 +148,15 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
 
           $this->_profilePostMultipleAdd = $defaults['additional_custom_post'];
           foreach ($defaults['additional_custom_post'] as $key => $value) {
-            self::buildMultipleProfileBottom($this, $key, 'additional_', ts('Profile for Additional Participants'));
+            self::buildMultipleProfileBottom($this, $key, 'additional_', ts('Bottom Profile for Additional Participants'));
             $defaults["additional_custom_post_id_multiple[$key]"] = $value;
           }
         }
-        $this->assign('profilePostMultipleAdd', CRM_Utils_Array::value('additional_custom_post', $defaults));
+        $this->assign('profilePostMultipleAdd', $defaults['additional_custom_post'] ?? []);
+      }
+      else {
+        // Avoid PHP notices in the template
+        $this->assign('profilePostMultipleAdd', []);
       }
     }
     else {
@@ -173,20 +164,10 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
     }
 
     // provide defaults for required fields if empty (and as a 'hint' for approval message field)
-    $defaults['registration_link_text'] = CRM_Utils_Array::value('registration_link_text', $defaults, ts('Register Now'));
-    $defaults['confirm_title'] = CRM_Utils_Array::value('confirm_title', $defaults, ts('Confirm Your Registration Information'));
-    $defaults['thankyou_title'] = CRM_Utils_Array::value('thankyou_title', $defaults, ts('Thank You for Registering'));
-    $defaults['approval_req_text'] = CRM_Utils_Array::value('approval_req_text', $defaults, ts('Participation in this event requires approval. Submit your registration request here. Once approved, you will receive an email with a link to a web page where you can complete the registration process.'));
-
-    if (!empty($defaults['registration_start_date'])) {
-      list($defaults['registration_start_date'], $defaults['registration_start_date_time'])
-        = CRM_Utils_Date::setDateDefaults($defaults['registration_start_date'], 'activityDateTime');
-    }
-
-    if (!empty($defaults['registration_end_date'])) {
-      list($defaults['registration_end_date'], $defaults['registration_end_date_time'])
-        = CRM_Utils_Date::setDateDefaults($defaults['registration_end_date'], 'activityDateTime');
-    }
+    $defaults['registration_link_text'] ??= ts('Register Now');
+    $defaults['confirm_title'] ??= ts('Confirm Your Registration Information');
+    $defaults['thankyou_title'] ??= ts('Thank You for Registering');
+    $defaults['approval_req_text'] ??= ts('Participation in this event requires approval. Submit your registration request here. Once approved, you will receive an email with a link to a web page where you can complete the registration process.');
 
     return $defaults;
   }
@@ -200,7 +181,7 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
    * @return void
    */
   public function setShowHide($defaults) {
-    $this->_showHide = new CRM_Core_ShowHideBlocks(array('registration' => 1),
+    $this->_showHide = new CRM_Core_ShowHideBlocks(['registration' => 1],
       ''
     );
     if (empty($defaults)) {
@@ -227,7 +208,7 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
     }
 
     if ($this->_addProfileBottomAdd) {
-      return self::buildMultipleProfileBottom($this, $this->_profileBottomNumAdd, 'additional_', ts('Profile for Additional Participants'));
+      return self::buildMultipleProfileBottom($this, $this->_profileBottomNumAdd, 'additional_', ts('Bottom Profile for Additional Participants'));
     }
 
     $this->applyFilter('__ALL__', 'trim');
@@ -237,28 +218,28 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
       'is_online_registration',
       ts('Allow Online Registration'),
       NULL,
-      array(
+      [
         'onclick' => "return showHideByValue('is_online_registration'," .
         "''," .
         "'registration_blocks'," .
         "'block'," .
         "'radio'," .
         "false );",
-      )
+      ]
     );
 
     $this->add('text', 'registration_link_text', ts('Registration Link Text'));
 
     if (!$this->_isTemplate) {
-      $this->addDateTime('registration_start_date', ts('Registration Start Date'), FALSE, array('formatType' => 'activityDateTime'));
-      $this->addDateTime('registration_end_date', ts('Registration End Date'), FALSE, array('formatType' => 'activityDateTime'));
+      $this->add('datepicker', 'registration_start_date', ts('Registration Start Date'), [], FALSE, ['time' => TRUE]);
+      $this->add('datepicker', 'registration_end_date', ts('Registration End Date'), [], FALSE, ['time' => TRUE]);
     }
 
-    $params = array(
+    $params = [
       'used' => 'Supervised',
       'contact_type' => 'Individual',
-    );
-    $dedupeRuleFields = CRM_Dedupe_BAO_Rule::dedupeRuleFields($params);
+    ];
+    $dedupeRuleFields = CRM_Dedupe_BAO_DedupeRule::dedupeRuleFields($params);
 
     foreach ($dedupeRuleFields as $key => $fields) {
       $ruleFields[$key] = ucwords(str_replace('_', ' ', $fields));
@@ -271,19 +252,19 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
 
     // CRM-17745: Make maximum additional participants configurable
     $numericOptions = CRM_Core_SelectValues::getNumericOptions(1, 9);
-    $this->add('select', 'max_additional_participants', ts('Maximum additional participants'), $numericOptions, FALSE, array('class' => 'required'));
+    $this->add('select', 'max_additional_participants', ts('Maximum additional participants'), $numericOptions, FALSE, ['class' => 'required']);
 
     $this->addElement('checkbox',
       'allow_same_participant_emails',
-      ts('Same email address?')
+      ts('Allow same email and multiple registrations?')
     );
     $this->assign('ruleFields', json_encode($ruleFields));
 
-    $dedupeRules = array(
-      '' => '- Unsupervised rule -',
-    );
-    $dedupeRules += CRM_Dedupe_BAO_RuleGroup::getByType('Individual');
-    $this->add('select', 'dedupe_rule_group_id', ts('Duplicate matching rule'), $dedupeRules);
+    $dedupeRules = [
+      '' => ts('- Unsupervised rule -'),
+    ];
+    $dedupeRules += CRM_Dedupe_BAO_DedupeRuleGroup::getByType('Individual');
+    $this->add('select', 'dedupe_rule_group_id', ts('Duplicate matching rule'), $dedupeRules, FALSE, ['class' => 'crm-select2 huge']);
 
     $participantStatuses = CRM_Event_PseudoConstant::participantStatus();
     if (in_array('Awaiting approval', $participantStatuses) and in_array('Pending from approval', $participantStatuses) and in_array('Rejected', $participantStatuses)) {
@@ -291,14 +272,14 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
         'requires_approval',
         ts('Require participant approval?'),
         NULL,
-        array('onclick' => "return showHideByValue('requires_approval', '', 'id-approval-text', 'table-row', 'radio', false);")
+        ['onclick' => "return showHideByValue('requires_approval', '', 'id-approval-text', 'table-row', 'radio', false);"]
       );
       $this->add('textarea', 'approval_req_text', ts('Approval message'), $attributes['approval_req_text']);
     }
 
     $this->add('text', 'expiration_time', ts('Pending participant expiration (hours)'));
     $this->addRule('expiration_time', ts('Please enter the number of hours (as an integer).'), 'integer');
-    $this->addField('allow_selfcancelxfer', array('label' => ts('Allow self-service cancellation or transfer?'), 'type' => 'advcheckbox'));
+    $this->addField('allow_selfcancelxfer', ['label' => ts('Allow self-service cancellation or transfer?'), 'type' => 'advcheckbox']);
     $this->add('text', 'selfcancelxfer_time', ts('Cancellation or transfer time limit (hours)'));
     $this->addRule('selfcancelxfer_time', ts('Please enter the number of hours (as an integer).'), 'integer');
     self::buildRegistrationBlock($this);
@@ -316,24 +297,22 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
    *
    */
   public function buildRegistrationBlock(&$form) {
-    $attributes = CRM_Core_DAO::getAttribute('CRM_Event_DAO_Event', 'intro_text') + array('class' => 'collapsed');
+    $attributes = CRM_Core_DAO::getAttribute('CRM_Event_DAO_Event', 'intro_text') + ['class' => 'collapsed', 'preset' => 'civievent'];
     $form->add('wysiwyg', 'intro_text', ts('Introductory Text'), $attributes);
     $form->add('wysiwyg', 'footer_text', ts('Footer Text'), $attributes);
 
     extract(self::getProfileSelectorTypes());
-    //CRM-15427
-    $form->addProfileSelector('custom_pre_id', ts('Include Profile') . '<br />' . ts('(top of page)'), $allowCoreTypes, $allowSubTypes, $profileEntities, TRUE, $usedFor);
-    $form->addProfileSelector('custom_post_id', ts('Include Profile') . '<br />' . ts('(bottom of page)'), $allowCoreTypes, $allowSubTypes, $profileEntities, TRUE, $usedFor);
-
-    $form->addProfileSelector('additional_custom_pre_id', ts('Profile for Additional Participants') . '<br />' . ts('(top of page)'), $allowCoreTypes, $allowSubTypes, $profileEntities, TRUE, $usedFor);
-    $form->addProfileSelector('additional_custom_post_id', ts('Profile for Additional Participants') . '<br />' . ts('(bottom of page)'), $allowCoreTypes, $allowSubTypes, $profileEntities, TRUE, $usedFor);
+    $form->addProfileSelector('custom_pre_id', ts('Top Profile Fields'), $allowCoreTypes);
+    $form->addProfileSelector('custom_post_id', ts('Bottom Profile Fields'), $allowCoreTypes);
+    $form->addProfileSelector('additional_custom_pre_id', ts('Top Profile Fields for Additional Participants'), $allowCoreTypes);
+    $form->addProfileSelector('additional_custom_post_id', ts('Bottom Profile Fields for Additional Participants'), $allowCoreTypes);
   }
 
   /**
    * Subroutine to insert a Profile Editor widget.
    * depends on getProfileSelectorTypes
    *
-   * @param array &$form
+   * @param \CRM_Core_Form &$form
    * @param int $count
    *   Unique index.
    * @param string $prefix
@@ -343,11 +322,11 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
    * @param array $configs
    *   Optional, for addProfileSelector(), defaults to using getProfileSelectorTypes().
    */
-  public function buildMultipleProfileBottom(&$form, $count, $prefix = '', $label = 'Include Profile', $configs = NULL) {
+  public static function buildMultipleProfileBottom(&$form, $count, $prefix = '', $label = NULL, $configs = NULL) {
+    $label ??= ts('Bottom Profile Fields');
     extract((is_null($configs)) ? self::getProfileSelectorTypes() : $configs);
     $element = $prefix . "custom_post_id_multiple[$count]";
-    $label .= '<br />' . ts('(bottom of page)');
-    $form->addProfileSelector($element, $label, $allowCoreTypes, $allowSubTypes, $profileEntities, TRUE, $usedFor);
+    $form->addProfileSelector($element, $label, $allowCoreTypes, $allowSubTypes);
   }
 
   /**
@@ -357,17 +336,17 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
    *   ['allowCoreTypes' => array, 'allowSubTypes' => array, 'profileEntities' => array]
    */
   public static function getProfileSelectorTypes() {
-    $configs = array(
-      'allowCoreTypes' => array(),
-      'allowSubTypes' => array(),
-      'profileEntities' => array(),
-      'usedFor' => array(),
-    );
+    $configs = [
+      'allowCoreTypes' => [],
+      'allowSubTypes' => [],
+      'profileEntities' => [],
+      'usedFor' => [],
+    ];
 
-    $configs['allowCoreTypes'] = array_merge(array(
-        'Contact',
-        'Individual',
-      ), CRM_Contact_BAO_ContactType::subTypes('Individual'));
+    $configs['allowCoreTypes'] = array_merge([
+      'Contact',
+      'Individual',
+    ], CRM_Contact_BAO_ContactType::subTypes('Individual'));
     $configs['allowCoreTypes'][] = 'Participant';
     if (CRM_Core_Permission::check('manage event profiles') && !CRM_Core_Permission::check('administer CiviCRM')) {
       $configs['usedFor'][] = 'CiviEvent';
@@ -377,16 +356,16 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
     if ($id) {
       $participantEventType = CRM_Core_DAO::getFieldValue("CRM_Event_DAO_Event", $id, 'event_type_id', 'id');
       $participantRole = CRM_Core_DAO::getFieldValue('CRM_Event_DAO_Event', $id, 'default_role_id');
-      $configs['allowSubTypes']['ParticipantEventName'] = array($id);
-      $configs['allowSubTypes']['ParticipantEventType'] = array($participantEventType);
-      $configs['allowSubTypes']['ParticipantRole'] = array($participantRole);
+      $configs['allowSubTypes']['ParticipantEventName'] = [$id];
+      $configs['allowSubTypes']['ParticipantEventType'] = [$participantEventType];
+      $configs['allowSubTypes']['ParticipantRole'] = [$participantRole];
     }
-    $configs['profileEntities'][] = array('entity_name' => 'contact_1', 'entity_type' => 'IndividualModel');
-    $configs['profileEntities'][] = array(
+    $configs['profileEntities'][] = ['entity_name' => 'contact_1', 'entity_type' => 'IndividualModel'];
+    $configs['profileEntities'][] = [
       'entity_name' => 'participant_1',
       'entity_type' => 'ParticipantModel',
       'entity_sub_type' => '*',
-    );
+    ];
 
     return $configs;
   }
@@ -403,24 +382,23 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
     $is_monetary = CRM_Core_DAO::getFieldValue('CRM_Event_DAO_Event', $form->_id, 'is_monetary');
     $form->assign('is_monetary', $is_monetary);
     if ($is_monetary == "0") {
-      $form->addYesNo('is_confirm_enabled', ts('Use a confirmation screen?'), NULL, NULL, array('onclick' => "return showHideByValue('is_confirm_enabled','','confirm_screen_settings','block','radio',false);"));
+      $form->addYesNo('is_confirm_enabled', ts('Use a confirmation screen'), NULL, NULL, ['onclick' => "return showHideByValue('is_confirm_enabled','','confirm_screen_settings','block','radio',false);"]);
     }
     $form->add('text', 'confirm_title', ts('Title'), $attributes['confirm_title']);
-    $form->add('wysiwyg', 'confirm_text', ts('Introductory Text'), $attributes['confirm_text'] + array('class' => 'collapsed'));
-    $form->add('wysiwyg', 'confirm_footer_text', ts('Footer Text'), $attributes['confirm_text'] + array('class' => 'collapsed'));
+    $form->add('wysiwyg', 'confirm_text', ts('Introductory Text'), $attributes['confirm_text'] + ['class' => 'collapsed', 'preset' => 'civievent']);
+    $form->add('wysiwyg', 'confirm_footer_text', ts('Footer Text'), $attributes['confirm_text'] + ['class' => 'collapsed', 'preset' => 'civievent']);
   }
 
   /**
    * Build Email Block.
    *
    * @param CRM_Core_Form $form
-   *
    */
   public function buildMailBlock(&$form) {
     $form->registerRule('emailList', 'callback', 'emailList', 'CRM_Utils_Rule');
     $attributes = CRM_Core_DAO::getAttribute('CRM_Event_DAO_Event');
-    $form->addYesNo('is_email_confirm', ts('Send Confirmation Email?'), NULL, NULL, array('onclick' => "return showHideByValue('is_email_confirm','','confirmEmail','block','radio',false);"));
-    $form->add('textarea', 'confirm_email_text', ts('Text'), $attributes['confirm_email_text']);
+    $form->addYesNo('is_email_confirm', ts('Send a confirmation email'), NULL, NULL, ['onclick' => "return showHideByValue('is_email_confirm','','confirmEmail','block','radio',false);"]);
+    $form->add('wysiwyg', 'confirm_email_text', ts('Text'), $attributes['confirm_email_text']);
     $form->add('text', 'cc_confirm', ts('CC Confirmation To'), CRM_Core_DAO::getAttribute('CRM_Event_DAO_Event', 'cc_confirm'));
     $form->addRule('cc_confirm', ts('Please enter a valid list of comma delimited email addresses'), 'emailList');
     $form->add('text', 'bcc_confirm', ts('BCC Confirmation To'), CRM_Core_DAO::getAttribute('CRM_Event_DAO_Event', 'bcc_confirm'));
@@ -436,13 +414,12 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
   public function buildThankYouBlock(&$form) {
     $attributes = CRM_Core_DAO::getAttribute('CRM_Event_DAO_Event');
     $form->add('text', 'thankyou_title', ts('Title'), $attributes['thankyou_title']);
-    $form->add('wysiwyg', 'thankyou_text', ts('Introductory Text'), $attributes['thankyou_text'] + array('class' => 'collapsed'));
-    $form->add('wysiwyg', 'thankyou_footer_text', ts('Footer Text'), $attributes['thankyou_text'] + array('class' => 'collapsed'));
+    $form->add('wysiwyg', 'thankyou_text', ts('Introductory Text'), $attributes['thankyou_text'] + ['class' => 'collapsed', 'preset' => 'civievent']);
+    $form->add('wysiwyg', 'thankyou_footer_text', ts('Footer Text'), $attributes['thankyou_text'] + ['class' => 'collapsed', 'preset' => 'civievent']);
   }
 
   /**
    * Add local and global form rules.
-   *
    *
    * @return void
    */
@@ -450,7 +427,7 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
     if ($this->_addProfileBottom || $this->_addProfileBottomAdd) {
       return;
     }
-    $this->addFormRule(array('CRM_Event_Form_ManageEvent_Registration', 'formRule'), $this);
+    $this->addFormRule(['CRM_Event_Form_ManageEvent_Registration', 'formRule'], $this);
   }
 
   /**
@@ -466,10 +443,14 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
   public static function formRule($values, $files, $form) {
     if (!empty($values['is_online_registration'])) {
 
-      if (!$values['confirm_title']) {
+      if (($values['registration_link_text'] ?? '') === '') {
+        $errorMsg['registration_link_text'] = ts('Please enter Registration Link Text');
+      }
+      // Check if the confirm text is set if we have enabled the confirmation page or page is monetary which forces the confirm page.
+      if (($values['confirm_title'] ?? '') === '' && (!empty($values['is_confirm_enabled']) || CRM_Core_DAO::getFieldValue('CRM_Event_DAO_Event', $form->_id, 'is_monetary'))) {
         $errorMsg['confirm_title'] = ts('Please enter a Title for the registration Confirmation Page');
       }
-      if (!$values['thankyou_title']) {
+      if (($values['thankyou_title'] ?? '') === '') {
         $errorMsg['thankyou_title'] = ts('Please enter a Title for the registration Thank-you Page');
       }
       if ($values['is_email_confirm']) {
@@ -482,26 +463,23 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
         }
       }
 
-      if (
-        isset($values['registration_start_date']) &&
-        isset($values['registration_end_date'])
-      ) {
-        $start = CRM_Utils_Date::processDate($values['registration_start_date']);
-        $end = CRM_Utils_Date::processDate($values['registration_end_date']);
-        if ($end < $start) {
-          $errorMsg['registration_end_date'] = ts('Registration end date should be after Registration start date');
+      // Validate start/end date inputs
+      if ($values['is_template'] != 1) {
+        $validateDates = \CRM_Utils_Date::validateStartEndDatepickerInputs('registration_start_date', $values['registration_start_date'], 'registration_end_date', $values['registration_end_date']);
+        if ($validateDates !== TRUE) {
+          $errorMsg[$validateDates['key']] = $validateDates['message'];
         }
       }
 
       //check that the selected profiles have either firstname+lastname or email required
-      $profileIds = array(
-        CRM_Utils_Array::value('custom_pre_id', $values),
-        CRM_Utils_Array::value('custom_post_id', $values),
-      );
-      $additionalProfileIds = array(
-        CRM_Utils_Array::value('additional_custom_pre_id', $values),
-        CRM_Utils_Array::value('additional_custom_post_id', $values),
-      );
+      $profileIds = [
+        $values['custom_pre_id'] ?? NULL,
+        $values['custom_post_id'] ?? NULL,
+      ];
+      $additionalProfileIds = [
+        $values['additional_custom_pre_id'] ?? NULL,
+        $values['additional_custom_post_id'] ?? NULL,
+      ];
       //additional profile fields default to main if not set
       if (!is_numeric($additionalProfileIds[0])) {
         $additionalProfileIds[0] = $profileIds[0];
@@ -525,11 +503,11 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
       $additionalCustomPreId = $additionalCustomPostId = NULL;
       $isPreError = $isPostError = TRUE;
       if (!empty($values['allow_same_participant_emails']) && !empty($values['is_multiple_registrations'])) {
-        $types = array_merge(array('Individual'), CRM_Contact_BAO_ContactType::subTypes('Individual'));
+        $types = array_merge(['Individual'], CRM_Contact_BAO_ContactType::subTypes('Individual'));
         $profiles = CRM_Core_BAO_UFGroup::getProfiles($types);
 
         //check for additional custom pre profile
-        $additionalCustomPreId = CRM_Utils_Array::value('additional_custom_pre_id', $values);
+        $additionalCustomPreId = $values['additional_custom_pre_id'] ?? NULL;
         if (!empty($additionalCustomPreId)) {
           if (!($additionalCustomPreId == 'none')) {
             $customPreId = $additionalCustomPreId;
@@ -557,7 +535,7 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
 
         // We don't have required Individual fields in the pre-custom profile, so now check the post-custom profile
         if ($isPreError) {
-          $additionalCustomPostId = CRM_Utils_Array::value('additional_custom_post_id', $values);
+          $additionalCustomPostId = $values['additional_custom_post_id'] ?? NULL;
           if (!empty($additionalCustomPostId)) {
             if (!($additionalCustomPostId == 'none')) {
               $customPostId = $additionalCustomPostId;
@@ -648,10 +626,10 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
    * Collect all email fields for an array of profile ids.
    *
    * @param $profileIds
-   * @return bool
+   * @return array
    */
   public static function getEmailFields($profileIds) {
-    $emailFields = array();
+    $emailFields = [];
     foreach ($profileIds as $profileId) {
       if ($profileId && is_numeric($profileId)) {
         $fields = CRM_Core_BAO_UFGroup::getFields($profileId);
@@ -672,7 +650,7 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
    * @return bool
    */
   public static function isProfileComplete($profileIds) {
-    $profileReqFields = array();
+    $profileReqFields = [];
     foreach ($profileIds as $profileId) {
       if ($profileId && is_numeric($profileId)) {
         $fields = CRM_Core_BAO_UFGroup::getFields($profileId);
@@ -708,21 +686,21 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
    */
   public static function canProfilesDedupe($profileIds, $rgId = 0) {
     // find the unsupervised rule
-    $rgParams = array(
+    $rgParams = [
       'used' => 'Unsupervised',
       'contact_type' => 'Individual',
-    );
+    ];
     if ($rgId > 0) {
       $rgParams['id'] = $rgId;
     }
-    $activeRg = CRM_Dedupe_BAO_RuleGroup::dedupeRuleFieldsWeight($rgParams);
+    $activeRg = CRM_Dedupe_BAO_DedupeRuleGroup::dedupeRuleFieldsWeight($rgParams);
 
     // get the combinations that could be a match for the rule
-    $okCombos = $combos = array();
-    CRM_Dedupe_BAO_RuleGroup::combos($activeRg[0], $activeRg[1], $combos);
+    $okCombos = $combos = [];
+    CRM_Dedupe_BAO_DedupeRuleGroup::combos($activeRg[0], $activeRg[1], $combos);
 
     // create an index of what combinations involve each field
-    $index = array();
+    $index = [];
     foreach ($combos as $comboid => $combo) {
       foreach ($combo as $cfield) {
         $index[$cfield][$comboid] = TRUE;
@@ -732,7 +710,7 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
     }
 
     // get profiles and see if they have the necessary combos
-    $profileReqFields = array();
+    $profileReqFields = [];
     foreach ($profileIds as $profileId) {
       if ($profileId && is_numeric($profileId)) {
         $fields = CRM_Core_BAO_UFGroup::getFields($profileId);
@@ -742,7 +720,7 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
 
           // check each of the fields in the index against the profile field
           foreach ($index as $ifield => $icombos) {
-            if (strpos($field['name'], $ifield) !== FALSE) {
+            if (str_contains($field['name'], $ifield)) {
 
               // we found the field in the profile, now record it in the index
               foreach ($icombos as $icombo => $dontcare) {
@@ -788,7 +766,8 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
    * @param string $field
    */
   public static function addMultipleProfiles(&$profileIds, $values, $field) {
-    if ($multipleProfiles = CRM_Utils_Array::value($field, $values)) {
+    $multipleProfiles = $values[$field] ?? NULL;
+    if ($multipleProfiles) {
       foreach ($multipleProfiles as $profileId) {
         $profileIds[] = $profileId;
       }
@@ -798,7 +777,6 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
   /**
    * Process the form submission.
    *
-   *
    * @return void
    */
   public function postProcess() {
@@ -807,45 +785,33 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
     $params['id'] = $this->_id;
 
     // format params
-    $params['is_online_registration'] = CRM_Utils_Array::value('is_online_registration', $params, FALSE);
-    $params['is_confirm_enabled'] = CRM_Utils_Array::value('is_confirm_enabled', $params, FALSE); // CRM-11182
-    $params['is_multiple_registrations'] = CRM_Utils_Array::value('is_multiple_registrations', $params, FALSE);
-    $params['allow_same_participant_emails'] = CRM_Utils_Array::value('allow_same_participant_emails', $params, FALSE);
-    $params['requires_approval'] = CRM_Utils_Array::value('requires_approval', $params, FALSE);
+    $params['is_online_registration'] ??= FALSE;
+    // CRM-11182
+    $params['is_confirm_enabled'] ??= FALSE;
+    $params['is_multiple_registrations'] ??= FALSE;
+    $params['allow_same_participant_emails'] ??= FALSE;
+    $params['requires_approval'] ??= FALSE;
 
     // reset is_email confirm if not online reg
     if (!$params['is_online_registration']) {
       $params['is_email_confirm'] = FALSE;
     }
-    if (!empty($params['allow_selfcancelxfer'])) {
-      $params['selfcancelxfer_time'] = !empty($params['selfcancelxfer_time']) ? $params['selfcancelxfer_time'] : 0;
-    }
+    $params['selfcancelxfer_time'] = !empty($params['selfcancelxfer_time']) ? $params['selfcancelxfer_time'] : 0;
 
-    if (!$this->_isTemplate) {
-      $params['registration_start_date'] = CRM_Utils_Date::processDate($params['registration_start_date'],
-        $params['registration_start_date_time'],
-        TRUE
-      );
-      $params['registration_end_date'] = CRM_Utils_Date::processDate($params['registration_end_date'],
-        $params['registration_end_date_time'],
-        TRUE
-      );
-    }
-
-    CRM_Event_BAO_Event::add($params);
+    Event::save(FALSE)->addRecord($params)->execute();
 
     // also update the ProfileModule tables
-    $ufJoinParams = array(
+    $ufJoinParams = [
       'is_active' => 1,
       'module' => 'CiviEvent',
       'entity_table' => 'civicrm_event',
       'entity_id' => $this->_id,
-    );
+    ];
 
     // first delete all past entries
     CRM_Core_BAO_UFJoin::deleteAll($ufJoinParams);
 
-    $uf = array();
+    $uf = [];
     $wt = 2;
     if (!empty($params['custom_pre_id'])) {
       $uf[1] = $params['custom_pre_id'];
@@ -869,17 +835,17 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
       }
     }
     // also update the ProfileModule tables
-    $ufJoinParamsAdd = array(
+    $ufJoinParamsAdd = [
       'is_active' => 1,
       'module' => 'CiviEvent_Additional',
       'entity_table' => 'civicrm_event',
       'entity_id' => $this->_id,
-    );
+    ];
 
     // first delete all past entries
     CRM_Core_BAO_UFJoin::deleteAll($ufJoinParamsAdd);
     if (!empty($params['is_multiple_registrations'])) {
-      $ufAdd = array();
+      $ufAdd = [];
       $wtAdd = 2;
 
       if (array_key_exists('additional_custom_pre_id', $params)) {
@@ -887,7 +853,7 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
           $ufAdd[1] = $params['custom_pre_id'];
           $wtAdd = 1;
         }
-        elseif (CRM_Utils_Array::value('additional_custom_pre_id', $params) == 'none') {
+        elseif (($params['additional_custom_pre_id'] ?? NULL) == 'none') {
         }
         else {
           $ufAdd[1] = $params['additional_custom_pre_id'];
@@ -899,7 +865,7 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
         if (empty($params['additional_custom_post_id'])) {
           $ufAdd[2] = $params['custom_post_id'];
         }
-        elseif (CRM_Utils_Array::value('additional_custom_post_id', $params) == 'none') {
+        elseif (($params['additional_custom_post_id'] ?? NULL) == 'none') {
         }
         else {
           $ufAdd[2] = $params['additional_custom_post_id'];
@@ -907,7 +873,7 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
       }
 
       if (!empty($params['additional_custom_post_id_multiple'])) {
-        $additionalPostMultiple = array();
+        $additionalPostMultiple = [];
         foreach ($params['additional_custom_post_id_multiple'] as $key => $value) {
           if (is_null($value) && !empty($params['custom_post_id'])) {
             $additionalPostMultiple[$key] = $params['custom_post_id'];
@@ -936,14 +902,14 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
     }
 
     // get the profiles to evaluate what they collect
-    $profileIds = array(
-      CRM_Utils_Array::value('custom_pre_id', $params),
-      CRM_Utils_Array::value('custom_post_id', $params),
-    );
-    $additionalProfileIds = array(
-      CRM_Utils_Array::value('additional_custom_pre_id', $params),
-      CRM_Utils_Array::value('additional_custom_post_id', $params),
-    );
+    $profileIds = [
+      $params['custom_pre_id'] ?? NULL,
+      $params['custom_post_id'] ?? NULL,
+    ];
+    $additionalProfileIds = [
+      $params['additional_custom_pre_id'] ?? NULL,
+      $params['additional_custom_post_id'] ?? NULL,
+    ];
     // additional profile fields default to main if not set
     if (!is_numeric($additionalProfileIds[0])) {
       $additionalProfileIds[0] = $profileIds[0];
@@ -956,7 +922,7 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
     self::addMultipleProfiles($additionalProfileIds, $params, 'additional_custom_post_id_multiple');
 
     $cantDedupe = FALSE;
-    $rgId = CRM_Utils_Array::value('dedupe_rule_group_id', $params, 0);
+    $rgId = $params['dedupe_rule_group_id'] ?? 0;
 
     switch (self::canProfilesDedupe($profileIds, $rgId)) {
       case 0:
@@ -988,7 +954,7 @@ class CRM_Event_Form_ManageEvent_Registration extends CRM_Event_Form_ManageEvent
       }
     }
     if ($cantDedupe) {
-      CRM_Core_Session::setStatus($cantDedupe, $dedupeTitle, 'alert dedupenotify', array('expires' => 0));
+      CRM_Core_Session::setStatus($cantDedupe, $dedupeTitle, 'alert dedupenotify', ['expires' => 0]);
     }
 
     // Update tab "disabled" css class

@@ -14,8 +14,8 @@
 #crm-status-list .crm-severity-emergency,
 #crm-status-list .crm-severity-alert,
 #crm-status-list .crm-severity-critical,
-#crm-status-list .crm-severity-error{
-  background-color: #E43D2B;
+#crm-status-list .crm-severity-error {
+  background-color: #e43d2b;
 }
 
 /* Warning Severity */
@@ -31,7 +31,7 @@
 /* All OK Severity */
 #crm-status-list .crm-severity-info,
 #crm-status-list .crm-severity-debug {
-  background-color: #00994D;
+  background-color: #00994d;
 }
 
 #crm-status-list .crm-status-message-body {
@@ -67,11 +67,16 @@
   width: auto;
   margin: 0;
   padding: 0;
+  z-index: 99;
 }
 
 #crm-status-list .hush-menu li {
   padding: 0.2em 0.5em;
   background-color: rgba(255, 255, 255, 0.9);
-  z-index: 99999;
+  z-index: 99;
   font-weight: normal;
+}
+
+.status-debug-information {
+  font-size: smaller;
 }

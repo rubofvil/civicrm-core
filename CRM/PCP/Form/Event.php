@@ -1,36 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
- * $Id$
- *
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -46,28 +28,25 @@ class CRM_PCP_Form_Event extends CRM_Event_Form_ManageEvent {
    */
   public $_component = 'event';
 
-
   public function preProcess() {
     parent::preProcess();
+    $this->setSelectedChild('pcp');
   }
 
   /**
    * Set default values for the form.
    *
-   *
-   * @return void
+   * @return array
    */
   public function setDefaultValues() {
-    $defaults = array();
-
-    $defaults = array();
+    $defaults = [];
     if (isset($this->_id)) {
       $title = CRM_Core_DAO::getFieldValue('CRM_Event_DAO_Event', $this->_id, 'title');
-      CRM_Utils_System::setTitle(ts('Personal Campaign Page Settings (%1)', array(1 => $title)));
+      $this->setTitle(ts('Personal Campaign Page Settings (%1)', [1 => $title]));
 
-      $params = array('entity_id' => $this->_id, 'entity_table' => 'civicrm_event');
+      $params = ['entity_id' => $this->_id, 'entity_table' => 'civicrm_event'];
       CRM_Core_DAO::commonRetrieve('CRM_PCP_DAO_PCPBlock', $params, $defaults);
-      $defaults['pcp_active'] = CRM_Utils_Array::value('is_active', $defaults);
+      $defaults['pcp_active'] = $defaults['is_active'] ?? NULL;
       // Assign contribution page ID to pageId for referencing in PCP.hlp - since $id is overwritten there. dgg
       $this->assign('pageId', $this->_id);
     }
@@ -97,18 +76,18 @@ class CRM_PCP_Form_Event extends CRM_Event_Form_ManageEvent {
   public function buildQuickForm() {
     CRM_PCP_BAO_PCP::buildPCPForm($this);
 
-    $this->addElement('checkbox', 'pcp_active', ts('Enable Personal Campaign Pages? (for this event)'), NULL, array('onclick' => "return showHideByValue('pcp_active',true,'pcpFields','table-row','radio',false);"));
+    $this->addElement('checkbox', 'pcp_active', ts('Enable Personal Campaign Pages? (for this event)'), NULL, ['onclick' => "return showHideByValue('pcp_active',true,'pcpFields','table-row','radio',false);"]);
 
     $this->add('select', 'target_entity_type', ts('Campaign Type'),
-      array('' => ts('- select -'), 'event' => ts('Event'), 'contribute' => ts('Contribution')),
-      NULL, array('onchange' => "return showHideByValue('target_entity_type','contribute','pcpDetailFields','block','select',false);")
+      ['' => ts('- select -'), 'event' => ts('Event'), 'contribute' => ts('Contribution')],
+      NULL, ['onchange' => "return showHideByValue('target_entity_type','contribute','pcpDetailFields','block','select',false);"]
     );
 
     $this->add('select', 'target_entity_id',
       ts('Online Contribution Page'),
-      array(
+      [
         '' => ts('- select -'),
-      ) +
+      ] +
       CRM_Contribute_PseudoConstant::contributionPage()
     );
 
@@ -121,15 +100,12 @@ class CRM_PCP_Form_Event extends CRM_Event_Form_ManageEvent {
     $pcpBlock->find(TRUE);
 
     if (!empty($pcpBlock->id) && CRM_PCP_BAO_PCP::getPcpBlockInUse($pcpBlock->id)) {
-      foreach (array(
-                 'target_entity_type',
-                 'target_entity_id',
-               ) as $element_name) {
+      foreach (['target_entity_type', 'target_entity_id'] as $element_name) {
         $element = $this->getElement($element_name);
         $element->freeze();
       }
     }
-    $this->addFormRule(array('CRM_PCP_Form_Event', 'formRule'), $this);
+    $this->addFormRule(['CRM_PCP_Form_Event', 'formRule'], $this);
   }
 
   /**
@@ -139,20 +115,26 @@ class CRM_PCP_Form_Event extends CRM_Event_Form_ManageEvent {
    *   (ref.) an assoc array of name/value pairs.
    *
    * @param $files
-   * @param $self
+   * @param self $self
    *
    * @return bool|array
    *   mixed true or array of errors
    */
   public static function formRule($params, $files, $self) {
-    $errors = array();
-    if (!empty($params['is_active'])) {
+    $errors = [];
+    if (!empty($params['pcp_active'])) {
 
-      if (!empty($params['is_tellfriend_enabled']) &&
-        (CRM_Utils_Array::value('tellfriend_limit', $params) <= 0)
-      ) {
-        $errors['tellfriend_limit'] = ts('if Tell Friend is enable, Maximum recipients limit should be greater than zero.');
+      if (!empty($params['is_tellfriend_enabled']) && ($params['is_tellfriend_enabled'] <= 0)) {
+        $errors['tellfriend_limit'] = ts('If Tell a Friend is enabled, maximum recipients limit should be greater than zero.');
       }
+
+      if (empty($params['target_entity_type'])) {
+        $errors['target_entity_type'] = ts('Campaign Type is a required field.');
+      }
+      elseif (($params['target_entity_type'] === 'contribute') && (empty($params['target_entity_id']))) {
+        $errors['target_entity_id'] = ts('Online Contribution Page is a required field.');
+      }
+
       if (empty($params['supporter_profile_id'])) {
         $errors['supporter_profile_id'] = ts('Supporter profile is a required field.');
       }
@@ -162,7 +144,8 @@ class CRM_PCP_Form_Event extends CRM_Event_Form_ManageEvent {
         }
       }
 
-      if ($emails = CRM_Utils_Array::value('notify_email', $params)) {
+      $emails = $params['notify_email'] ?? NULL;
+      if ($emails) {
         $emailArray = explode(',', $emails);
         foreach ($emailArray as $email) {
           if ($email && !CRM_Utils_Rule::email(trim($email))) {
@@ -177,7 +160,6 @@ class CRM_PCP_Form_Event extends CRM_Event_Form_ManageEvent {
   /**
    * Process the form submission.
    *
-   *
    * @return void
    */
   public function postProcess() {
@@ -189,12 +171,12 @@ class CRM_PCP_Form_Event extends CRM_Event_Form_ManageEvent {
     $params['entity_id'] = $this->_id;
 
     // Target
-    $params['target_entity_type'] = CRM_Utils_Array::value('target_entity_type', $params, 'event');
+    $params['target_entity_type'] = $params['target_entity_type'] ?? 'event';
     if ($params['target_entity_type'] == 'event') {
       $params['target_entity_id'] = $this->_id;
     }
     else {
-      $params['target_entity_id'] = CRM_Utils_Array::value('target_entity_id', $params, $this->_id);
+      $params['target_entity_id'] = $params['target_entity_id'] ?? $this->_id;
     }
 
     $dao = new CRM_PCP_DAO_PCPBlock();
@@ -202,11 +184,11 @@ class CRM_PCP_Form_Event extends CRM_Event_Form_ManageEvent {
     $dao->entity_id = $this->_id;
     $dao->find(TRUE);
     $params['id'] = $dao->id;
-    $params['is_active'] = CRM_Utils_Array::value('pcp_active', $params, FALSE);
-    $params['is_approval_needed'] = CRM_Utils_Array::value('is_approval_needed', $params, FALSE);
-    $params['is_tellfriend_enabled'] = CRM_Utils_Array::value('is_tellfriend_enabled', $params, FALSE);
+    $params['is_active'] = $params['pcp_active'] ?? FALSE;
+    $params['is_approval_needed'] ??= FALSE;
+    $params['is_tellfriend_enabled'] ??= FALSE;
 
-    CRM_PCP_BAO_PCPBlock::create($params);
+    CRM_PCP_BAO_PCPBlock::writeRecord($params);
 
     // Update tab "disabled" css class
     $this->ajaxResponse['tabValid'] = !empty($params['is_active']);

@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -32,8 +16,9 @@ class CRM_Core_Session {
 
   /**
    * Cache of all the session names that we manage.
+   * @var array
    */
-  static $_managedNames = NULL;
+  public static $_managedNames = NULL;
 
   /**
    * Key is used to allow the application to have multiple top
@@ -60,17 +45,14 @@ class CRM_Core_Session {
    * We only need one instance of this object. So we use the singleton
    * pattern and cache the instance in this variable
    *
-   * @var object
+   * @var \CRM_Core_Session
    */
-  static private $_singleton = NULL;
+  static private $_singleton;
 
   /**
    * Constructor.
    *
    * The CMS takes care of initiating the php session handler session_start().
-   *
-   * When using CiviCRM standalone (w/o a CMS), we start the session
-   * in index.php and then pass it off to here.
    *
    * All crm code should always use the session using
    * CRM_Core_Session. we prefix stuff to avoid collisions with the CMS and also
@@ -98,6 +80,39 @@ class CRM_Core_Session {
   }
 
   /**
+   * Replace the session object with a fake session.
+   */
+  public static function useFakeSession() {
+    self::$_singleton = new class() extends CRM_Core_Session {
+
+      public function initialize($isRead = FALSE) {
+        if ($isRead) {
+          return;
+        }
+
+        if (!isset($this->_session)) {
+          $this->_session = [];
+        }
+
+        if (!isset($this->_session[$this->_key]) || !is_array($this->_session[$this->_key])) {
+          $this->_session[$this->_key] = [];
+        }
+      }
+
+      public function isEmpty() {
+        return empty($this->_session);
+      }
+
+    };
+    self::$_singleton->_session = NULL;
+    // This is not a revocable proposition. Should survive, even with things 'System.flush'.
+    if (!defined('_CIVICRM_FAKE_SESSION')) {
+      define('_CIVICRM_FAKE_SESSION', TRUE);
+    }
+    return self::$_singleton;
+  }
+
+  /**
    * Creates an array in the session.
    *
    * All variables now will be stored under this array.
@@ -106,6 +121,10 @@ class CRM_Core_Session {
    *   Is this a read operation, in this case, the session will not be touched.
    */
   public function initialize($isRead = FALSE) {
+    // reset $this->_session in case if it is no longer a reference to $_SESSION;
+    if (isset($_SESSION) && isset($this->_session) && $_SESSION !== $this->_session) {
+      unset($this->_session);
+    }
     // lets initialize the _session variable just before we need it
     // hopefully any bootstrapping code will actually load the session from the CMS
     if (!isset($this->_session)) {
@@ -114,18 +133,7 @@ class CRM_Core_Session {
         if ($isRead) {
           return;
         }
-        $config =& CRM_Core_Config::singleton();
-        // FIXME: This belongs in CRM_Utils_System_*
-        if ($config->userSystem->is_drupal && function_exists('drupal_session_start')) {
-          // https://issues.civicrm.org/jira/browse/CRM-14356
-          if (!(isset($GLOBALS['lazy_session']) && $GLOBALS['lazy_session'] == TRUE)) {
-            drupal_session_start();
-          }
-          $_SESSION = array();
-        }
-        else {
-          session_start();
-        }
+        CRM_Core_Config::singleton()->userSystem->sessionStart();
       }
       $this->_session =& $_SESSION;
     }
@@ -137,27 +145,38 @@ class CRM_Core_Session {
     if (!isset($this->_session[$this->_key]) ||
       !is_array($this->_session[$this->_key])
     ) {
-      $this->_session[$this->_key] = array();
+      $this->_session[$this->_key] = [];
     }
   }
 
   /**
    * Resets the session store.
    *
-   * @param int $all
+   * @param int|string $mode
+   *   1: Default mode. Deletes the `CiviCRM` data from $_SESSION.
+   *   2: More invasive version of that. (somehow)
+   *   'keep_login': Less invasive. Preserve basic data (current user ID) from this session. Reset everything else.
    */
-  public function reset($all = 1) {
-    if ($all != 1) {
+  public function reset($mode = 1) {
+    if ($mode === 'keep_login') {
+      if (!empty($this->_session[$this->_key])) {
+        $this->_session[$this->_key] = CRM_Utils_Array::subset(
+          $this->_session[$this->_key],
+          ['ufID', 'userID', 'authx']
+        );
+      }
+    }
+    elseif ($mode != 1) {
       $this->initialize();
 
       // to make certain we clear it, first initialize it to empty
-      $this->_session[$this->_key] = array();
+      $this->_session[$this->_key] = [];
       unset($this->_session[$this->_key]);
     }
     else {
-      $this->_session = array();
+      $this->_session[$this->_key] = [];
+      unset($this->_session);
     }
-
   }
 
   /**
@@ -176,7 +195,7 @@ class CRM_Core_Session {
     }
 
     if (empty($this->_session[$this->_key][$prefix])) {
-      $this->_session[$this->_key][$prefix] = array();
+      $this->_session[$this->_key][$prefix] = [];
     }
   }
 
@@ -199,18 +218,18 @@ class CRM_Core_Session {
   }
 
   /**
-   * Store the variable with the value in the session scope.
-   *
-   * This function takes a name, value pair and stores this
-   * in the session scope. Not sure what happens if we try
-   * to store complex objects in the session. I suspect it
-   * is supported but we need to verify this
-   *
+   * Store a name-value pair in the session scope.
    *
    * @param string $name
    *   Name of the variable.
    * @param mixed $value
-   *   Value of the variable.
+   *   Value of the variable. It is safe to use scalar values here, as well as
+   *   arrays whose leaf nodes are scalar values. Instances of built-in classes
+   *   like DateTime may be safe, although the retrieved objects will be copies
+   *   of the ones saved here. Instances of custom classes (such as those
+   *   defined in CiviCRM core or extension code) will probably not be rebuilt
+   *   correctly on retrieval. Resources and other special variable types are
+   *   not safe to use. References will be dereferenced.
    * @param string $prefix
    *   A string to prefix the keys in the session with.
    */
@@ -267,7 +286,7 @@ class CRM_Core_Session {
       $session =& $this->_session[$this->_key][$prefix];
     }
 
-    return CRM_Utils_Array::value($name, $session);
+    return $session[$name] ?? NULL;
   }
 
   /**
@@ -286,7 +305,7 @@ class CRM_Core_Session {
       $values = &$this->_session[$this->_key];
     }
     else {
-      $values = CRM_Core_BAO_Cache::getItem('CiviCRM Session', "CiviCRM_{$prefix}");
+      $values = Civi::cache('session')->get("CiviCRM_{$prefix}");
     }
 
     if ($values) {
@@ -317,7 +336,7 @@ class CRM_Core_Session {
     $ts = $this->get($name, 'timer');
     if (!$ts || $ts < time() - $expire) {
       $this->set($name, time(), 'timer');
-      return $ts ? $ts : 'not set';
+      return $ts ?: 'not set';
     }
     return FALSE;
   }
@@ -423,13 +442,13 @@ class CRM_Core_Session {
    * @param bool $reset
    *   Should we reset the status variable?.
    *
-   * @return string
+   * @return array
    *   the status message if any
    */
-  public function getStatus($reset = FALSE) {
+  public function getStatus($reset = FALSE) : array {
     $this->initialize();
 
-    $status = NULL;
+    $status = [];
     if (array_key_exists('status', $this->_session[$this->_key])) {
       $status = $this->_session[$this->_key]['status'];
     }
@@ -444,10 +463,11 @@ class CRM_Core_Session {
    * Stores an alert to be displayed to the user via crm-messages.
    *
    * @param string $text
-   *   The status message
+   *   The status message.
    *
    * @param string $title
-   *   The optional title of this message
+   *   The optional title of this message. For accessibility reasons,
+   *   please terminate with a full stop/period.
    *
    * @param string $type
    *   The type of this message (printed as a css class). Possible options:
@@ -466,16 +486,20 @@ class CRM_Core_Session {
    *                 defaults to 10 seconds for most messages, 5 if it has a title but no body,
    *                 or 0 for errors or messages containing links
    */
-  public static function setStatus($text, $title = '', $type = 'alert', $options = array()) {
+  public static function setStatus($text, $title = '', $type = 'alert', $options = []) {
     // make sure session is initialized, CRM-8120
     $session = self::singleton();
     $session->initialize();
 
+    // Sanitize any HTML we're displaying. This helps prevent reflected XSS in error messages.
+    $text = CRM_Utils_String::purifyHTML($text);
+    $title = CRM_Utils_String::purifyHTML($title);
+
     // default options
-    $options += array('unique' => TRUE);
+    $options += ['unique' => TRUE];
 
     if (!isset(self::$_singleton->_session[self::$_singleton->_key]['status'])) {
-      self::$_singleton->_session[self::$_singleton->_key]['status'] = array();
+      self::$_singleton->_session[self::$_singleton->_key]['status'] = [];
     }
     if ($text || $title) {
       if ($options['unique']) {
@@ -486,12 +510,12 @@ class CRM_Core_Session {
         }
       }
       unset($options['unique']);
-      self::$_singleton->_session[self::$_singleton->_key]['status'][] = array(
+      self::$_singleton->_session[self::$_singleton->_key]['status'][] = [
         'text' => $text,
         'title' => $title,
         'type' => $type,
-        'options' => $options ? $options : NULL,
-      );
+        'options' => $options ?: NULL,
+      ];
     }
   }
 
@@ -502,7 +526,7 @@ class CRM_Core_Session {
    */
   public static function registerAndRetrieveSessionObjects($names) {
     if (!is_array($names)) {
-      $names = array($names);
+      $names = [$names];
     }
 
     if (!self::$_managedNames) {
@@ -535,15 +559,12 @@ class CRM_Core_Session {
   /**
    * Retrieve contact id of the logged in user.
    *
-   * @return int|NULL
+   * @return int|null
    *   contact ID of logged in user
    */
-  public static function getLoggedInContactID() {
-    $session = CRM_Core_Session::singleton();
-    if (!is_numeric($session->get('userID'))) {
-      return NULL;
-    }
-    return $session->get('userID');
+  public static function getLoggedInContactID(): ?int {
+    $userId = CRM_Core_Session::singleton()->get('userID');
+    return is_numeric($userId) ? (int) $userId : NULL;
   }
 
   /**
@@ -551,14 +572,14 @@ class CRM_Core_Session {
    *
    * @return string
    *
-   * @throws CiviCRM_API3_Exception
+   * @throws CRM_Core_Exception
    */
-  public function getLoggedInContactDisplayName() {
-    $userContactID = CRM_Core_Session::singleton()->getLoggedInContactID();
+  public function getLoggedInContactDisplayName(): string {
+    $userContactID = CRM_Core_Session::getLoggedInContactID();
     if (!$userContactID) {
       return '';
     }
-    return civicrm_api3('Contact', 'getvalue', array('id' => $userContactID, 'return' => 'display_name'));
+    return CRM_Core_DAO::getFieldValue('CRM_Contact_DAO_Contact', $userContactID, 'display_name') ?? '';
   }
 
   /**

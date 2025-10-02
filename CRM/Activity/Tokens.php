@@ -2,75 +2,42 @@
 
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
+
+use Civi\ActionSchedule\Event\MailingQueryEvent;
+use Civi\Token\Event\TokenValueEvent;
+use Civi\Token\TokenRow;
 
 /**
- * Class CRM_Member_Tokens
- *
  * Generate "activity.*" tokens.
- *
- * This TokenSubscriber was produced by refactoring the code from the
- * scheduled-reminder system with the goal of making that system
- * more flexible. The current implementation is still coupled to
- * scheduled-reminders. It would be good to figure out a more generic
- * implementation which is not tied to scheduled reminders, although
- * that is outside the current scope.
  */
-class CRM_Activity_Tokens extends \Civi\Token\AbstractTokenSubscriber {
+class CRM_Activity_Tokens extends CRM_Core_EntityTokens {
 
-  public function __construct() {
-    parent::__construct('activity', array(
-      'activity_id' => ts('Activity ID'),
-      'activity_type' => ts('Activity Type'),
-      'subject' => ts('Activity Subject'),
-      'details' => ts('Activity Details'),
-      'activity_date_time' => ts('Activity Date-Time'),
-    ));
+  /**
+   * Get the entity name for api v4 calls.
+   *
+   * @return string
+   */
+  protected function getApiEntityName(): string {
+    return 'Activity';
   }
 
   /**
-   * Check is active.
-   *
-   * @param \Civi\Token\TokenProcessor $processor
-   *
-   * @return bool
+   * @inheritDoc
    */
-  public function checkActive(\Civi\Token\TokenProcessor $processor) {
-    // Extracted from scheduled-reminders code. See the class description.
-    return
-      !empty($processor->context['actionMapping'])
-      && $processor->context['actionMapping']->getEntity() === 'civicrm_activity';
-  }
-
-  public function alterActionScheduleQuery(\Civi\ActionSchedule\Event\MailingQueryEvent $e) {
-    if ($e->mapping->getEntity() !== 'civicrm_activity') {
+  public function alterActionScheduleQuery(MailingQueryEvent $e): void {
+    if ($e->mapping->getEntityTable($e->actionSchedule) !== $this->getExtendableTableName()) {
       return;
     }
 
@@ -78,19 +45,7 @@ class CRM_Activity_Tokens extends \Civi\Token\AbstractTokenSubscriber {
     // Multiple revisions of the activity.
     // Q: Could we simplify & move the extra AND clauses into `where(...)`?
     $e->query->param('casEntityJoinExpr', 'e.id = reminder.entity_id AND e.is_current_revision = 1 AND e.is_deleted = 0');
-
-    $e->query->select('e.*'); // FIXME: seems too broad.
-    $e->query->select('ov.label as activity_type, e.id as activity_id');
-
-    $e->query->join("og", "!casMailingJoinType civicrm_option_group og ON og.name = 'activity_type'");
-    $e->query->join("ov", "!casMailingJoinType civicrm_option_value ov ON e.activity_type_id = ov.value AND ov.option_group_id = og.id");
-
-    // if CiviCase component is enabled, join for caseId.
-    $compInfo = CRM_Core_Component::getEnabledComponents();
-    if (array_key_exists('CiviCase', $compInfo)) {
-      $e->query->select("civicrm_case_activity.case_id as case_id");
-      $e->query->join('civicrm_case_activity', "LEFT JOIN `civicrm_case_activity` ON `e`.`id` = `civicrm_case_activity`.`activity_id`");
-    }
+    parent::alterActionScheduleQuery($e);
   }
 
   /**
@@ -99,25 +54,104 @@ class CRM_Activity_Tokens extends \Civi\Token\AbstractTokenSubscriber {
    * @param \Civi\Token\TokenRow $row
    *   The record for which we want token values.
    * @param string $entity
+   *   The name of the token entity.
    * @param string $field
    *   The name of the token field.
    * @param mixed $prefetch
    *   Any data that was returned by the prefetch().
    *
-   * @return mixed
+   * @throws \CRM_Core_Exception
    */
-  public function evaluateToken(\Civi\Token\TokenRow $row, $entity, $field, $prefetch = NULL) {
-    $actionSearchResult = $row->context['actionSearchResult'];
+  public function evaluateToken(TokenRow $row, $entity, $field, $prefetch = NULL) {
+    $activityId = $this->getFieldValue($row, 'id');
 
-    if (in_array($field, array('activity_date_time'))) {
-      $row->tokens($entity, $field, \CRM_Utils_Date::customFormat($actionSearchResult->$field));
-    }
-    elseif (isset($actionSearchResult->$field)) {
-      $row->tokens($entity, $field, $actionSearchResult->$field);
+    if (!empty($this->getDeprecatedTokens()[$field])) {
+      $realField = $this->getDeprecatedTokens()[$field];
+      parent::evaluateToken($row, $entity, $realField, $prefetch);
+      $row->format('text/plain')->tokens($entity, $field, $row->tokens['activity'][$realField]);
     }
     else {
-      $row->tokens($entity, $field, '');
+      parent::evaluateToken($row, $entity, $field, $prefetch);
     }
+  }
+
+  /**
+   * Get fields historically not advertised for tokens.
+   *
+   * @return string[]
+   */
+  protected function getSkippedFields(): array {
+    return array_merge(parent::getSkippedFields(), [
+      'source_record_id',
+      'phone_id',
+      'phone_number',
+      'priority_id',
+      'parent_id',
+      'is_test',
+      'medium_id',
+      'is_auto',
+      'relationship_id',
+      'is_current_revision',
+      'original_id',
+      'result',
+      'is_deleted',
+      'engagement_level',
+      'weight',
+      'is_star',
+    ]);
+  }
+
+  /**
+   * @inheritDoc
+   */
+  public function getActiveTokens(TokenValueEvent $e) {
+    $messageTokens = $e->getTokenProcessor()->getMessageTokens();
+    if (!isset($messageTokens[$this->entity])) {
+      return NULL;
+    }
+
+    $activeTokens = [];
+    foreach ($messageTokens[$this->entity] as $msgToken) {
+      if (array_key_exists($msgToken, $this->getTokenMetadata())) {
+        $activeTokens[] = $msgToken;
+      }
+      // case_id is probably set in metadata anyway.
+      elseif ($msgToken === 'case_id' || isset($this->getDeprecatedTokens()[$msgToken])) {
+        $activeTokens[] = $msgToken;
+      }
+    }
+    return array_unique($activeTokens);
+  }
+
+  public function getPrefetchFields(TokenValueEvent $e): array {
+    $tokens = parent::getPrefetchFields($e);
+    $active = $this->getActiveTokens($e);
+    foreach ($this->getDeprecatedTokens() as $old => $new) {
+      if (in_array($old, $active, TRUE) && !in_array($new, $active, TRUE)) {
+        $tokens[] = $new;
+      }
+    }
+    return $tokens;
+  }
+
+  /**
+   * These tokens still work but we don't advertise them.
+   *
+   * We will actively remove from the following places
+   * - scheduled reminders
+   * - add to 'blocked' on pdf letter & email
+   *
+   * & then at some point start issuing warnings for them.
+   *
+   * @return string[]
+   */
+  protected function getDeprecatedTokens(): array {
+    return [
+      'activity_id' => 'id',
+      'activity_type' => 'activity_type_id:label',
+      'status' => 'status_id:label',
+      'campaign' => 'campaign_id:label',
+    ];
   }
 
 }

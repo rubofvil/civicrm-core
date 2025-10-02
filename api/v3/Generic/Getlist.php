@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -35,16 +19,90 @@
  * @param array $apiRequest
  *
  * @return mixed
+ * @throws \CRM_Core_Exception
  */
 function civicrm_api3_generic_getList($apiRequest) {
-  $entity = _civicrm_api_get_entity_name_from_camel($apiRequest['entity']);
+  $entity = CRM_Core_DAO_AllCoreTables::convertEntityNameToLower($apiRequest['entity']);
   $request = $apiRequest['params'];
-  $meta = civicrm_api3_generic_getfields(array('action' => 'get') + $apiRequest, FALSE);
+  $meta = civicrm_api3_generic_getfields(['action' => 'get'] + $apiRequest, FALSE)['values'];
 
+  // If the user types an integer into the search
+  $forceIdSearch = empty($request['id']) && !empty($request['input']) && !empty($meta['id']) && CRM_Utils_Rule::positiveInteger($request['input']) && (substr($request['input'], 0, 1) !== '0');
+  // Add an extra page of results for the record with an exact id match
+  if ($forceIdSearch) {
+    $request['page_num'] = ($request['page_num'] ?? 1) - 1;
+    $idRequest = $request;
+    if (empty($idRequest['page_num'])) {
+      $idRequest['id'] = $idRequest['input'];
+      unset($idRequest['input']);
+    }
+    $result = _civicrm_api3_generic_getlist_get_result($idRequest, $entity, $meta, $apiRequest);
+  }
+
+  $searchResult = _civicrm_api3_generic_getlist_get_result($request, $entity, $meta, $apiRequest);
+  $foundIDCount = 0;
+  if ($forceIdSearch && !empty($result['values']) && isset($idRequest['id'])) {
+    $contactSearchID = $idRequest['id'];
+    $foundIDCount = 1;
+    // Merge id fetch into search result.
+    foreach ($searchResult['values'] as $searchResultItem) {
+      if ($searchResultItem['id'] !== $contactSearchID) {
+        $result['values'][] = $searchResultItem;
+      }
+      else {
+        // If the id search found the same contact as the string search then
+        // set foundIDCount to 0 - ie no additional row should be added for the id.
+        $foundIDCount = 0;
+      }
+    }
+  }
+  else {
+    $result = $searchResult;
+  }
+  // Hey api, would you like to format the output?
+  $fnName = "_civicrm_api3_{$entity}_getlist_output";
+  $fnName = function_exists($fnName) ? $fnName : '_civicrm_api3_generic_getlist_output';
+  $values = $fnName($result, $request, $entity, $meta);
+
+  _civicrm_api3_generic_getlist_postprocess($result, $request, $values);
+
+  $output = ['page_num' => $request['page_num']];
+
+  if ($forceIdSearch) {
+    $output['page_num']++;
+    // When returning the single record matching id
+    if (empty($request['page_num'])) {
+      foreach ($values as $i => $value) {
+        $description = ts('ID: %1', [1 => $value['id']]);
+        $values[$i]['description'] = array_merge([$description], $value['description'] ?? []);
+      }
+    }
+  }
+  // Limit is set for searching but not fetching by id
+  if (!empty($request['params']['options']['limit'])) {
+    // If we have an extra result then this is not the last page
+    $last = ($request['params']['options']['limit'] - 1) + $foundIDCount;
+    $output['more_results'] = isset($values[$last]);
+    unset($values[$last]);
+  }
+
+  return civicrm_api3_create_success($values, $request['params'], $entity, 'getlist', CRM_Core_DAO::$_nullObject, $output);
+}
+
+/**
+ * @param string $entity
+ * @param $request
+ * @param $meta
+ * @param array $apiRequest
+ *
+ * @return array
+ * @throws \CRM_Core_Exception
+ */
+function _civicrm_api3_generic_getlist_get_result(array &$request, string $entity, $meta, array $apiRequest): array {
   // Hey api, would you like to provide default values?
   $fnName = "_civicrm_api3_{$entity}_getlist_defaults";
-  $defaults = function_exists($fnName) ? $fnName($request) : array();
-  _civicrm_api3_generic_getList_defaults($entity, $request, $defaults, $meta['values']);
+  $defaults = function_exists($fnName) ? $fnName($request) : [];
+  _civicrm_api3_generic_getList_defaults($entity, $request, $defaults, $meta);
 
   // Hey api, would you like to format the search params?
   $fnName = "_civicrm_api3_{$entity}_getlist_params";
@@ -53,25 +111,32 @@ function civicrm_api3_generic_getList($apiRequest) {
 
   $request['params']['check_permissions'] = !empty($apiRequest['params']['check_permissions']);
   $result = civicrm_api3($entity, 'get', $request['params']);
-
-  // Hey api, would you like to format the output?
-  $fnName = "_civicrm_api3_{$entity}_getlist_output";
-  $fnName = function_exists($fnName) ? $fnName : '_civicrm_api3_generic_getlist_output';
-  $values = $fnName($result, $request, $entity, $meta['values']);
-
-  _civicrm_api3_generic_getlist_postprocess($result, $request, $values);
-
-  $output = array('page_num' => $request['page_num']);
-
-  // Limit is set for searching but not fetching by id
-  if (!empty($request['params']['options']['limit'])) {
-    // If we have an extra result then this is not the last page
-    $last = $request['params']['options']['limit'] - 1;
-    $output['more_results'] = isset($values[$last]);
-    unset($values[$last]);
+  if (!empty($request['input']) && !empty($defaults['search_field_fallback']) && $result['count'] < $request['params']['options']['limit']) {
+    // We support a field fallback. Note we don't do this as an OR query because that could easily
+    // bypass an index & kill the server. We just 'pad' the results if needed with the second
+    // query - this is effectively the same as what the old Ajax::getContactEmail function did.
+    // Since these queries should be quick & often only one should be needed this is a simpler alternative
+    // to constructing a UNION via the api.
+    $request['params'][$defaults['search_field_fallback']] = $request['params'][$defaults['search_field']];
+    if ($request['params']['options']['sort'] === $defaults['search_field']) {
+      // The way indexing works here is that the order by field will be chosen in preference to the
+      // filter field. This can result in really bad performance so use the filter field for the sort.
+      // See https://github.com/civicrm/civicrm-core/pull/16993 for performance test results.
+      $request['params']['options']['sort'] = $defaults['search_field_fallback'];
+    }
+    // Exclude anything returned from the previous query since we are looking for additional rows in this
+    // second query.
+    $request['params'][$defaults['search_field']] = ['NOT LIKE' => $request['params'][$defaults['search_field_fallback']]['LIKE']];
+    $request['params']['options']['limit'] -= $result['count'];
+    $result2 = civicrm_api3($entity, 'get', $request['params']);
+    $result['values'] = array_merge($result['values'], $result2['values']);
+    $result['count'] = count($result['values']);
   }
-
-  return civicrm_api3_create_success($values, $request['params'], $entity, 'getlist', CRM_Core_DAO::$_nullObject, $output);
+  else {
+    // Re-index to sequential = 0.
+    $result['values'] = array_merge($result['values']);
+  }
+  return $result;
 }
 
 /**
@@ -82,26 +147,27 @@ function civicrm_api3_generic_getList($apiRequest) {
  * @param array $apiDefaults
  * @param array $fields
  */
-function _civicrm_api3_generic_getList_defaults($entity, &$request, $apiDefaults, $fields) {
-  $config = CRM_Core_Config::singleton();
-  $defaults = array(
+function _civicrm_api3_generic_getList_defaults(string $entity, array &$request, array $apiDefaults, array $fields): void {
+  $defaults = [
     'page_num' => 1,
     'input' => '',
     'image_field' => NULL,
-    'id_field' => $entity == 'option_value' ? 'value' : 'id',
-    'description_field' => array(),
-    'params' => array(),
-    'extra' => array(),
-  );
+    'color_field' => isset($fields['color']) ? 'color' : NULL,
+    'id_field' => $entity === 'option_value' ? 'value' : 'id',
+    'description_field' => [],
+    'add_wildcard' => Civi::settings()->get('includeWildCardInName'),
+    'params' => [],
+    'extra' => [],
+  ];
   // Find main field from meta
-  foreach (array('sort_name', 'title', 'label', 'name', 'subject') as $field) {
+  foreach (['sort_name', 'title', 'label', 'name', 'subject'] as $field) {
     if (isset($fields[$field])) {
       $defaults['label_field'] = $defaults['search_field'] = $field;
       break;
     }
   }
   // Find fields to be used for the description
-  foreach (array('description') as $field) {
+  foreach (['description'] as $field) {
     if (isset($fields[$field])) {
       $defaults['description_field'][] = $field;
     }
@@ -112,31 +178,36 @@ function _civicrm_api3_generic_getList_defaults($entity, &$request, $apiDefaults
   }
   $request += $apiDefaults + $defaults;
   // Default api params
-  $params = array(
-    'options' => array(
-      // Adding one extra result allows us to see if there are any more
-      'limit' => $resultsPerPage + 1,
-      // Because sql is zero-based
-      'offset' => ($request['page_num'] - 1) * $resultsPerPage,
-      'sort' => $request['label_field'],
-    ),
-    'sequential' => 1,
-  );
+  $params = [
+    'sequential' => 0,
+    'options' => [],
+  ];
   // When searching e.g. autocomplete
   if ($request['input']) {
-    $params[$request['search_field']] = array('LIKE' => ($config->includeWildCardInName ? '%' : '') . $request['input'] . '%');
+    $params[$request['search_field']] = ['LIKE' => ($request['add_wildcard'] ? '%' : '') . $request['input'] . '%'];
   }
+  $request['params'] += $params;
+
   // When looking up a field e.g. displaying existing record
   if (!empty($request['id'])) {
     if (is_string($request['id']) && strpos($request['id'], ',')) {
       $request['id'] = explode(',', trim($request['id'], ', '));
     }
     // Don't run into search limits when prefilling selection
-    $params['options']['limit'] = NULL;
-    unset($params['options']['offset'], $request['params']['options']['limit'], $request['params']['options']['offset']);
-    $params[$request['id_field']] = is_array($request['id']) ? array('IN' => $request['id']) : $request['id'];
+    $request['params']['options']['limit'] = NULL;
+    unset($request['params']['options']['offset']);
+    $request['params'][$request['id_field']] = is_array($request['id']) ? ['IN' => $request['id']] : $request['id'];
   }
-  $request['params'] += $params;
+  else {
+    $request['params']['options'] += [
+      // Add pagination parameters
+      'sort' => $request['label_field'],
+      // Adding one extra result allows us to see if there are any more
+      'limit' => $resultsPerPage + 1,
+      // Because sql is zero-based
+      'offset' => ($request['page_num'] > 1) ? (($request['page_num'] - 1) * $resultsPerPage) : 0,
+    ];
+  }
 }
 
 /**
@@ -145,9 +216,12 @@ function _civicrm_api3_generic_getList_defaults($entity, &$request, $apiDefaults
  * @param array $request
  */
 function _civicrm_api3_generic_getlist_params(&$request) {
-  $fieldsToReturn = array($request['id_field'], $request['label_field']);
+  $fieldsToReturn = [$request['id_field'], $request['label_field']];
   if (!empty($request['image_field'])) {
     $fieldsToReturn[] = $request['image_field'];
+  }
+  if (!empty($request['color_field'])) {
+    $fieldsToReturn[] = $request['color_field'];
   }
   if (!empty($request['description_field'])) {
     $fieldsToReturn = array_merge($fieldsToReturn, (array) $request['description_field']);
@@ -166,15 +240,15 @@ function _civicrm_api3_generic_getlist_params(&$request) {
  * @return array
  */
 function _civicrm_api3_generic_getlist_output($result, $request, $entity, $fields) {
-  $output = array();
+  $output = [];
   if (!empty($result['values'])) {
     foreach ($result['values'] as $row) {
-      $data = array(
+      $data = [
         'id' => $row[$request['id_field']],
         'label' => $row[$request['label_field']],
-      );
+      ];
       if (!empty($request['description_field'])) {
-        $data['description'] = array();
+        $data['description'] = [];
         foreach ((array) $request['description_field'] as $field) {
           if (!empty($row[$field])) {
             if (!isset($fields[$field]['pseudoconstant'])) {
@@ -189,9 +263,12 @@ function _civicrm_api3_generic_getlist_output($result, $request, $entity, $field
             }
           }
         }
-      };
+      }
       if (!empty($request['image_field'])) {
-        $data['image'] = isset($row[$request['image_field']]) ? $row[$request['image_field']] : '';
+        $data['image'] = $row[$request['image_field']] ?? '';
+      }
+      if (isset($row[$request['color_field']])) {
+        $data['color'] = $row[$request['color_field']];
       }
       $output[] = $data;
     }
@@ -202,12 +279,12 @@ function _civicrm_api3_generic_getlist_output($result, $request, $entity, $field
 /**
  * Common postprocess for getlist output
  *
- * @param $result
- * @param $request
- * @param $values
+ * @param array $result
+ * @param array $request
+ * @param array $values
  */
 function _civicrm_api3_generic_getlist_postprocess($result, $request, &$values) {
-  $chains = array();
+  $chains = [];
   foreach ($request['params'] as $field => $param) {
     if (substr($field, 0, 4) === 'api.') {
       $chains[] = $field;
@@ -216,10 +293,10 @@ function _civicrm_api3_generic_getlist_postprocess($result, $request, &$values) 
   if (!empty($result['values'])) {
     foreach (array_values($result['values']) as $num => $row) {
       foreach ($request['extra'] as $field) {
-        $values[$num]['extra'][$field] = isset($row[$field]) ? $row[$field] : NULL;
+        $values[$num]['extra'][$field] = $row[$field] ?? NULL;
       }
       foreach ($chains as $chain) {
-        $values[$num][$chain] = isset($row[$chain]) ? $row[$chain] : NULL;
+        $values[$num][$chain] = $row[$chain] ?? NULL;
       }
     }
   }
@@ -232,49 +309,49 @@ function _civicrm_api3_generic_getlist_postprocess($result, $request, &$values) 
  * @param array $apiRequest
  */
 function _civicrm_api3_generic_getlist_spec(&$params, $apiRequest) {
-  $params += array(
-    'page_num' => array(
+  $params += [
+    'page_num' => [
       'title' => 'Page Number',
       'description' => "Current page of a multi-page lookup",
       'type' => CRM_Utils_Type::T_INT,
-    ),
-    'input' => array(
+    ],
+    'input' => [
       'title' => 'Search Input',
       'description' => "String to search on",
       'type' => CRM_Utils_Type::T_TEXT,
-    ),
-    'params' => array(
+    ],
+    'params' => [
       'title' => 'API Params',
       'description' => "Additional filters to send to the {$apiRequest['entity']} API.",
-    ),
-    'extra' => array(
+    ],
+    'extra' => [
       'title' => 'Extra',
       'description' => 'Array of additional fields to return.',
-    ),
-    'image_field' => array(
+    ],
+    'image_field' => [
       'title' => 'Image Field',
       'description' => "Field that this entity uses to store icons (usually automatic)",
       'type' => CRM_Utils_Type::T_TEXT,
-    ),
-    'id_field' => array(
+    ],
+    'id_field' => [
       'title' => 'ID Field',
       'description' => "Field that uniquely identifies this entity (usually automatic)",
       'type' => CRM_Utils_Type::T_TEXT,
-    ),
-    'description_field' => array(
+    ],
+    'description_field' => [
       'title' => 'Description Field',
       'description' => "Field that this entity uses to store summary text (usually automatic)",
       'type' => CRM_Utils_Type::T_TEXT,
-    ),
-    'label_field' => array(
+    ],
+    'label_field' => [
       'title' => 'Label Field',
       'description' => "Field to display as title of results (usually automatic)",
       'type' => CRM_Utils_Type::T_TEXT,
-    ),
-    'search_field' => array(
+    ],
+    'search_field' => [
       'title' => 'Search Field',
       'description' => "Field to search on (assumed to be the same as label field unless otherwise specified)",
       'type' => CRM_Utils_Type::T_TEXT,
-    ),
-  );
+    ],
+  ];
 }

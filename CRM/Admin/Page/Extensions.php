@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -29,7 +13,7 @@
  * This is a part of CiviCRM extension management functionality.
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -42,7 +26,7 @@ class CRM_Admin_Page_Extensions extends CRM_Core_Page_Basic {
    *
    * @var array
    */
-  static $_links = NULL;
+  public static $_links = NULL;
 
   /**
    * Obtains the group name from url and sets the title.
@@ -76,39 +60,44 @@ class CRM_Admin_Page_Extensions extends CRM_Core_Page_Basic {
    */
   public function &links() {
     if (!(self::$_links)) {
-      self::$_links = array(
-        CRM_Core_Action::ADD => array(
+      self::$_links = [
+        CRM_Core_Action::ADD => [
           'name' => ts('Install'),
           'url' => 'civicrm/admin/extensions',
           'qs' => 'action=add&id=%%id%%&key=%%key%%',
           'title' => ts('Install'),
-        ),
-        CRM_Core_Action::ENABLE => array(
+          'weight' => CRM_Core_Action::getWeight(CRM_Core_Action::ADD),
+        ],
+        CRM_Core_Action::ENABLE => [
           'name' => ts('Enable'),
           'url' => 'civicrm/admin/extensions',
           'qs' => 'action=enable&id=%%id%%&key=%%key%%',
           'ref' => 'enable-action',
           'title' => ts('Enable'),
-        ),
-        CRM_Core_Action::DISABLE => array(
+          'weight' => CRM_Core_Action::getWeight(CRM_Core_Action::ENABLE),
+        ],
+        CRM_Core_Action::DISABLE => [
           'name' => ts('Disable'),
           'url' => 'civicrm/admin/extensions',
           'qs' => 'action=disable&id=%%id%%&key=%%key%%',
           'title' => ts('Disable'),
-        ),
-        CRM_Core_Action::DELETE => array(
+          'weight' => CRM_Core_Action::getWeight(CRM_Core_Action::DISABLE),
+        ],
+        CRM_Core_Action::DELETE => [
           'name' => ts('Uninstall'),
           'url' => 'civicrm/admin/extensions',
           'qs' => 'action=delete&id=%%id%%&key=%%key%%',
           'title' => ts('Uninstall Extension'),
-        ),
-        CRM_Core_Action::UPDATE => array(
-          'name' => ts('Download'),
+          'weight' => CRM_Core_Action::getWeight(CRM_Core_Action::DELETE),
+        ],
+        CRM_Core_Action::UPDATE => [
+          'name' => ts('Install'),
           'url' => 'civicrm/admin/extensions',
           'qs' => 'action=update&id=%%id%%&key=%%key%%',
-          'title' => ts('Download Extension'),
-        ),
-      );
+          'title' => ts('Install Extension'),
+          'weight' => CRM_Core_Action::getWeight(CRM_Core_Action::UPDATE),
+        ],
+      ];
     }
     return self::$_links;
   }
@@ -125,8 +114,6 @@ class CRM_Admin_Page_Extensions extends CRM_Core_Page_Basic {
    * Browse all options.
    */
   public function browse() {
-    $mapper = CRM_Extension_System::singleton()->getMapper();
-    $manager = CRM_Extension_System::singleton()->getManager();
 
     // build announcements at the top of the page
     $this->assign('extAddNewEnabled', CRM_Extension_System::singleton()->getBrowser()->isEnabled());
@@ -145,31 +132,66 @@ class CRM_Admin_Page_Extensions extends CRM_Core_Page_Basic {
     // TODO: Debate whether to immediately detect changes in underlying source tree
     // $manager->refresh();
 
-    // build list of local extensions
-    $localExtensionRows = array(); // array($pseudo_id => extended_CRM_Extension_Info)
+    $localExtensionRows = $this->formatLocalExtensionRows();
+    $this->assign('localExtensionRows', $localExtensionRows);
+
+    $remoteExtensionRows = $this->formatRemoteExtensionRows($localExtensionRows);
+    $this->assign('remoteExtensionRows', $remoteExtensionRows);
+
+    Civi::resources()
+      ->addScriptFile('civicrm', 'templates/CRM/common/TabHeader.js', 1, 'html-header')
+      ->addSetting([
+        'tabSettings' => ['active' => $_GET['selectedChild'] ?? NULL],
+      ]);
+  }
+
+  /**
+   * Get the list of local extensions and format them as a table with
+   * status and action data.
+   *
+   * @return array
+   */
+  public function formatLocalExtensionRows() {
+    $mapper = CRM_Extension_System::singleton()->getMapper();
+    $manager = CRM_Extension_System::singleton()->getManager();
+
+    // array($pseudo_id => extended_CRM_Extension_Info)
+    $localExtensionRows = [];
     $keys = array_keys($manager->getStatuses());
     sort($keys);
+    $hiddenExtensions = $mapper->getKeysByTag('mgmt:hidden');
+    $requiredExtensions = $mapper->getKeysByTag('mgmt:required');
     foreach ($keys as $key) {
+      if (in_array($key, $hiddenExtensions)) {
+        continue;
+      }
       try {
         $obj = $mapper->keyToInfo($key);
       }
       catch (CRM_Extension_Exception $ex) {
-        CRM_Core_Session::setStatus(ts('Failed to read extension (%1). Please refresh the extension list.', array(1 => $key)));
+        CRM_Core_Session::setStatus(ts('Failed to read extension (%1). Please refresh the extension list.', [1 => $key]));
         continue;
       }
 
+      $mapper = CRM_Extension_System::singleton()->getMapper();
+
       $row = self::createExtendedInfo($obj);
       $row['id'] = $obj->key;
+      $row['action'] = '';
 
       // assign actions
       $action = 0;
       switch ($row['status']) {
         case CRM_Extension_Manager::STATUS_UNINSTALLED:
-          $action += CRM_Core_Action::ADD;
+          if (!$manager->isIncompatible($row['id'])) {
+            $action += CRM_Core_Action::ADD;
+          }
           break;
 
         case CRM_Extension_Manager::STATUS_DISABLED:
-          $action += CRM_Core_Action::ENABLE;
+          if (!$manager->isIncompatible($row['id'])) {
+            $action += CRM_Core_Action::ENABLE;
+          }
           $action += CRM_Core_Action::DELETE;
           break;
 
@@ -186,45 +208,60 @@ class CRM_Admin_Page_Extensions extends CRM_Core_Page_Basic {
       }
       // TODO if extbrowser is enabled and extbrowser has newer version than extcontainer,
       // then $action += CRM_Core_Action::UPDATE
-      $row['action'] = CRM_Core_Action::formLink(self::links(),
-        $action,
-        array(
-          'id' => $row['id'],
-          'key' => $obj->key,
-        ),
-        ts('more'),
-        FALSE,
-        'extension.local.action',
-        'Extension',
-        $row['id']
-      );
+      if ($action && !in_array($key, $requiredExtensions)) {
+        $row['action'] = CRM_Core_Action::formLink(self::links(),
+          $action,
+          ['id' => $row['id'], 'key' => $obj->key],
+          ts('more'),
+          FALSE,
+          'extension.local.action',
+          'Extension',
+          $row['id']
+        );
+      }
       // Key would be better to send, but it's not an integer.  Moreover, sending the
       // values to hook_civicrm_links means that you can still get at the key
 
       $localExtensionRows[$row['id']] = $row;
     }
-    $this->assign('localExtensionRows', $localExtensionRows);
+    return $localExtensionRows;
+  }
 
+  /**
+   * Get the list of remote extensions and format them as a table with
+   * status and action data.
+   *
+   * @param array $localExtensionRows
+   * @return array
+   */
+  public function formatRemoteExtensionRows($localExtensionRows) {
     try {
       $remoteExtensions = CRM_Extension_System::singleton()->getBrowser()->getExtensions();
     }
     catch (CRM_Extension_Exception $e) {
-      $remoteExtensions = array();
-      CRM_Core_Session::setStatus($e->getMessage(), ts('Extension download error'), 'error');
+      $remoteExtensions = [];
+      CRM_Core_Session::setStatus($e->getMessage(), ts('Extension download error'), 'warning');
     }
 
     // build list of available downloads
-    $remoteExtensionRows = array();
+    $remoteExtensionRows = [];
+    $compat = CRM_Extension_System::getCompatibilityInfo();
+    $mapper = CRM_Extension_System::singleton()->getMapper();
+
     foreach ($remoteExtensions as $info) {
-      $row = (array) $info;
+      if (!empty($compat[$info->key]['obsolete'])) {
+        continue;
+      }
+      $row = self::fillMissingInfoKeys((array) $info);
       $row['id'] = $info->key;
+      $row['upgradelink'] = '';
       $action = CRM_Core_Action::UPDATE;
       $row['action'] = CRM_Core_Action::formLink(self::links(),
         $action,
-        array(
+        [
           'id' => $row['id'],
           'key' => $row['key'],
-        ),
+        ],
         ts('more'),
         FALSE,
         'extension.remote.action',
@@ -232,13 +269,16 @@ class CRM_Admin_Page_Extensions extends CRM_Core_Page_Basic {
         $row['id']
       );
       if (isset($localExtensionRows[$info->key])) {
-        if (version_compare($localExtensionRows[$info->key]['version'], $info->version, '<')) {
-          $row['is_upgradeable'] = TRUE;
+        if (array_key_exists('version', $localExtensionRows[$info->key])) {
+          if (version_compare($localExtensionRows[$info->key]['version'] ?? '', $info->version, '<')) {
+            $row['upgradelink'] = $mapper->getUpgradeLink($remoteExtensions[$info->key], $localExtensionRows[$info->key]);
+          }
         }
       }
       $remoteExtensionRows[$row['id']] = $row;
     }
-    $this->assign('remoteExtensionRows', $remoteExtensionRows);
+
+    return $remoteExtensionRows;
   }
 
   /**
@@ -296,7 +336,48 @@ class CRM_Admin_Page_Extensions extends CRM_Core_Page_Basic {
    * @return array
    */
   public static function createExtendedInfo(CRM_Extension_Info $obj) {
-    return CRM_Extension_System::createExtendedInfo($obj);
+    return self::fillMissingInfoKeys(CRM_Extension_System::createExtendedInfo($obj));
+  }
+
+  /**
+   * Extension templates expect certain keys to always be set, but these might be missing from the relevant info.xml files
+   * This ensures the expect keys are always set.
+   *
+   * @param array $info
+   * @return array
+   */
+  private static function fillMissingInfoKeys(array $info) {
+    $defaultKeys = [
+      'urls' => [],
+      'authors' => [],
+      'version' => '',
+      'description' => '',
+      'license' => '',
+      'path' => '',
+      'releaseDate' => '',
+      'downloadUrl' => FALSE,
+      'compatibility' => FALSE,
+      'develStage' => FALSE,
+      'ready' => '',
+      'usage' => '',
+      'comments' => FALSE,
+    ];
+    $support = [
+      'alpha' => ts('Alpha'),
+      'beta' => ts('Beta'),
+      'stable' => ts('Stable'),
+      'reviewed' => ts('Reviewed'),
+    ];
+    $info = array_merge($defaultKeys, $info);
+    $info['is_stable'] = $info['develStage'] === 'stable' && !preg_match(";(alpha|beta|dev);", $info['version']);
+    $info['develStage_formatted'] = $support[$info['develStage']] ?? $info['develStage'];
+    if ($info['ready'] == 'ready') {
+      $info['develStage_formatted'] = $support['reviewed'];
+    }
+    foreach ($info['authors'] as &$author) {
+      $author = array_merge(['homepage' => ''], $author);
+    }
+    return $info;
   }
 
 }

@@ -1,32 +1,18 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 <fieldset><legend>{if $useForMember}{ts}Membership Options{/ts}{else}{ts}Price Field Options{/ts}{/if}</legend>
     <div class="description">
         {if $useForMember}
-            {ts}Fill in a row for each membership type you want to offer as an option (click 'another choice' for each additional choice). Click the help icon for more info on membership price sets.{/ts} {help id="id-member-price-options"}
+            {capture assign='helpTitle'}{ts}Price Options{/ts}{/capture}
+            {ts}Fill in a row for each membership type you want to offer as an option (click 'another choice' for each additional choice). Click the help icon for more info on membership price sets.{/ts}
+            {help id="member-price-options" title=$helpTitle}
         {else}
             {ts}Enter up to fifteen (15) multiple choice options in this table (click 'another choice' for each additional choice). If you need more than ten options, you can create an unlimited number of additional choices using the Edit Price Options link after saving this new field. Enter a description of the option in the 'Label' column, and the associated price in the 'Amount' column. Click the 'Default' radio button to the left of an option if you want that to be selected by default.{/ts}
         {/if}
@@ -37,18 +23,34 @@
       <th>&nbsp;</th>
       <th>{ts}Default{/ts}</th>
   {if $useForMember}
-      <th>{ts}Membership Type{/ts} {help id="id-membership-type"}</th>
+      <th>
+        {capture assign='colTitle'}{ts}Membership Type{/ts}{/capture}{$colTitle}
+        {help id="membership-type" title=$colTitle}
+      </th>
       <th>{ts}Number of Terms{/ts}</th>
   {/if}
       <th>{ts}Label{/ts}</th>
-      <th>{ts}Amount{/ts} {if $useForEvent}{help id="id-negative-options"}{/if}</th>
+      <th>
+        {capture assign='colTitle'}{ts}Amount{/ts}{/capture}{$colTitle}
+        {if $useForEvent}{help id="price" title=$colTitle}{/if}
+      </th>
       <th>{ts}Financial Type{/ts}</th>
     {if $useForEvent}
-      <th>{ts}Participant Count{/ts} {help id="id-participant-count"}</th>
-      <th>{ts}Max Participant{/ts} {help id="id-participant-max"}</th>
+      <th>
+        {capture assign='colTitle'}{ts}Participant Count{/ts}{/capture}{$colTitle}
+        {help id="count" title=$colTitle}
+      </th>
+      <th>
+        {capture assign='colTitle'}{ts}Max Participant{/ts}{/capture}{$colTitle}
+        {help id="max_value" title=$colTitle}
+      </th>
   {/if}
         <th>{ts}Order{/ts}</th>
-      <th>{ts}Active?{/ts}</th>
+        <th>
+          {capture assign='colTitle'}{ts}Visibility{/ts}{/capture}{$colTitle}
+          {help id="visibility-options" title=$colTitle}
+        </th>
+        <th>{ts}Active?{/ts}</th>
     </tr>
 
   {section name=rowLoop start=1 loop=16}
@@ -56,7 +58,7 @@
   <tr id="optionField_{$index}" class="form-item {cycle values="odd-row,even-row"}">
         <td>
         {if $index GT 1}
-            <a onclick="showHideRow({$index}); return false;" name="optionField_{$index}" href="#" class="form-link"><i class="crm-i fa-trash" title="{ts}hide field or section{/ts}"></i></a>
+            <a onclick="showHideRow({$index}); return false;" name="optionField_{$index}" href="#" class="form-link"><i class="crm-i fa-trash" title="{ts escape='htmlattribute'}hide field or section{/ts}" role="img" aria-hidden="true"></i></a>
         {/if}
         </td>
       <td>
@@ -80,12 +82,13 @@
           <td>{$form.option_max_value.$index.html}</td>
       {/if}
       <td> {$form.option_weight.$index.html}</td>
-       <td> {$form.option_status.$index.html}</td>
+      <td> {$form.option_visibility_id.$index.html}</td>
+      <td> {$form.option_status.$index.html}</td>
   </tr>
     {/section}
     </table>
   <div id="optionFieldLink" class="add-remove-link">
-        <a onclick="showHideRow(); return false;" name="optionFieldLink" href="#" class="form-link"><i class="crm-i fa-plus-circle"></i> {ts}add another choice{/ts}</a>
+        <a onclick="showHideRow(); return false;" name="optionFieldLink" href="#" class="form-link"><i class="crm-i fa-plus-circle" role="img" aria-hidden="true"></i> {ts}add another choice{/ts}</a>
     </div>
   <div id="additionalOption" class="description">
     {ts}If you need additional options - you can add them after you Save your current entries.{/ts}

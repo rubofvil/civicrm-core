@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -37,10 +21,10 @@
  * @param array $params
  *
  * @return array
- * @throws \API_Exception
+ * @throws \CRM_Core_Exception
  */
 function civicrm_api3_message_template_create($params) {
-  return _civicrm_api3_basic_create(_civicrm_api3_get_BAO(__FUNCTION__), $params);
+  return _civicrm_api3_basic_create(_civicrm_api3_get_BAO(__FUNCTION__), $params, 'MessageTemplate');
 }
 
 /**
@@ -99,25 +83,40 @@ function civicrm_api3_message_template_get($params) {
  * Sends a template.
  *
  * @param array $params
+ *
+ * @throws CRM_Core_Exception
+ * @throws \CRM_Core_Exception
  */
 function civicrm_api3_message_template_send($params) {
   // Change external param names to internal ones
-  $fieldSpec = array();
+  $fieldSpec = [];
   _civicrm_api3_message_template_send_spec($fieldSpec);
 
   foreach ($fieldSpec as $field => $spec) {
-    if (isset($spec['api.aliases']) && array_key_exists($field, $params)) {
+    // There is some dark magic going on here.
+    // The point of the 'api.aliases' metadata is generally
+    // to ensure that old params can be passed in and they still work.
+    // However, in this case the api params don't match the BAO
+    // params so the names that have been determined as
+    // 'right' for the api are being transformed into
+    // the 'wrong' BAO ones. It works, it's tested &
+    // we can do better in apiv4 once we get a suitable
+    // api there.
+    if (($spec['name'] ?? '') !== 'workflow' && isset($spec['api.aliases']) && array_key_exists($field, $params)) {
       $params[CRM_Utils_Array::first($spec['api.aliases'])] = $params[$field];
       unset($params[$field]);
     }
   }
+  $params['modelProps'] = [
+    'userEnteredText' => $params['tplParams']['receipt_text'] ?? NULL,
+  ];
   if (empty($params['messageTemplateID'])) {
-    if (empty($params['groupName']) || empty($params['valueName'])) {
+    if (empty($params['workflow'])) {
       // Can't use civicrm_api3_verify_mandatory for this because it would give the wrong field names
-      throw new API_Exception(
-        "Mandatory key(s) missing from params array: requires id or option_group_name + option_value_name",
-        "mandatory_missing",
-        array("fields" => array('id', 'option_group_name', 'option_value_name'))
+      throw new CRM_Core_Exception(
+        'Mandatory key(s) missing from params array: requires id or workflow',
+        'mandatory_missing',
+        ['fields' => ['id', 'workflow']]
       );
     }
   }
@@ -136,27 +135,23 @@ function civicrm_api3_message_template_send($params) {
 function _civicrm_api3_message_template_send_spec(&$params) {
   $params['id']['description'] = 'ID of the template';
   $params['id']['title'] = 'Message Template ID';
-  $params['id']['api.aliases'] = array('messageTemplateID', 'message_template_id');
+  $params['id']['api.aliases'] = ['messageTemplateID', 'message_template_id'];
   $params['id']['type'] = CRM_Utils_Type::T_INT;
 
-  $params['option_group_name']['description'] = 'option group name of the template (required if no id supplied)';
-  $params['option_group_name']['title'] = 'Option Group Name';
-  $params['option_group_name']['api.aliases'] = array('groupName');
-  $params['option_group_name']['type'] = CRM_Utils_Type::T_STRING;
-
-  $params['option_value_name']['description'] = 'option value name of the template (required if no id supplied)';
-  $params['option_value_name']['title'] = 'Option Value Name';
-  $params['option_value_name']['api.aliases'] = array('valueName');
-  $params['option_value_name']['type'] = CRM_Utils_Type::T_STRING;
+  $params['workflow']['description'] = 'option value name of the template (required if no id supplied)';
+  $params['workflow']['title'] = ts('Workflow');
+  $params['workflow']['api.aliases'] = ['option_value_name', 'valueName'];
+  $params['workflow']['type'] = CRM_Utils_Type::T_STRING;
+  $params['workflow']['name'] = 'workflow';
 
   $params['contact_id']['description'] = 'contact id if contact tokens are to be replaced';
   $params['contact_id']['title'] = 'Contact ID';
-  $params['contact_id']['api.aliases'] = array('contactId');
+  $params['contact_id']['api.aliases'] = ['contactId'];
   $params['contact_id']['type'] = CRM_Utils_Type::T_INT;
 
   $params['template_params']['description'] = 'additional template params (other than the ones already set in the template singleton)';
   $params['template_params']['title'] = 'Template Params';
-  $params['template_params']['api.aliases'] = array('tplParams');
+  $params['template_params']['api.aliases'] = ['tplParams'];
   // FIXME: Type??
 
   $params['from']['description'] = 'the From: header';
@@ -165,12 +160,12 @@ function _civicrm_api3_message_template_send_spec(&$params) {
 
   $params['to_name']['description'] = 'the recipient’s name';
   $params['to_name']['title'] = 'Recipient Name';
-  $params['to_name']['api.aliases'] = array('toName');
+  $params['to_name']['api.aliases'] = ['toName'];
   $params['to_name']['type'] = CRM_Utils_Type::T_STRING;
 
   $params['to_email']['description'] = 'the recipient’s email - mail is sent only if set';
   $params['to_email']['title'] = 'Recipient Email';
-  $params['to_email']['api.aliases'] = array('toEmail');
+  $params['to_email']['api.aliases'] = ['toEmail'];
   $params['to_email']['type'] = CRM_Utils_Type::T_STRING;
 
   $params['cc']['description'] = 'the Cc: header';
@@ -183,7 +178,7 @@ function _civicrm_api3_message_template_send_spec(&$params) {
 
   $params['reply_to']['description'] = 'the Reply-To: header';
   $params['reply_to']['title'] = 'Reply To';
-  $params['reply_to']['api.aliases'] = array('replyTo');
+  $params['reply_to']['api.aliases'] = ['replyTo'];
   $params['reply_to']['type'] = CRM_Utils_Type::T_STRING;
 
   $params['attachments']['description'] = 'email attachments';
@@ -192,11 +187,16 @@ function _civicrm_api3_message_template_send_spec(&$params) {
 
   $params['is_test']['description'] = 'whether this is a test email (and hence should include the test banner)';
   $params['is_test']['title'] = 'Is Test';
-  $params['is_test']['api.aliases'] = array('isTest');
+  $params['is_test']['api.aliases'] = ['isTest'];
   $params['is_test']['type'] = CRM_Utils_Type::T_BOOLEAN;
 
   $params['pdf_filename']['description'] = 'filename of optional PDF version to add as attachment (do not include path)';
   $params['pdf_filename']['title'] = 'PDF Filename';
-  $params['pdf_filename']['api.aliases'] = array('PDFFilename');
+  $params['pdf_filename']['api.aliases'] = ['PDFFilename'];
   $params['pdf_filename']['type'] = CRM_Utils_Type::T_STRING;
+
+  $params['disable_smarty']['description'] = 'Disable Smarty. Normal CiviMail tokens are still supported. By default Smarty is enabled.';
+  $params['disable_smarty']['title'] = 'Disable Smarty';
+  $params['disable_smarty']['api.aliases'] = ['disableSmarty'];
+  $params['disable_smarty']['type'] = CRM_Utils_Type::T_BOOLEAN;
 }

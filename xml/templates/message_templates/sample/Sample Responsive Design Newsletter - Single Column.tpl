@@ -3,7 +3,7 @@
   <meta content="width=device-width, initial-scale=1.0" name="viewport" />
   <title></title>
 
-  <style type="text/css">
+  <style>
     {literal}
     /* Client-specific Styles */
     #outlook a {padding:0;} /* Force Outlook to provide a "view in browser" menu link. */
@@ -31,7 +31,7 @@
     table[class=devicewidth] {width: 440px!important;text-align:center!important;}
     table[class=devicewidthmob] {width: 416px!important;text-align:center!important;}
     table[class=devicewidthinner] {width: 416px!important;text-align:center!important;}
-    img[class=banner] {width: 440px!important;auto!important;}
+    img[class=banner] {width: 440px!important;height:auto!important;}
     img[class=col2img] {width: 440px!important;height:auto!important;}
     table[class="cols3inner"] {width: 100px!important;}
     table[class="col3img"] {width: 131px!important;}
@@ -53,7 +53,7 @@
     table[class="cols3inner"] {width: 260px!important;}
     img[class="col3img"] {width: 280px!important;height: auto!important;}
     table[class="col3img"] {width: 280px!important;}
-    img[class="blog"] {width: 280px!important;auto!important;}
+    img[class="blog"] {width: 280px!important;height: auto!important;}
     td[class="padding-top-right15"]{padding:15px 15px 0 0 !important;}
     td[class="padding-right15"]{padding-right:15px !important;}
     }
@@ -188,7 +188,7 @@
   																	<!-- /Spacing --><!-- content -->
   																	<tr>
   																		<td style="padding:0 15px;">
-  																		<p style="font-family: Helvetica, arial, sans-serif; font-size: 16px; color: #7a6e67; text-align:left; line-height: 26px; padding-bottom:10px;">{contact.email_greeting},																		</p>
+  																		<p style="font-family: Helvetica, arial, sans-serif; font-size: 16px; color: #7a6e67; text-align:left; line-height: 26px; padding-bottom:10px;">{contact.email_greeting_display},																		</p>
   																		<p style="font-family: Helvetica, arial, sans-serif; font-size: 16px; color: #7a6e67; text-align:left; line-height: 26px; padding-bottom:10px;"><span class="padding-right15" style="font-family: Helvetica, arial, sans-serif; font-size: 14px; color: #7a6e67; text-align:left; line-height: 24px;">Replace with your text and images, and remember to link the facebook and twitter links in the footer to your pages. Have fun!</span></p>
   																		</td>
   																	</tr>

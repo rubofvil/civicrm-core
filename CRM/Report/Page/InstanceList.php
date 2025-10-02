@@ -1,34 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -36,9 +20,9 @@
  */
 class CRM_Report_Page_InstanceList extends CRM_Core_Page {
 
-  static $_links = NULL;
+  public static $_links = NULL;
 
-  static $_exceptions = array('logging/contact/detail');
+  public static $_exceptions = ['logging/contact/detail'];
 
   /**
    * Name of component if report list is filtered.
@@ -52,21 +36,21 @@ class CRM_Report_Page_InstanceList extends CRM_Core_Page {
    *
    * @var int
    */
-  protected $_compID = NULL;
+  protected $compID = NULL;
 
   /**
    * ID of grouping if report list is filtered.
    *
    * @var int
    */
-  protected $_grouping = NULL;
+  protected $grouping = NULL;
 
   /**
    * ID of parent report template if list is filtered by template.
    *
    * @var int
    */
-  protected $_ovID = NULL;
+  protected $ovID = NULL;
 
   /**
    * Title of parent report template if list is filtered by template.
@@ -76,6 +60,11 @@ class CRM_Report_Page_InstanceList extends CRM_Core_Page {
   protected $_title = NULL;
 
   /**
+   * @var string
+   */
+  protected $myReports;
+
+  /**
    * Retrieves report instances, optionally filtered.
    *
    * Filtering available by parent report template ($ovID) or by component ($compID).
@@ -83,10 +72,15 @@ class CRM_Report_Page_InstanceList extends CRM_Core_Page {
    * @return array
    */
   public function info() {
-
     $report = '';
+    $queryParams = [];
+
+    // Needed later for translating component names
+    $components = CRM_Core_Component::getComponents();
+
     if ($this->ovID) {
-      $report .= " AND v.id = {$this->ovID} ";
+      $report .= " AND v.id = %1 ";
+      $queryParams[1] = [$this->ovID, 'Integer'];
     }
 
     if ($this->compID) {
@@ -95,7 +89,8 @@ class CRM_Report_Page_InstanceList extends CRM_Core_Page {
         $this->_compName = 'Contact';
       }
       else {
-        $report .= " AND v.component_id = {$this->compID} ";
+        $report .= " AND v.component_id = %2 ";
+        $queryParams[2] = [$this->compID, 'Integer'];
         $cmpName = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_Component', $this->compID,
           'name', 'id'
         );
@@ -106,10 +101,12 @@ class CRM_Report_Page_InstanceList extends CRM_Core_Page {
       }
     }
     elseif ($this->grouping) {
-      $report .= " AND v.grouping = '{$this->grouping}' ";
+      $report .= " AND v.grouping = %3 ";
+      $queryParams[3] = [$this->grouping, 'String'];
     }
     elseif ($this->myReports) {
-      $report .= " AND inst.owner_id = " . CRM_Core_Session::getLoggedInContactID();
+      $report .= " AND inst.owner_id = %4 ";
+      $queryParams[4] = [CRM_Core_Session::getLoggedInContactID(), 'Integer'];
     }
 
     $sql = "
@@ -129,15 +126,13 @@ class CRM_Report_Page_InstanceList extends CRM_Core_Page {
                  ON v.component_id = comp.id
 
           WHERE v.is_active = 1 {$report}
-                AND inst.domain_id = %1
-          ORDER BY  v.weight";
+                AND inst.domain_id = %9
+          ORDER BY  v.weight ASC, inst.title ASC";
+    $queryParams[9] = [CRM_Core_Config::domainID(), 'Integer'];
 
-    $dao = CRM_Core_DAO::executeQuery($sql, array(
-      1 => array(CRM_Core_Config::domainID(), 'Integer'),
-    ));
+    $dao = CRM_Core_DAO::executeQuery($sql, $queryParams);
 
-    $config = CRM_Core_Config::singleton();
-    $rows = array();
+    $rows = [];
     $url = 'civicrm/report/instance';
     $my_reports_grouping = 'My';
     while ($dao->fetch()) {
@@ -145,7 +140,7 @@ class CRM_Report_Page_InstanceList extends CRM_Core_Page {
         continue;
       }
 
-      $enabled = in_array("Civi{$dao->compName}", $config->enableComponents);
+      $enabled = CRM_Core_Component::isEnabled("Civi{$dao->compName}");
       if ($dao->compName == 'Contact' || $dao->compName == $dao->grouping) {
         $enabled = TRUE;
       }
@@ -163,29 +158,41 @@ class CRM_Report_Page_InstanceList extends CRM_Core_Page {
       if (!($enabled && CRM_Report_Utils_Report::isInstanceGroupRoleAllowed($dao->id))) {
         continue;
       }
-
-      if (trim($dao->title)) {
+      if (trim($dao->title ?? '')) {
         if ($this->ovID) {
-          $this->title = ts("Report(s) created from the template: %1", array(1 => $dao->label));
+          $this->title = ts("Report(s) created from the template: %1", [1 => $dao->label]);
         }
 
         $report_grouping = $dao->compName;
         if ($dao->owner_id != NULL) {
           $report_grouping = $my_reports_grouping;
         }
-        $rows[$report_grouping][$dao->id]['title'] = $dao->title;
-        $rows[$report_grouping][$dao->id]['label'] = $dao->label;
-        $rows[$report_grouping][$dao->id]['description'] = $dao->description;
-        $rows[$report_grouping][$dao->id]['url'] = CRM_Utils_System::url("{$url}/{$dao->id}", "reset=1&output=criteria");
-        $rows[$report_grouping][$dao->id]['viewUrl'] = CRM_Utils_System::url("{$url}/{$dao->id}", 'force=1&reset=1');
-        $rows[$report_grouping][$dao->id]['actions'] = $this->getActionLinks($dao->id, $dao->class_name);
+
+        // Display a translated label, if possible
+        if (empty($rows[$report_grouping]['label'])) {
+          $label = $dao->compName;
+          if (!empty($components['Civi' . $report_grouping])) {
+            $label = $components['Civi' . $dao->compName]->info['translatedName'] ?? $dao->compName;
+          }
+          if ($report_grouping == 'Contact') {
+            $label = ts('Contacts');
+          }
+          $rows[$report_grouping]['label'] = $label;
+        }
+
+        $rows[$report_grouping]['list'][$dao->id]['title'] = $dao->title;
+        $rows[$report_grouping]['list'][$dao->id]['label'] = $dao->label;
+        $rows[$report_grouping]['list'][$dao->id]['description'] = $dao->description;
+        $rows[$report_grouping]['list'][$dao->id]['url'] = CRM_Utils_System::url("{$url}/{$dao->id}", "reset=1&output=criteria");
+        $rows[$report_grouping]['list'][$dao->id]['viewUrl'] = CRM_Utils_System::url("{$url}/{$dao->id}", 'force=1&reset=1');
+        $rows[$report_grouping]['list'][$dao->id]['actions'] = $this->getActionLinks($dao->id, $dao->class_name);
       }
     }
     // Move My Reports to the beginning of the reports list
     if (isset($rows[$my_reports_grouping])) {
       $my_reports = $rows[$my_reports_grouping];
       unset($rows[$my_reports_grouping]);
-      $rows = array($my_reports_grouping => $my_reports) + $rows;
+      $rows = [$my_reports_grouping => $my_reports] + $rows;
     }
     return $rows;
   }
@@ -201,23 +208,19 @@ class CRM_Report_Page_InstanceList extends CRM_Core_Page {
     $this->grouping = CRM_Utils_Request::retrieve('grp', 'String', $this);
 
     $rows = $this->info();
-
     $this->assign('list', $rows);
-    if ($this->ovID OR $this->compID) {
+    if ($this->ovID or $this->compID) {
       // link to view all reports
       $reportUrl = CRM_Utils_System::url('civicrm/report/list', "reset=1");
-      $this->assign('reportUrl', $reportUrl);
-      if ($this->ovID) {
-        $this->assign('title', $this->title);
-      }
-      else {
-        CRM_Utils_System::setTitle(ts('%1 Reports', array(1 => $this->_compName)));
+      if (!$this->ovID) {
+        CRM_Utils_System::setTitle(ts('%1 Reports', [1 => $this->_compName]));
       }
     }
+    $this->assign('reportUrl', $reportUrl ?? FALSE);
     // assign link to template list for users with appropriate permissions
     if (CRM_Core_Permission::check('administer Reports')) {
       if ($this->compID) {
-        $newButton = ts('New %1 Report', array(1 => $this->_compName));
+        $newButton = ts('New %1 Report', [1 => $this->_compName]);
         $templateUrl = CRM_Utils_System::url('civicrm/report/template/list', "reset=1&compid={$this->compID}");
       }
       else {
@@ -225,10 +228,10 @@ class CRM_Report_Page_InstanceList extends CRM_Core_Page {
         $templateUrl = CRM_Utils_System::url('civicrm/report/template/list', "reset=1");
       }
       $this->assign('newButton', $newButton);
-      $this->assign('templateUrl', $templateUrl);
       $this->assign('compName', $this->_compName);
-      $this->assign('myReports', $this->myReports);
     }
+    $this->assign('myReports', $this->myReports);
+    $this->assign('templateUrl', $templateUrl ?? NULL);
     return parent::run();
   }
 
@@ -242,41 +245,55 @@ class CRM_Report_Page_InstanceList extends CRM_Core_Page {
    */
   protected function getActionLinks($instanceID, $className) {
     $urlCommon = 'civicrm/report/instance/' . $instanceID;
-    $actions = array(
-      'copy' => array(
+    $actions = [
+      'copy' => [
         'url' => CRM_Utils_System::url($urlCommon, 'reset=1&output=copy'),
         'label' => ts('Save a Copy'),
-      ),
-      'pdf' => array(
+        'confirm_message' => NULL,
+        'weight' => CRM_Core_Action::getWeight(\CRM_Core_Action::COPY),
+      ],
+      'pdf' => [
         'url' => CRM_Utils_System::url($urlCommon, 'reset=1&force=1&output=pdf'),
         'label' => ts('View as pdf'),
-      ),
-      'print' => array(
+        'confirm_message' => NULL,
+        'weight' => CRM_Core_Action::getWeight(\CRM_Core_Action::EXPORT),
+      ],
+      'print' => [
         'url' => CRM_Utils_System::url($urlCommon, 'reset=1&force=1&output=print'),
         'label' => ts('Print report'),
-      ),
-    );
+        'confirm_message' => NULL,
+        'weight' => CRM_Core_Action::getWeight(\CRM_Core_Action::EXPORT),
+      ],
+    ];
     // Hackery, Hackera, Hacker ahahahahahaha a super nasty hack.
     // Almost all report classes support csv & loading each class to call the method seems too
     // expensive. We also have on our later list 'do they support charts' which is instance specific
     // e.g use of group by might affect it. So, lets just skip for the few that don't for now.
-    $csvBlackList = array(
+    $csvBlackList = [
       'CRM_Report_Form_Contact_Detail',
       'CRM_Report_Form_Event_Income',
-    );
+    ];
     if (!in_array($className, $csvBlackList)) {
-      $actions['csv'] = array(
+      $actions['csv'] = [
         'url' => CRM_Utils_System::url($urlCommon, 'reset=1&force=1&output=csv'),
         'label' => ts('Export to csv'),
-      );
+        'confirm_message' => NULL,
+        'weight' => CRM_Core_Action::getWeight(\CRM_Core_Action::EXPORT),
+      ];
     }
     if (CRM_Core_Permission::check('administer Reports')) {
-      $actions['delete'] = array(
+      $actions['delete'] = [
         'url' => CRM_Utils_System::url($urlCommon, 'reset=1&action=delete'),
         'label' => ts('Delete report'),
         'confirm_message' => ts('Are you sure you want delete this report? This action cannot be undone.'),
-      );
+        'weight' => CRM_Core_Action::getWeight(\CRM_Core_Action::DELETE),
+      ];
     }
+    CRM_Utils_Hook::links('view.report.links',
+      $className,
+      $instanceID,
+      $actions
+    );
 
     return $actions;
   }

@@ -17,7 +17,8 @@ function repo($path, $branch) {
       'branch' => $branch,
       'commit' => $commit,
     );
-  } else {
+  }
+  else {
     return array();
   }
 }
@@ -34,25 +35,28 @@ $data = array(
   'git' => array(
     'civicrm-backdrop@1.x' => repo("$DM_SOURCEDIR/backdrop", getenv('DM_REF_BACKDROP')),
     'civicrm-core' => repo("$DM_SOURCEDIR", getenv('DM_REF_CORE')),
-    'civicrm-drupal@6.x' => repo("$DM_SOURCEDIR/drupal", getenv('DM_REF_DRUPAL6')),
     'civicrm-drupal@7.x' => repo("$DM_SOURCEDIR/drupal", getenv('DM_REF_DRUPAL')),
-    //'civicrm-drupal@8.x' => repo("$DM_SOURCEDIR/drupal", getenv('DM_REF_DRUPAL8')),
+    'civicrm-drupal-8' => repo("$DM_SOURCEDIR/drupal-8", getenv('DM_REF_DRUPAL8')),
+    'civicrm-joomla' => repo("$DM_SOURCEDIR/joomla", getenv('DM_REF_JOOMLA')),
     'civicrm-packages' => repo("$DM_SOURCEDIR/packages", getenv('DM_REF_PACKAGES')),
     'civicrm-wordpress' => repo("$DM_SOURCEDIR/WordPress", getenv('DM_REF_WORDPRESS')),
   ),
 );
 
 if (getenv('BPACK')) {
-  $data['tar']['Backdrop'] = "civicrm-$DM_VERSION-backdrop-unstable.tar.gz";
+  $data['tar']['Backdrop'] = "civicrm-$DM_VERSION-backdrop.tar.gz";
 }
-if (getenv('J5PACK')) {
+if (getenv('J4PACK')) {
   $data['tar']['Joomla'] = "civicrm-$DM_VERSION-joomla.zip";
 }
-if (getenv('D56PACK')) {
-  $data['tar']['Drupal6'] = "civicrm-$DM_VERSION-drupal6.tar.gz";
+if (getenv('J5PACKBC')) {
+  $data['tar']['Joomla5BC'] = "civicrm-$DM_VERSION-joomla5bc.zip";
 }
-if (getenv('D5PACK')) {
+if (getenv('D7PACK')) {
   $data['tar']['Drupal'] = "civicrm-$DM_VERSION-drupal.tar.gz";
+}
+if (getenv('STANDALONEPACK')) {
+  $data['tar']['Standalone'] = "civicrm-$DM_VERSION-standalone.tar.gz";
 }
 if (getenv('WPPACK')) {
   $data['tar']['WordPress'] = "civicrm-$DM_VERSION-wordpress.zip";
@@ -65,4 +69,4 @@ ksort($data);
 ksort($data['tar']);
 ksort($data['git']);
 $data['rev'] = $DM_VERSION . '-' . md5(json_encode($data));
-echo json_encode($data);
+echo json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);

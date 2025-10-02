@@ -19,8 +19,8 @@ class CSVParser {
     fwrite($fh, $csvContent);
     rewind($fh);
 
-    $results = array();
-    while (($r = fgetcsv($fh)) !== FALSE) {
+    $results = [];
+    while (($r = fgetcsv($fh, NULL, ',', '"', '')) !== FALSE) {
       $name = str_replace('.', '::', trim($r[0]));
       $status = trim($r[1]);
       $results[$name] = $status;

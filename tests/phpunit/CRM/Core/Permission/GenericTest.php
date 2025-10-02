@@ -10,13 +10,12 @@ class CRM_Core_Permission_GenericTest extends CiviUnitTestCase {
    * @return array
    *   Array of CRM_Core_Permission_Base
    */
-  public function permissionClasses() {
-    $cases = array();
+  public static function permissionClasses() {
+    $cases = [];
 
-    $cases[] = array('CRM_Core_Permission_Drupal');
-    $cases[] = array('CRM_Core_Permission_Drupal6');
-    $cases[] = array('CRM_Core_Permission_Joomla');
-    $cases[] = array('CRM_Core_Permission_WordPress');
+    $cases[] = ['CRM_Core_Permission_Drupal'];
+    $cases[] = ['CRM_Core_Permission_Joomla'];
+    $cases[] = ['CRM_Core_Permission_WordPress'];
 
     return $cases;
   }

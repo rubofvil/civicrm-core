@@ -1,57 +1,64 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
-{include file="CRM/Form/basicForm.tpl"}
+<div class="crm-block crm-form-block crm--block">
+  {include file="CRM/Form/basicFormFields.tpl"}
+
+  <table class="form-layout" id="invoicing_blocks">
+    {foreach from=$invoiceDependentFields item=fieldSpec key=htmlField}
+      {if $form.$htmlField}
+        {assign var=n value=$htmlField|cat:'_description'}
+        <tr class="crm-preferences-form-block-{$htmlField}">
+          {if $fieldSpec.html_type EQ 'checkbox'|| $fieldSpec.html_type EQ 'checkboxes'}
+            <td class="label"></td>
+            <td>
+              {$form.$htmlField.html} {$form.$htmlField.label}
+              {if $fieldSpec.description}
+                <br /><span class="description">{$fieldSpec.description}</span>
+              {/if}
+            </td>
+          {else}
+            <td class="label">{$form.$htmlField.label}&nbsp;{if $htmlField eq 'acl_financial_type'}{help id="$htmlField" title=$form.$htmlField.textLabel}{/if}</td>
+            <td>
+              {$form.$htmlField.html}
+              {if $fieldSpec.description}
+                <br /><span class="description">{$fieldSpec.description}</span>
+              {/if}
+            </td>
+          {/if}
+        </tr>
+      {/if}
+    {/foreach}
+  </table>
+  <div class="crm-submit-buttons">{include file="CRM/common/formButtons.tpl" location="bottom"}</div>
+</div>
+
 {literal}
   <script type="text/javascript">
-    CRM.$(function($) {
-      showHideElement('deferred_revenue_enabled', 'default_invoice_page');
-      $("#deferred_revenue_enabled").click(function() {
-        showHideElement('deferred_revenue_enabled', 'default_invoice_page');
-      });
-      showHideElement('financial_account_bal_enable', 'fiscalYearStart');
-      $("#financial_account_bal_enable").click(function() {
-        showHideElement('financial_account_bal_enable', 'fiscalYearStart');
-      });
-      function showHideElement(checkEle, toHide) {
-        if ($('#' + checkEle).prop('checked')) {
-          $("tr.crm-preferences-form-block-" + toHide).show();
+    cj(document).ready(function() {
+      if (document.getElementById("invoicing_invoicing").checked) {
+        cj("#invoicing_blocks").show();
+      }
+      else {
+        cj("#invoicing_blocks").hide();
+      }
+    });
+    cj(function () {
+      cj("input[type=checkbox]").click(function() {
+        if (cj("#invoicing_invoicing").is(":checked")) {
+          cj("#invoicing_blocks").show();
         }
         else {
-          $("tr.crm-preferences-form-block-" + toHide).hide();
+          cj("#invoicing_blocks").hide();
+          cj('#invoice_is_email_pdf_invoice_is_email_pdf').prop('checked', false);
         }
-      }
-      $('input[name=_qf_Contribute_next]').on('click', checkPeriod);
-      function checkPeriod() {
-        var speriod = $('#prior_financial_period').val();
-      	var hperiod = '{/literal}{$priorFinancialPeriod}{literal}';
-      	if (((hperiod && speriod == '') || (hperiod && speriod != '')) && (speriod != hperiod)) {
-	  var msg = '{/literal}{ts}Changing the Prior Financial Period may result in problems calculating closing account balances accurately and / or exporting of financial transactions. Do you want to proceed?{/ts}{literal}';
-          return confirm(msg);
-        }
-      }
+      });
     });
   </script>
 {/literal}

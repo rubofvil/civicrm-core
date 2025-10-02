@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -31,7 +15,7 @@
  * file content.
  * For core fields use "entity_table", for custom fields use "field_name"
  *
- * @code
+ * ```
  * // Create an attachment for a core field
  * $result = civicrm_api3('Attachment', 'create', array(
  *   'entity_table' => 'civicrm_activity',
@@ -42,9 +26,9 @@
  * ));
  * $attachment = $result['values'][$result['id']];
  * echo sprintf("<a href='%s'>View %s</a>", $attachment['url'], $attachment['name']);
- * @endcode
+ * ```
  *
- * @code
+ * ```
  * // Create an attachment for a custom file field
  * $result = civicrm_api3('Attachment', 'create', array(
  *   'field_name' => 'custom_6',
@@ -55,9 +39,9 @@
  * ));
  * $attachment = $result['values'][$result['id']];
  * echo sprintf("<a href='%s'>View %s</a>", $attachment['url'], $attachment['name']);
- * @endcode
+ * ```
  *
- * @code
+ * ```
  * // Move an existing file and save as an attachment
  * $result = civicrm_api3('Attachment', 'create', array(
  *   'entity_table' => 'civicrm_activity',
@@ -70,7 +54,7 @@
  * ));
  * $attachment = $result['values'][$result['id']];
  * echo sprintf("<a href='%s'>View %s</a>", $attachment['url'], $attachment['name']);
- * @endcode
+ * ```
  *
  * Notes:
  *  - File content is not returned by default. One must specify 'return => content'.
@@ -101,13 +85,13 @@ function _civicrm_api3_attachment_create_spec(&$spec) {
  * @param array $params
  *
  * @return array
- * @throws API_Exception validation errors
+ * @throws CRM_Core_Exception validation errors
  * @see Civi\API\Subscriber\DynamicFKAuthorization
  */
 function civicrm_api3_attachment_create($params) {
   if (empty($params['id'])) {
     // When creating we need either entity_table or field_name.
-    civicrm_api3_verify_one_mandatory($params, NULL, array('entity_table', 'field_name'));
+    civicrm_api3_verify_one_mandatory($params, NULL, ['entity_table', 'field_name']);
   }
 
   $config = CRM_Core_Config::singleton();
@@ -117,65 +101,68 @@ function civicrm_api3_attachment_create($params) {
   $entityFileDao = new CRM_Core_DAO_EntityFile();
 
   if ($id) {
-    $fileDao->id = $id;
+    $file['id'] = $fileDao->id = $id;
+
     if (!$fileDao->find(TRUE)) {
-      throw new API_Exception("Invalid ID");
+      throw new CRM_Core_Exception("Invalid ID");
     }
 
     $entityFileDao->file_id = $id;
     if (!$entityFileDao->find(TRUE)) {
-      throw new API_Exception("Cannot modify orphaned file");
+      throw new CRM_Core_Exception("Cannot modify orphaned file");
     }
   }
 
   if (!$id && !is_string($content) && !is_string($moveFile)) {
-    throw new API_Exception("Mandatory key(s) missing from params array: 'id' or 'content' or 'options.move-file'");
+    throw new CRM_Core_Exception("Mandatory key(s) missing from params array: 'id' or 'content' or 'options.move-file'");
   }
   if (!$isTrusted && $moveFile) {
-    throw new API_Exception("options.move-file is only supported on secure calls");
+    throw new CRM_Core_Exception("options.move-file is only supported on secure calls");
   }
   if (is_string($content) && is_string($moveFile)) {
-    throw new API_Exception("'content' and 'options.move-file' are mutually exclusive");
+    throw new CRM_Core_Exception("'content' and 'options.move-file' are mutually exclusive");
   }
   if ($id && !$isTrusted && isset($file['upload_date']) && $file['upload_date'] != CRM_Utils_Date::isoToMysql($fileDao->upload_date)) {
-    throw new API_Exception("Cannot modify upload_date" . var_export(array($file['upload_date'], $fileDao->upload_date, CRM_Utils_Date::isoToMysql($fileDao->upload_date)), TRUE));
+    throw new CRM_Core_Exception("Cannot modify upload_date" . var_export([$file['upload_date'], $fileDao->upload_date, CRM_Utils_Date::isoToMysql($fileDao->upload_date)], TRUE));
   }
   if ($id && $name && $name != CRM_Utils_File::cleanFileName($fileDao->uri)) {
-    throw new API_Exception("Cannot modify name");
+    throw new CRM_Core_Exception("Cannot modify name");
   }
 
-  $fileDao->copyValues($file);
   if (!$id) {
-    $fileDao->uri = CRM_Utils_File::makeFileName($name);
+    $file['uri'] = CRM_Utils_File::makeFileName($name);
   }
-  $fileDao->save();
+  $fileDao = CRM_Core_BAO_File::create($file);
+  $fileDao->find(TRUE);
 
   $entityFileDao->copyValues($entityFile);
   $entityFileDao->file_id = $fileDao->id;
   $entityFileDao->save();
 
-  $path = $config->customFileUploadDir . DIRECTORY_SEPARATOR . $fileDao->uri;
+  $path = $config->customFileUploadDir . $fileDao->uri;
   if (is_string($content)) {
     file_put_contents($path, $content);
   }
   elseif (is_string($moveFile)) {
     // CRM-17432 Do not use rename() since it will break file permissions.
-    // Also avoid move_uplaoded_file() because the API can use options.move-file.
-    copy($moveFile, $path);
+    // Also avoid move_uploaded_file() because the API can use options.move-file.
+    if (!copy($moveFile, $path)) {
+      throw new CRM_Core_Exception("Cannot copy uploaded file $moveFile to $path");
+    }
     unlink($moveFile);
   }
 
   // Save custom field to entity
   if (!$id && empty($params['entity_table']) && isset($params['field_name'])) {
-    civicrm_api3('custom_value', 'create', array(
+    civicrm_api3('custom_value', 'create', [
       'entity_id' => $params['entity_id'],
       $params['field_name'] => $fileDao->id,
-    ));
+    ]);
   }
 
-  $result = array(
+  $result = [
     $fileDao->id => _civicrm_api3_attachment_format_result($fileDao, $entityFileDao, $returnContent, $isTrusted),
-  );
+  ];
   return civicrm_api3_create_success($result, $params, 'Attachment', 'create');
 }
 
@@ -196,13 +183,13 @@ function _civicrm_api3_attachment_get_spec(&$spec) {
  *
  * @return array
  *   per APIv3
- * @throws API_Exception validation errors
+ * @throws CRM_Core_Exception validation errors
  */
 function civicrm_api3_attachment_get($params) {
   list($id, $file, $entityFile, $name, $content, $moveFile, $isTrusted, $returnContent) = _civicrm_api3_attachment_parse_params($params);
 
   $dao = __civicrm_api3_attachment_find($params, $id, $file, $entityFile, $isTrusted);
-  $result = array();
+  $result = [];
   while ($dao->fetch()) {
     $result[$dao->id] = _civicrm_api3_attachment_format_result($dao, $dao, $returnContent, $isTrusted);
   }
@@ -212,15 +199,17 @@ function civicrm_api3_attachment_get($params) {
 /**
  * Adjust metadata for Attachment delete action.
  *
- * @param $spec
+ * @param array $spec
  */
 function _civicrm_api3_attachment_delete_spec(&$spec) {
   unset($spec['id']['api.required']);
   $entityFileFields = CRM_Core_DAO_EntityFile::fields();
   $spec['entity_table'] = $entityFileFields['entity_table'];
-  $spec['entity_table']['title'] = CRM_Utils_Array::value('title', $spec['entity_table'], 'Entity Table') . ' (write-once)';
+  // Historically this field had no pseudoconstant and APIv3 can't handle it
+  $spec['entity_table']['pseudoconstant'] = NULL;
+  $spec['entity_table']['title'] = ($spec['entity_table']['title'] ?? 'Entity Table') . ' (write-once)';
   $spec['entity_id'] = $entityFileFields['entity_id'];
-  $spec['entity_id']['title'] = CRM_Utils_Array::value('title', $spec['entity_id'], 'Entity ID') . ' (write-once)';
+  $spec['entity_id']['title'] = ($spec['entity_id']['title'] ?? 'Entity ID') . ' (write-once)';
 }
 
 /**
@@ -229,7 +218,7 @@ function _civicrm_api3_attachment_delete_spec(&$spec) {
  * @param array $params
  *
  * @return array
- * @throws API_Exception
+ * @throws CRM_Core_Exception
  */
 function civicrm_api3_attachment_delete($params) {
   if (!empty($params['id'])) {
@@ -239,17 +228,17 @@ function civicrm_api3_attachment_delete($params) {
     // ok
   }
   else {
-    throw new API_Exception("Mandatory key(s) missing from params array: id or entity_table+entity_table");
+    throw new CRM_Core_Exception("Mandatory key(s) missing from params array: id or entity_table+entity_table");
   }
 
   $config = CRM_Core_Config::singleton();
   list($id, $file, $entityFile, $name, $content, $moveFile, $isTrusted, $returnContent) = _civicrm_api3_attachment_parse_params($params);
   $dao = __civicrm_api3_attachment_find($params, $id, $file, $entityFile, $isTrusted);
 
-  $filePaths = array();
-  $fileIds = array();
+  $filePaths = [];
+  $fileIds = [];
   while ($dao->fetch()) {
-    $filePaths[] = $config->customFileUploadDir . DIRECTORY_SEPARATOR . $dao->uri;
+    $filePaths[] = $config->customFileUploadDir . $dao->uri;
     $fileIds[] = $dao->id;
   }
 
@@ -266,7 +255,7 @@ function civicrm_api3_attachment_delete($params) {
     }
   }
 
-  $result = array();
+  $result = [];
   return civicrm_api3_create_success($result, $params, 'Attachment', 'create');
 }
 
@@ -282,43 +271,45 @@ function civicrm_api3_attachment_delete($params) {
  * @param bool $isTrusted
  *
  * @return CRM_Core_DAO
- * @throws API_Exception
+ * @throws CRM_Core_Exception
  */
 function __civicrm_api3_attachment_find($params, $id, $file, $entityFile, $isTrusted) {
-  foreach (array('name', 'content', 'path', 'url') as $unsupportedFilter) {
+  foreach (['name', 'content', 'path', 'url'] as $unsupportedFilter) {
     if (!empty($params[$unsupportedFilter])) {
-      throw new API_Exception("Get by $unsupportedFilter is not currently supported");
+      throw new CRM_Core_Exception("Get by $unsupportedFilter is not currently supported");
     }
   }
 
+  $join_type = empty($entityFile) ? 'LEFT' : 'INNER';
   $select = CRM_Utils_SQL_Select::from('civicrm_file cf')
-    ->join('cef', 'INNER JOIN civicrm_entity_file cef ON cf.id = cef.file_id')
-    ->select(array(
+    ->join('cef', $join_type . ' JOIN civicrm_entity_file cef ON cf.id = cef.file_id')
+    ->select([
       'cf.id',
       'cf.uri',
       'cf.mime_type',
       'cf.description',
       'cf.upload_date',
+      'cf.created_id',
       'cef.entity_table',
       'cef.entity_id',
-    ));
+    ]);
 
   if ($id) {
-    $select->where('cf.id = #id', array('#id' => $id));
+    $select->where('cf.id = #id', ['#id' => $id]);
   }
   // Recall: $file is filtered by parse_params.
   foreach ($file as $key => $value) {
-    $select->where('cf.!field = @value', array(
+    $select->where('cf.!field = @value', [
       '!field' => $key,
       '@value' => $value,
-    ));
+    ]);
   }
   // Recall: $entityFile is filtered by parse_params.
   foreach ($entityFile as $key => $value) {
-    $select->where('cef.!field = @value', array(
+    $select->where('cef.!field = @value', [
       '!field' => $key,
       '@value' => $value,
-    ));
+    ]);
   }
   if (!$isTrusted) {
     // FIXME ACLs: Add any JOIN or WHERE clauses needed to enforce access-controls for the target entity.
@@ -347,23 +338,23 @@ function __civicrm_api3_attachment_find($params, $id, $file, $entityFile, $isTru
  *    - string $moveFile: the full path to a local file whose content should be loaded
  *    - bool $isTrusted: whether we trust the requester to do sketchy things (like moving files or reassigning entities)
  *    - bool $returnContent: whether we are expected to return the full content of the file
- * @throws API_Exception validation errors
+ * @throws CRM_Core_Exception validation errors
  */
 function _civicrm_api3_attachment_parse_params($params) {
-  $id = CRM_Utils_Array::value('id', $params, NULL);
+  $id = $params['id'] ?? NULL;
   if ($id && !is_numeric($id)) {
-    throw new API_Exception("Malformed id");
+    throw new CRM_Core_Exception("Malformed id");
   }
 
-  $file = array();
-  foreach (array('mime_type', 'description', 'upload_date') as $field) {
+  $file = [];
+  foreach (['mime_type', 'description', 'upload_date'] as $field) {
     if (array_key_exists($field, $params)) {
       $file[$field] = $params[$field];
     }
   }
 
-  $entityFile = array();
-  foreach (array('entity_table', 'entity_id') as $field) {
+  $entityFile = [];
+  foreach (['entity_table', 'entity_id'] as $field) {
     if (array_key_exists($field, $params)) {
       $entityFile[$field] = $params[$field];
     }
@@ -377,7 +368,7 @@ function _civicrm_api3_attachment_parse_params($params) {
   $name = NULL;
   if (array_key_exists('name', $params)) {
     if ($params['name'] != basename($params['name']) || preg_match(':[/\\\\]:', $params['name'])) {
-      throw new API_Exception('Malformed name');
+      throw new CRM_Core_Exception('Malformed name');
     }
     $name = $params['name'];
   }
@@ -397,11 +388,11 @@ function _civicrm_api3_attachment_parse_params($params) {
 
   $isTrusted = empty($params['check_permissions']);
 
-  $returns = isset($params['return']) ? $params['return'] : array();
-  $returns = is_array($returns) ? $returns : array($returns);
+  $returns = $params['return'] ?? [];
+  $returns = is_array($returns) ? $returns : [$returns];
   $returnContent = in_array('content', $returns);
 
-  return array($id, $file, $entityFile, $name, $content, $moveFile, $isTrusted, $returnContent);
+  return [$id, $file, $entityFile, $name, $content, $moveFile, $isTrusted, $returnContent];
 }
 
 /**
@@ -420,9 +411,9 @@ function _civicrm_api3_attachment_parse_params($params) {
  */
 function _civicrm_api3_attachment_format_result($fileDao, $entityFileDao, $returnContent, $isTrusted) {
   $config = CRM_Core_Config::singleton();
-  $path = $config->customFileUploadDir . DIRECTORY_SEPARATOR . $fileDao->uri;
+  $path = $config->customFileUploadDir . $fileDao->uri;
 
-  $result = array(
+  $result = [
     'id' => $fileDao->id,
     'name' => CRM_Utils_File::cleanFileName($fileDao->uri),
     'mime_type' => $fileDao->mime_type,
@@ -430,9 +421,12 @@ function _civicrm_api3_attachment_format_result($fileDao, $entityFileDao, $retur
     'upload_date' => is_numeric($fileDao->upload_date) ? CRM_Utils_Date::mysqlToIso($fileDao->upload_date) : $fileDao->upload_date,
     'entity_table' => $entityFileDao->entity_table,
     'entity_id' => $entityFileDao->entity_id,
-  );
+    'icon' => CRM_Utils_File::getIconFromMimeType($fileDao->mime_type),
+    'created_id' => $fileDao->created_id,
+  ];
+  $fileHash = CRM_Core_BAO_File::generateFileHash(NULL, $result['id']);
   $result['url'] = CRM_Utils_System::url(
-    'civicrm/file', 'reset=1&id=' . $result['id'] . '&eid=' . $result['entity_id'],
+    'civicrm/file', 'reset=1&id=' . $result['id'] . '&fcs=' . $fileHash,
     TRUE,
     NULL,
     FALSE,
@@ -457,41 +451,49 @@ function _civicrm_api3_attachment_getfields() {
   $fileFields = CRM_Core_DAO_File::fields();
   $entityFileFields = CRM_Core_DAO_EntityFile::fields();
 
-  $spec = array();
+  $spec = [];
   $spec['id'] = $fileFields['id'];
-  $spec['name'] = array(
+  $spec['name'] = [
     'title' => 'Name (write-once)',
     'description' => 'The logical file name (not searchable)',
     'type' => CRM_Utils_Type::T_STRING,
-  );
-  $spec['field_name'] = array(
+  ];
+  $spec['field_name'] = [
     'title' => 'Field Name (write-once)',
     'description' => 'Alternative to "entity_table" param - sets custom field value.',
     'type' => CRM_Utils_Type::T_STRING,
-  );
+  ];
   $spec['mime_type'] = $fileFields['mime_type'];
   $spec['description'] = $fileFields['description'];
   $spec['upload_date'] = $fileFields['upload_date'];
   $spec['entity_table'] = $entityFileFields['entity_table'];
+  // Historically this field had no pseudoconstant and APIv3 can't handle it
+  $spec['entity_table']['pseudoconstant'] = NULL;
   // Would be hard to securely handle changes.
-  $spec['entity_table']['title'] = CRM_Utils_Array::value('title', $spec['entity_table'], 'Entity Table') . ' (write-once)';
+  $spec['entity_table']['title'] = ($spec['entity_table']['title'] ?? 'Entity Table') . ' (write-once)';
   $spec['entity_id'] = $entityFileFields['entity_id'];
-  $spec['entity_id']['title'] = CRM_Utils_Array::value('title', $spec['entity_id'], 'Entity ID') . ' (write-once)'; // would be hard to securely handle changes
-  $spec['url'] = array(
+  // would be hard to securely handle changes
+  $spec['entity_id']['title'] = ($spec['entity_id']['title'] ?? 'Entity ID') . ' (write-once)';
+  $spec['url'] = [
     'title' => 'URL (read-only)',
     'description' => 'URL for downloading the file (not searchable, expire-able)',
     'type' => CRM_Utils_Type::T_STRING,
-  );
-  $spec['path'] = array(
+  ];
+  $spec['path'] = [
     'title' => 'Path (read-only)',
     'description' => 'Local file path (not searchable, local-only)',
     'type' => CRM_Utils_Type::T_STRING,
-  );
-  $spec['content'] = array(
+  ];
+  $spec['content'] = [
     'title' => 'Content',
     'description' => 'File content (not searchable, not returned by default)',
     'type' => CRM_Utils_Type::T_STRING,
-  );
+  ];
+  $spec['created_id'] = [
+    'title' => 'Created By Contact ID',
+    'type' => CRM_Utils_Type::T_INT,
+    'description' => 'FK to civicrm_contact, who uploaded this file',
+  ];
 
   return $spec;
 }

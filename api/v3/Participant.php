@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -39,6 +23,8 @@
  *
  * @return array
  *   API result array
+ *
+ * @throws \CRM_Core_Exception
  */
 function civicrm_api3_participant_create($params) {
   // Check that event id is not an template - should be done @ BAO layer.
@@ -49,7 +35,7 @@ function civicrm_api3_participant_create($params) {
     }
   }
 
-  $values = $participant = array();
+  $values = $participant = [];
   _civicrm_api3_custom_format_params($params, $values, 'Participant');
   $params = array_merge($values, $params);
 
@@ -69,9 +55,9 @@ function civicrm_api3_participant_create($params) {
  * @todo this should be done in the BAO not the api
  *
  * @param array $params
- * @param $participant
+ * @param CRM_Event_BAO_Participant $participant
  *
- * @throws \CiviCRM_API3_Exception
+ * @throws \CRM_Core_Exception
  */
 function _civicrm_api3_participant_createlineitem(&$params, $participant) {
   // it is possible that a fee level contains information about multiple
@@ -104,14 +90,14 @@ function _civicrm_api3_participant_createlineitem(&$params, $participant) {
       where ps.id is not null and pfv.label = %2
     ";
 
-    $qParams = array(
-      1 => array($params['event_id'], 'Integer'),
-      2 => array($label, 'String'),
-    );
+    $qParams = [
+      1 => [$params['event_id'], 'Integer'],
+      2 => [$label, 'String'],
+    ];
 
     $dao = CRM_Core_DAO::executeQuery($sql, $qParams);
     if ($dao->fetch()) {
-      $lineItemParams = array(
+      $lineItemParams = [
         'price_field_id' => $dao->priceFieldID,
         'price_field_value_id' => $dao->priceFieldValueID,
         'entity_table' => 'civicrm_participant',
@@ -121,13 +107,12 @@ function _civicrm_api3_participant_createlineitem(&$params, $participant) {
         'participant_count' => 0,
         'unit_price' => $dao->amount,
         'line_total' => $qty * $dao->amount,
-      );
+      ];
       civicrm_api3('line_item', 'create', $lineItemParams);
     }
 
   }
 }
-
 
 /**
  * Adjust Metadata for Create action.
@@ -143,8 +128,8 @@ function _civicrm_api3_participant_create_spec(&$params) {
   $params['event_id']['api.required'] = 1;
   $params['contact_id']['api.required'] = 1;
   // These are for the sake of search builder options - can be removed if that is fixed
-  $params['role_id']['api.aliases'] = array('participant_role');
-  $params['status_id']['api.aliases'] = array('participant_status');
+  $params['role_id']['api.aliases'] = ['participant_role'];
+  $params['status_id']['api.aliases'] = ['participant_status'];
 }
 
 /**
@@ -161,12 +146,12 @@ function civicrm_api3_participant_get($params) {
 
   list($dao, $query) = _civicrm_api3_get_query_object($params, $mode, 'Participant');
 
-  $participant = array();
+  $participant = [];
   while ($dao->fetch()) {
     $query->convertToPseudoNames($dao, FALSE, TRUE);
     $participant[$dao->participant_id] = $query->store($dao);
     //@todo - is this required - contribution & pledge use the same query but don't self-retrieve custom data
-    _civicrm_api3_custom_data_get($participant[$dao->participant_id], CRM_Utils_Array::value('check_permissions', $params), 'Participant', $dao->participant_id, NULL);
+    _civicrm_api3_custom_data_get($participant[$dao->participant_id], $params['check_permissions'] ?? FALSE, 'Participant', $dao->participant_id, NULL);
   }
 
   return civicrm_api3_create_success($participant, $params, 'Participant', 'get', $dao);
@@ -181,11 +166,11 @@ function civicrm_api3_participant_get($params) {
  *   Array of parameters determined by getfields.
  */
 function _civicrm_api3_participant_get_spec(&$params) {
-  $params['participant_test'] = array(
+  $params['participant_test'] = [
     'api.default' => 0,
     'title' => 'Get Test Participants',
     'type' => CRM_Utils_Type::T_BOOLEAN,
-  );
+  ];
 }
 
 /**

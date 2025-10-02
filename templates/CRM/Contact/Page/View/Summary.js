@@ -17,22 +17,38 @@
       o.animate({height: '+=50px'}, 200);
       data.snippet = 6;
       data.reset = 1;
-      o.addClass('form');
+      var width = o.width();
       $('.crm-edit-ready').removeClass('crm-edit-ready');
-      o.block();
+      o.block().addClass('form').css('width', '' + width + 'px');
       $.getJSON(CRM.url('civicrm/ajax/inline', data))
         .fail(errorHandler)
         .done(function(response) {
           o.unblock();
           o.css('overflow', 'hidden').wrapInner('<div class="inline-edit-hidden-content" style="display:none" />').append(response.content);
+          // Needed to accurately measure box width
+          $('.crm-container-snippet', o).css('display', 'inline-block');
           // Smooth resizing
-          var newHeight = $('.crm-container-snippet', o).height();
-          var diff = newHeight - parseInt(o.css('height'), 10);
-          if (diff < 0) {
-            diff = 0 - diff;
+          var newHeight = $('.crm-container-snippet', o).height(),
+            speed = newHeight - parseInt(o.css('height'), 10),
+            animation = {height: '' + newHeight + 'px'};
+          // Animation speed is set relative to how much the box needs to grow
+          if (speed < 0) {
+            speed = 0 - speed;
           }
-          o.animate({height: '' + newHeight + 'px'}, diff * 2, function() {
-            o.removeAttr('style');
+          // Horizontal growth
+          var newWidth = $('.crm-container-snippet', o).width();
+          if (newWidth > width) {
+            animation.width = '' + newWidth + 'px';
+            // Slow down animation if we have lots of horizontal growth to do
+            if (newWidth - width > speed) {
+              speed = newWidth - width;
+            }
+          } else {
+            newWidth = width;
+          }
+          $('.crm-container-snippet', o).css('display', '');
+          o.animate(animation, speed, function() {
+            o.css({height: '', width: '', minWidth: '' + newWidth + 'px'});
           });
           $('form', o).validate(CRM.validate.params);
           ajaxFormParams.data = data;
@@ -45,10 +61,15 @@
   function reloadBlock(el) {
     return $(el).each(function() {
       var data = $(this).data('edit-params');
-      data.snippet = data.reset = 1;
-      data.class_name = data.class_name.replace('Form', 'Page');
-      data.type = 'page';
-      $(this).closest('.crm-summary-block').load(CRM.url('civicrm/ajax/inline', data), function() {$(this).trigger('crmLoad');});
+      if (data) {
+        data.reset = 1;
+        data.snippet = 2; // CRM_Core_Smarty::PRINT_SNIPPET
+        data.class_name = data.class_name.replace('Form', 'Page');
+        data.type = 'page';
+        $(this).closest('.crm-summary-block').load(CRM.url('civicrm/ajax/inline', data), function() {
+          $(this).trigger('crmLoad');
+        });
+      }
     });
   }
 
@@ -57,7 +78,7 @@
     $('form', o).ajaxFormUnbind();
 
     if (response.status == 'success' || response.status == 'cancel') {
-      o.trigger('crmFormSuccess', [response]);
+      o.trigger('crmFormSuccess', [response]).removeAttr('style');
       $('.crm-inline-edit-container').addClass('crm-edit-ready');
       var data = o.data('edit-params');
       var dependent = $((o.data('dependent-fields') || []).join(','));
@@ -173,10 +194,10 @@
     function refreshTitle() {
       var contactName = $('.crm-summary-display_name').text();
       contactName = $.trim(contactName);
-      document.title = $('title').html().replace(oldName, contactName);
+      document.title = document.title.replace(oldName, contactName);
       oldName = contactName;
     }
-    $('#contactname-block').load(refreshTitle);
+    $('#contactname-block').on('load', refreshTitle);
     refreshTitle();
 
     var clicking;
@@ -207,7 +228,7 @@
         $('form', container).ajaxFormUnbind();
         $('.inline-edit-hidden-content', container).nextAll().remove();
         $('.inline-edit-hidden-content > *:first-child', container).unwrap();
-        container.removeClass('form');
+        container.removeClass('form').removeAttr('style');
         $('.crm-inline-edit-container').addClass('crm-edit-ready');
         $('a.ui-notify-close', '#crm-notification-container').click();
         return false;
@@ -218,15 +239,11 @@
         return false;
       })
       // make sure only one is_primary radio is checked
+      // Note this is no longer required for the email block
+      // & similar changes to phone, address, im, openid would allow removal from them as well.
       .on('change', '[class$=is_primary] input', function() {
         if ($(this).is(':checked')) {
           $('[class$=is_primary] input', $(this).closest('form')).not(this).prop('checked', false);
-        }
-      })
-      // make sure only one builk_mail radio is checked
-      .on('change', '.crm-email-bulkmail input', function(){
-        if ($(this).is(':checked')) {
-          $('.crm-email-bulkmail input').not(this).prop('checked', false);
         }
       })
       // handle delete link within blocks
@@ -234,14 +251,24 @@
         var row = $(this).closest('tr');
         var form = $(this).closest('form');
         row.hide();
+        var blockNumber = row.data('block-number');
+        if (blockNumber) {
+          $('.crm-block-entity-' + row.data('entity') + '-' + blockNumber).addClass('hiddenElement');
+          $('input', '.crm-block-entity-' + row.data('entity') + '-' + blockNumber).val('');
+        }
         $('input', row).val('');
         //if the primary is checked for deleted block
         //unset and set first as primary
         if ($('[class$=is_primary] input:checked', row).length > 0) {
           $('[class$=is_primary] input', row).prop('checked', false);
-          $('[class$=is_primary] input:first', form).prop('checked', true );
+          $('[class$=is_primary] input:visible:first', form).prop('checked', true );
         }
         $('.add-more-inline', form).show();
+        if ($('[class$=is_primary] input:visible', form).length == 0) {
+          $('.add-more-inline', form).click();
+          $('[class$=is_primary] input:visible:first', form).prop('checked', true );
+        }
+
         e.preventDefault();
       })
       // Delete an address
@@ -252,7 +279,7 @@
             CRM.api3('address', 'delete', {id: $block.data('edit-params').aid}, true)
               .done(function(data) {
                 $('.crm-inline-edit-container').addClass('crm-edit-ready');
-                $block.remove();
+                $block.closest('.crm-address-block').remove();
                 reloadBlock('.crm-inline-edit.address:not(.add-new)');
               });
             });
@@ -263,6 +290,11 @@
         var form = $(this).closest('form');
         var row = $('tr[class="hiddenElement"]:first', form);
         row.removeClass('hiddenElement');
+        var blockNumber = row.data('block-number');
+        if (blockNumber) {
+          $('.crm-block-entity-' + row.data('entity') + '-' + blockNumber).removeClass('hiddenElement');
+        }
+
         $('input:focus', form).blur();
         $('input:first', row).focus();
         if ($('tr[class="hiddenElement"]').length < 1) {
@@ -377,6 +409,12 @@
         $('#crm-container .contact_basic_information-section.xnarrowform').removeClass('xnarrowform');
       }
     }
+
+    // Changing relationships may affect related members and contributions. Ensure they are refreshed.
+    $('#contact-rel').on('crmPopupFormSuccess', function() {
+      CRM.tabHeader.resetTab('#tab_contribute');
+      CRM.tabHeader.resetTab('#tab_member');
+    });
 
     onResize();
     $(window).resize(onResize);

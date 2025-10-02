@@ -1,26 +1,10 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 {if $showListing}
@@ -37,7 +21,6 @@
         {strip}
           <table id="records-{$customGroupId}" class={if $pageViewType eq 'customDataView'}"crm-multifield-selector crm-ajax-table"{else}'display'{/if}>
             <thead>
-            <tr>
             {if $pageViewType eq 'customDataView'}
               {foreach from=$headers key=recId item=head}
                 <th data-data={ts}'{$headerAttr.$recId.columnName}'{/ts}
@@ -46,12 +29,11 @@
                 </th>
               {/foreach}
               <th data-data="action" data-orderable="false">&nbsp;</th>
-            </tr>
             </thead>
               {literal}
               <script type="text/javascript">
                 (function($) {
-                  var ZeroRecordText = {/literal}'{ts 1=$customGroupTitle}No records of type \'%1\' found.{/ts}'{literal};
+                  var ZeroRecordText = {/literal}"{ts escape='js' 1=$customGroupTitle|smarty:nodefaults}No records of type '%1' found.{/ts}"{literal};
                   var $table = $('#records-' + {/literal}'{$customGroupId}'{literal});
                   $('table.crm-multifield-selector').data({
                     "ajax": {
@@ -74,7 +56,7 @@
                           }
                         }
                       });
-                    },
+                    }
                   })
                 })(CRM.$);
               </script>
@@ -84,17 +66,16 @@
               {foreach from=$headers key=recId item=head}
                 <th>{ts}{$head}{/ts}</th>
               {/foreach}
-              
+
               {foreach from=$dateFields key=fieldId item=v}
                 <th class='hiddenElement'></th>
               {/foreach}
               <th>&nbsp;</th>
-              </tr>
               </thead>
               {foreach from=$records key=recId item=rows}
                 <tr class="{cycle values="odd-row,even-row"}">
                   {foreach from=$headers key=hrecId item=head}
-                    <td {crmAttributes a=$attributes.$hrecId.$recId}>{$rows.$hrecId}</td>
+                    <td {if !empty($dateFieldsVals.$hrecId)}data-order="{$dateFieldsVals.$hrecId.$recId|crmDate:'%Y-%m-%d'}"{/if} {crmAttributes a=$attributes.$hrecId.$recId}>{$rows.$hrecId}</td>
                   {/foreach}
                   <td>{$rows.action}</td>
                   {foreach from=$dateFieldsVals key=fid item=rec}
@@ -110,21 +91,21 @@
     <div id='{$dialogId}' class="hiddenElement"></div>
   {elseif !$records}
     <div class="messages status no-popup">
-      <div class="icon inform-icon"></div>
+      {icon icon="fa-info-circle"}{/icon}
       &nbsp;
       {ts 1=$customGroupTitle}No records of type '%1' found.{/ts}
     </div>
     <div id='{$dialogId}' class="hiddenElement"></div>
   {/if}
 
-  {if !$reachedMax}
+  {if empty($reachedMax) && !empty($editPermission)}
     <div class="action-link">
       {if $pageViewType eq 'customDataView'}
-        <br/><a accesskey="N" title="{ts 1=$customGroupTitle}Add %1 Record{/ts}" href="{crmURL p='civicrm/contact/view/cd/edit' q="reset=1&type=$ctype&groupID=$customGroupId&entityID=$contactId&cgcount=$cgcount&multiRecordDisplay=single&mode=add"}"
-         class="button action-item"><span><i class="crm-i fa-plus-circle"></i> {ts 1=$customGroupTitle}Add %1 Record{/ts}</span></a>
+        <br/><a accesskey="N" title="{ts escape='htmlattribute' 1=$customGroupTitle}Add %1 Record{/ts}" href="{crmURL p='civicrm/contact/view/cd/edit' q="reset=1&type=$ctype&groupID=$customGroupId&entityID=$contactId&cgcount=$newCgCount&multiRecordDisplay=single&mode=add"}"
+         class="button action-item"><span><i class="crm-i fa-plus-circle" role="img" aria-hidden="true"></i> {ts 1=$customGroupTitle}Add %1 Record{/ts}</span></a>
       {else}
-        <a accesskey="N" href="{crmURL p='civicrm/profile/edit' q="reset=1&id=`$contactId`&multiRecord=add&gid=`$gid`&context=multiProfileDialog&onPopupClose=`$onPopupClose`"}"
-         class="button action-item"><span><i class="crm-i fa-plus-circle"></i> {ts}Add New Record{/ts}</span></a>
+        <a accesskey="N" href="{crmURL p='civicrm/profile/edit' q="reset=1&id=`$contactId`&multiRecord=add&gid=`$gid`&context=multiProfileDialog"}"
+         class="button action-item"><span><i class="crm-i fa-plus-circle" role="img" aria-hidden="true"></i> {ts}Add New Record{/ts}</span></a>
       {/if}
     </div>
     <br />

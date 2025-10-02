@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -32,7 +16,7 @@
  * The default values in general, should reflect production values (minimizes chances of screwing up)
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 require_once 'Log.php';
@@ -44,6 +28,7 @@ require_once 'api/api.php';
  * Class CRM_Core_Config
  *
  * @property CRM_Utils_System_Base $userSystem
+ * @property CRM_Core_Permission_Base $userPermissionClass
  * @property array $enableComponents
  * @property array $languageLimit
  * @property bool $debug
@@ -63,6 +48,9 @@ require_once 'api/api.php';
  * @property string $defaultContactStateProvince
  * @property string $monetaryDecimalPoint
  * @property string $monetaryThousandSeparator
+ * @property array $fiscalYearStart
+ * @property string $customFileUploadDir user file upload directory with trailing slash
+ * @property string $imageUploadDir media upload directory with trailing slash
  */
 class CRM_Core_Config extends CRM_Core_Config_MagicMerge {
 
@@ -78,15 +66,7 @@ class CRM_Core_Config extends CRM_Core_Config_MagicMerge {
    *
    * @var CRM_Core_Config
    */
-  private static $_singleton = NULL;
-
-  /**
-   * The constructor. Sets domain id if defined, otherwise assumes
-   * single instance installation.
-   */
-  public function __construct() {
-    parent::__construct();
-  }
+  private static $_singleton;
 
   /**
    * Singleton function used to manage this object.
@@ -100,28 +80,28 @@ class CRM_Core_Config extends CRM_Core_Config_MagicMerge {
    */
   public static function &singleton($loadFromDB = TRUE, $force = FALSE) {
     if (self::$_singleton === NULL || $force) {
-      $GLOBALS['civicrm_default_error_scope'] = CRM_Core_TemporaryErrorScope::create(array('CRM_Core_Error', 'handle'));
-      $errorScope = CRM_Core_TemporaryErrorScope::create(array('CRM_Core_Error', 'simpleHandler'));
-
-      if (defined('E_DEPRECATED')) {
-        error_reporting(error_reporting() & ~E_DEPRECATED);
-      }
+      $GLOBALS['civicrm_default_error_scope'] = CRM_Core_TemporaryErrorScope::create(['CRM_Core_Error', 'exceptionHandler'], 1);
+      $errorScope = CRM_Core_TemporaryErrorScope::create(['CRM_Core_Error', 'simpleHandler']);
 
       self::$_singleton = new CRM_Core_Config();
+
       \Civi\Core\Container::boot($loadFromDB);
+
       if ($loadFromDB && self::$_singleton->dsn) {
+        Civi::service('settings_manager')->bootComplete();
+
+        self::$_singleton->userSystem->postContainerBoot();
+
         $domain = \CRM_Core_BAO_Domain::getDomain();
         \CRM_Core_BAO_ConfigSetting::applyLocale(\Civi::settings($domain->id), $domain->locales);
 
         unset($errorScope);
 
-        CRM_Utils_Hook::config(self::$_singleton);
+        CRM_Utils_Hook::config(self::$_singleton, [
+          'civicrm' => TRUE,
+          'uf' => self::$_singleton->userSystem->isLoaded(),
+        ]);
         self::$_singleton->authenticate();
-
-        // Extreme backward compat: $config binds to active domain at moment of setup.
-        self::$_singleton->getSettings();
-
-        Civi::service('settings_manager')->useDefaults();
 
         self::$_singleton->handleFirstRun();
       }
@@ -136,7 +116,7 @@ class CRM_Core_Config extends CRM_Core_Config_MagicMerge {
    * @return object
    * @see Civi::log()
    */
-  static public function &getLog() {
+  public static function &getLog() {
     if (!isset(self::$_log)) {
       self::$_log = Log::singleton('display');
     }
@@ -167,7 +147,7 @@ class CRM_Core_Config extends CRM_Core_Config_MagicMerge {
 
     if ($value & 1) {
       // clean templates_c
-      CRM_Utils_File::cleanDir($this->templateCompileDir, $rmdir);
+      CRM_Utils_File::cleanDir($this->templateCompileDir, $rmdir, FALSE);
       CRM_Utils_File::createDir($this->templateCompileDir);
     }
     if ($value & 2) {
@@ -178,12 +158,12 @@ class CRM_Core_Config extends CRM_Core_Config_MagicMerge {
 
     // Whether we delete/create or simply preserve directories, we should
     // certainly make sure the restrictions are enforced.
-    foreach (array(
-               $this->templateCompileDir,
-               $this->uploadDir,
-               $this->configAndLogDir,
-               $this->customFileUploadDir,
-             ) as $dir) {
+    foreach ([
+      $this->templateCompileDir,
+      $this->uploadDir,
+      $this->configAndLogDir,
+      $this->customFileUploadDir,
+    ] as $dir) {
       if ($dir && is_dir($dir)) {
         CRM_Utils_File::restrictAccess($dir);
       }
@@ -210,10 +190,13 @@ class CRM_Core_Config extends CRM_Core_Config_MagicMerge {
   /**
    * Reset the serialized array and recompute.
    * use with care
+   *
+   * @deprecated
    */
   public function reset() {
-    $query = "UPDATE civicrm_domain SET config_backend = null";
-    CRM_Core_DAO::executeQuery($query);
+    // This is what it used to do. However, it hasn't meant anything since 4.6.
+    // $query = "UPDATE civicrm_domain SET config_backend = null";
+    // CRM_Core_DAO::executeQuery($query);
   }
 
   /**
@@ -227,7 +210,7 @@ class CRM_Core_Config extends CRM_Core_Config_MagicMerge {
     $userID = $session->get('userID');
     if ($userID) {
       CRM_Core_DAO::executeQuery('SET @civicrm_user_id = %1',
-        array(1 => array($userID, 'Integer'))
+        [1 => [$userID, 'Integer']]
       );
     }
 
@@ -245,7 +228,7 @@ class CRM_Core_Config extends CRM_Core_Config_MagicMerge {
    * @param int $domainID
    * @param bool $reset
    *
-   * @return int|null
+   * @return int
    */
   public static function domainID($domainID = NULL, $reset = FALSE) {
     static $domain;
@@ -256,27 +239,52 @@ class CRM_Core_Config extends CRM_Core_Config_MagicMerge {
       $domain = defined('CIVICRM_DOMAIN_ID') ? CIVICRM_DOMAIN_ID : 1;
     }
 
-    return $domain;
+    return (int) $domain;
+  }
+
+  /**
+   * Function to get environment.
+   *
+   * @param string $env
+   * @param bool $reset
+   *
+   * @return string
+   */
+  public static function environment($env = NULL, $reset = FALSE) {
+    if ($env) {
+      $environment = $env;
+    }
+    if ($reset || empty($environment)) {
+      $environment = Civi::settings()->get('environment');
+    }
+    if (!$environment) {
+      $environment = 'Production';
+    }
+    return $environment;
   }
 
   /**
    * Do general cleanup of caches, temp directories and temp tables
-   * CRM-8739
+   * @see https://issues.civicrm.org/jira/browse/CRM-8739
    *
    * @param bool $sessionReset
+   * @deprecated
+   *   Deprecated Feb 2025 in favor of Civi::rebuild().
+   *   Reassess after Jun 2026.
+   *   For an extension bridging before+after, suggest guard like:
+   *     if (version_compare(CRM_Utils_System::version(), 'X.Y.Z', '>=')) Civi::rebuild(...)->execute()
+   *     else CRM_Core_Config::singleton()->cleanupCaches();
+   *   Choose an 'X.Y.Z' after determining that your preferred rebuild-target(s) are specifically available in X.Y.Z.
    */
-  public function cleanupCaches($sessionReset = TRUE) {
-    // cleanup templates_c directory
-    $this->cleanup(1, FALSE);
-
-    // clear all caches
-    self::clearDBCache();
-    CRM_Utils_System::flushCache();
-
-    if ($sessionReset) {
-      $session = CRM_Core_Session::singleton();
-      $session->reset(2);
-    }
+  public function cleanupCaches($sessionReset = FALSE) {
+    Civi::rebuild([
+      'files' => TRUE,
+      'tables' => TRUE,
+      'sessions' => $sessionReset,
+      'metadata' => TRUE,
+      'system' => TRUE,
+      'userjob' => TRUE,
+    ])->execute();
   }
 
   /**
@@ -287,21 +295,25 @@ class CRM_Core_Config extends CRM_Core_Config_MagicMerge {
     if ($this->userPermissionClass->isModulePermissionSupported()) {
       // Can store permissions -- so do it!
       $this->userPermissionClass->upgradePermissions(
-        CRM_Core_Permission::basicPermissions()
+        CRM_Core_Permission::basicPermissions(TRUE)
       );
     }
-    else {
+    elseif (get_class($this->userPermissionClass) !== 'CRM_Core_Permission_UnitTests') {
       // Cannot store permissions -- warn if any modules require them
-      $modules_with_perms = array();
+      $modules_with_perms = [];
       foreach ($module_files as $module_file) {
         $perms = $this->userPermissionClass->getModulePermissions($module_file['prefix']);
         if (!empty($perms)) {
           $modules_with_perms[] = $module_file['prefix'];
         }
       }
+      // FIXME: Setting a session status message here is probably wrong.
+      // For starters we are not necessarily in the context of a user-facing form
+      // for another thing this message will show indiscriminately to non-admin users
+      // and finally, this message contains nothing actionable for the person reading it to do.
       if (!empty($modules_with_perms)) {
         CRM_Core_Session::setStatus(
-          ts('Some modules define permissions, but the CMS cannot store them: %1', array(1 => implode(', ', $modules_with_perms))),
+          ts('Some modules define permissions, but the CMS cannot store them: %1', [1 => implode(', ', $modules_with_perms)]),
           ts('Permission Error'),
           'error'
         );
@@ -322,22 +334,27 @@ class CRM_Core_Config extends CRM_Core_Config_MagicMerge {
   /**
    * Clear db cache.
    */
-  public static function clearDBCache() {
-    $queries = array(
+  public static function clearDBCache(): void {
+    $queries = [
       'TRUNCATE TABLE civicrm_acl_cache',
       'TRUNCATE TABLE civicrm_acl_contact_cache',
-      'TRUNCATE TABLE civicrm_cache',
+      // Do not truncate, reduce risks of losing a quickform session
+      'DELETE FROM civicrm_cache WHERE group_name NOT LIKE "CiviCRM%Session"',
       'TRUNCATE TABLE civicrm_prevnext_cache',
       'UPDATE civicrm_group SET cache_date = NULL',
       'TRUNCATE TABLE civicrm_group_contact_cache',
       'TRUNCATE TABLE civicrm_menu',
       'UPDATE civicrm_setting SET value = NULL WHERE name="navigation" AND contact_id IS NOT NULL',
-      'DELETE FROM civicrm_setting WHERE name="modulePaths"', // CRM-10543
-    );
+    ];
 
     foreach ($queries as $query) {
       CRM_Core_DAO::executeQuery($query);
     }
+
+    // Clear the Redis prev-next cache, if there is one.
+    // Since we truncated the civicrm_cache table it is logical to also remove
+    // the same from the Redis cache here.
+    \Civi::service('prevnext')->deleteItem();
 
     // also delete all the import and export temp tables
     self::clearTempTables();
@@ -356,28 +373,31 @@ class CRM_Core_Config extends CRM_Core_Config_MagicMerge {
    *   Optional time interval for mysql date function.g '2 day'. This can be used to prevent
    *   tables created recently from being deleted.
    */
-  public static function clearTempTables($timeInterval = FALSE) {
-
-    $dao = new CRM_Core_DAO();
+  public static function clearTempTables($timeInterval = FALSE): void {
     $query = "
       SELECT TABLE_NAME as tableName
       FROM   INFORMATION_SCHEMA.TABLES
-      WHERE  TABLE_SCHEMA = %1
-      AND (
-        TABLE_NAME LIKE 'civicrm_import_job_%'
-        OR TABLE_NAME LIKE 'civicrm_export_temp%'
-        OR TABLE_NAME LIKE 'civicrm_task_action_temp%'
-        OR TABLE_NAME LIKE 'civicrm_report_temp%'
-        )
+      WHERE  TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME LIKE 'civicrm_tmp_d%'
     ";
+
     if ($timeInterval) {
       $query .= " AND CREATE_TIME < DATE_SUB(NOW(), INTERVAL {$timeInterval})";
     }
 
-    $tableDAO = CRM_Core_DAO::executeQuery($query, array(1 => array($dao->database(), 'String')));
-    $tables = array();
+    $tableDAO = CRM_Core_DAO::executeQuery($query);
+    $tables = [];
     while ($tableDAO->fetch()) {
-      $tables[] = $tableDAO->tableName;
+      // If a User Job references the table do not drop it. This is a bit quick & dirty, but we don't want to
+      // get into calling more sophisticated functions in a cache clear, and the table names are pretty unique
+      // (ex: "civicrm_tmp_d_dflt_1234abcd5678efgh"), and the "metadata" may continue to evolve for the next
+      // couple months.
+      // TODO: Circa v5.60+, consider a more precise cleanup. Discussion: https://github.com/civicrm/civicrm-core/pull/24538
+      // A separate process will reap the UserJobs but here the goal is just not to delete them during cache clearing
+      // if they are still referenced.
+      if (!CRM_Core_DAO::singleValueQuery("SELECT count(*) FROM civicrm_user_job WHERE metadata LIKE '%" . $tableDAO->tableName . "%'")) {
+        $tables[] = $tableDAO->tableName;
+      }
     }
     if (!empty($tables)) {
       $table = implode(',', $tables);
@@ -398,6 +418,11 @@ class CRM_Core_Config extends CRM_Core_Config_MagicMerge {
       return TRUE;
     }
 
+    $upgradeInProcess = CRM_Core_Session::singleton()->get('isUpgradePending');
+    if ($upgradeInProcess) {
+      return TRUE;
+    }
+
     if (!$path) {
       // note: do not re-initialize config here, since this function is part of
       // config initialization itself
@@ -406,26 +431,10 @@ class CRM_Core_Config extends CRM_Core_Config_MagicMerge {
         $urlVar = 'task';
       }
 
-      $path = CRM_Utils_Array::value($urlVar, $_GET);
+      $path = $_GET[$urlVar] ?? NULL;
     }
 
-    if ($path && preg_match('/^civicrm\/upgrade(\/.*)?$/', $path)) {
-      return TRUE;
-    }
-
-    if ($path && preg_match('/^civicrm\/ajax\/l10n-js/', $path)
-      && !empty($_SERVER['HTTP_REFERER'])
-    ) {
-      $ref = parse_url($_SERVER['HTTP_REFERER']);
-      if (
-        (!empty($ref['path']) && preg_match('/civicrm\/upgrade/', $ref['path'])) ||
-        (!empty($ref['query']) && preg_match('/civicrm\/upgrade/', urldecode($ref['query'])))
-      ) {
-        return TRUE;
-      }
-    }
-
-    return FALSE;
+    return ($path && preg_match('/^civicrm\/upgrade(\/.*)?$/', $path));
   }
 
   /**
@@ -436,13 +445,14 @@ class CRM_Core_Config extends CRM_Core_Config_MagicMerge {
    * @return bool
    */
   public static function isEnabledBackOfficeCreditCardPayments() {
-    return CRM_Financial_BAO_PaymentProcessor::hasPaymentProcessorSupporting(array('BackOffice'));
+    return CRM_Financial_BAO_PaymentProcessor::hasPaymentProcessorSupporting(['BackOffice']);
   }
 
   /**
    * @deprecated
    */
   public function addressSequence() {
+    CRM_Core_Error::deprecatedFunctionWarning('CRM_Utils_Address::sequence(Civi::settings()->get(\'address_format\')');
     return CRM_Utils_Address::sequence(Civi::settings()->get('address_format'));
   }
 
@@ -450,6 +460,7 @@ class CRM_Core_Config extends CRM_Core_Config_MagicMerge {
    * @deprecated
    */
   public function defaultContactCountry() {
+    CRM_Core_Error::deprecatedFunctionWarning('CRM_Core_BAO_Country::defaultContactCountry');
     return CRM_Core_BAO_Country::defaultContactCountry();
   }
 
@@ -457,6 +468,7 @@ class CRM_Core_Config extends CRM_Core_Config_MagicMerge {
    * @deprecated
    */
   public function defaultContactCountryName() {
+    CRM_Core_Error::deprecatedFunctionWarning('CRM_Core_BAO_Country::defaultContactCountryName');
     return CRM_Core_BAO_Country::defaultContactCountryName();
   }
 
@@ -468,6 +480,7 @@ class CRM_Core_Config extends CRM_Core_Config_MagicMerge {
    * @return string
    */
   public function defaultCurrencySymbol($defaultCurrency = NULL) {
+    CRM_Core_Error::deprecatedFunctionWarning('CRM_Core_BAO_Country::defaultCurrencySymbol');
     return CRM_Core_BAO_Country::defaultCurrencySymbol($defaultCurrency);
   }
 
@@ -488,7 +501,7 @@ class CRM_Core_Config extends CRM_Core_Config_MagicMerge {
    * Conditionally fire an event during the first page run.
    *
    * The install system is currently implemented several times, so it's hard to add
-   * new installation logic. We use a poor-man's method to detect the first run.
+   * new installation logic. We use a makeshift method to detect the first run.
    *
    * Situations to test:
    *  - New installation
@@ -533,7 +546,7 @@ class CRM_Core_Config extends CRM_Core_Config_MagicMerge {
       WHERE is_domain = 1 AND name = "installed"
     ');
     while ($dao->fetch()) {
-      $value = unserialize($dao->value);
+      $value = CRM_Utils_String::unserialize($dao->value);
       if (!empty($value)) {
         Civi::settings()->set('installed', 1);
         return;
@@ -541,8 +554,28 @@ class CRM_Core_Config extends CRM_Core_Config_MagicMerge {
     }
 
     // OK, this looks new.
-    Civi::service('dispatcher')->dispatch(\Civi\Core\Event\SystemInstallEvent::EVENT_NAME, new \Civi\Core\Event\SystemInstallEvent());
+    Civi::dispatcher()->dispatch('civi.core.install', new \Civi\Core\Event\SystemInstallEvent());
     Civi::settings()->set('installed', 1);
+  }
+
+  /**
+   * Is the system permitted to flush caches at the moment.
+   */
+  public static function isPermitCacheFlushMode() {
+    return !CRM_Core_Config::singleton()->doNotResetCache;
+  }
+
+  /**
+   * Set cache clearing to enabled or disabled.
+   *
+   * This might be enabled at the start of a long running process
+   * such as an import in order to delay clearing caches until the end.
+   *
+   * @param bool $enabled
+   *   If true then caches can be cleared at this time.
+   */
+  public static function setPermitCacheFlushMode($enabled) {
+    CRM_Core_Config::singleton()->doNotResetCache = $enabled ? 0 : 1;
   }
 
 }

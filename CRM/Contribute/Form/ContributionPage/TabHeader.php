@@ -1,40 +1,25 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
  * Helper class to build navigation links.
  */
 class CRM_Contribute_Form_ContributionPage_TabHeader {
+
   /**
    * @param CRM_Core_Form $form
    *
@@ -43,98 +28,73 @@ class CRM_Contribute_Form_ContributionPage_TabHeader {
   public static function build(&$form) {
     $tabs = $form->get('tabHeader');
     if (!$tabs || empty($_GET['reset'])) {
-      $tabs = self::process($form);
+      $tabs = self::process($form) ?? [];
       $form->set('tabHeader', $tabs);
     }
-    $form->assign_by_ref('tabHeader', $tabs);
+    $tabs = \CRM_Core_Smarty::setRequiredTabTemplateKeys($tabs);
+    $form->assign('tabHeader', $tabs);
     CRM_Core_Resources::singleton()
       ->addScriptFile('civicrm', 'templates/CRM/common/TabHeader.js', 1, 'html-header')
-      ->addSetting(array(
-        'tabSettings' => array(
+      ->addSetting([
+        'tabSettings' => [
           'active' => self::getCurrentTab($tabs),
-        ),
-      ));
+        ],
+      ]);
     return $tabs;
   }
 
   /**
    * @param CRM_Core_Form $form
    *
-   * @return array
+   * @return array|null
    */
   public static function process(&$form) {
     if ($form->getVar('_id') <= 0) {
       return NULL;
     }
 
-    $tabs = array(
-      'settings' => array(
+    $default = [
+      'link' => NULL,
+      'valid' => FALSE,
+      'active' => FALSE,
+      'current' => FALSE,
+      'class' => FALSE,
+      'extra' => FALSE,
+      'template' => FALSE,
+      'count' => FALSE,
+      'icon' => FALSE,
+    ];
+
+    $tabs = [
+      'settings' => [
         'title' => ts('Title'),
-        'link' => NULL,
-        'valid' => FALSE,
-        'active' => FALSE,
-        'current' => FALSE,
-      ),
-      'amount' => array(
+      ] + $default,
+      'amount' => [
         'title' => ts('Amounts'),
-        'link' => NULL,
-        'valid' => FALSE,
-        'active' => FALSE,
-        'current' => FALSE,
-      ),
-      'membership' => array(
+      ] + $default,
+      'membership' => [
         'title' => ts('Memberships'),
-        'link' => NULL,
-        'valid' => FALSE,
-        'active' => FALSE,
-        'current' => FALSE,
-      ),
-      'thankyou' => array(
+      ] + $default,
+      'thankyou' => [
         'title' => ts('Receipt'),
-        'link' => NULL,
-        'valid' => FALSE,
-        'active' => FALSE,
-        'current' => FALSE,
-      ),
-      'friend' => array(
-        'title' => ts('Tell a Friend'),
-        'link' => NULL,
-        'valid' => FALSE,
-        'active' => FALSE,
-        'current' => FALSE,
-      ),
-      'custom' => array(
+      ] + $default,
+      'custom' => [
         'title' => ts('Profiles'),
-        'link' => NULL,
-        'valid' => FALSE,
-        'active' => FALSE,
-        'current' => FALSE,
-      ),
-      'premium' => array(
+      ] + $default,
+      'premium' => [
         'title' => ts('Premiums'),
-        'link' => NULL,
-        'valid' => FALSE,
-        'active' => FALSE,
-        'current' => FALSE,
-      ),
-      'widget' => array(
+      ] + $default,
+      'widget' => [
         'title' => ts('Widgets'),
-        'link' => NULL,
-        'valid' => FALSE,
-        'active' => FALSE,
-        'current' => FALSE,
-      ),
-      'pcp' => array(
+      ] + $default,
+      'pcp' => [
         'title' => ts('Personal Campaigns'),
-        'link' => NULL,
-        'valid' => FALSE,
-        'active' => FALSE,
-        'current' => FALSE,
-      ),
-    );
+      ] + $default,
+    ];
 
     $contribPageId = $form->getVar('_id');
-    CRM_Utils_Hook::tabset('civicrm/admin/contribute', $tabs, array('contribution_page_id' => $contribPageId));
+    // Call tabset hook to add/remove custom tabs
+    CRM_Utils_Hook::tabset('civicrm/admin/contribute', $tabs, ['contribution_page_id' => $contribPageId]);
     $fullName = $form->getVar('_name');
     $className = CRM_Utils_String::getClassName($fullName);
 
@@ -142,7 +102,7 @@ class CRM_Contribute_Form_ContributionPage_TabHeader {
     switch ($className) {
       case 'Contribute':
         $attributes = $form->getVar('_attributes');
-        $class = strtolower(basename(CRM_Utils_Array::value('action', $attributes)));
+        $class = CRM_Utils_Request::retrieveComponent($attributes);
         break;
 
       case 'MembershipBlock':
@@ -177,10 +137,10 @@ class CRM_Contribute_Form_ContributionPage_TabHeader {
         $tabs[$key]['active'] = $tabs[$key]['valid'] = TRUE;
       }
       //get all section info.
-      $contriPageInfo = CRM_Contribute_BAO_ContributionPage::getSectionInfo(array($contribPageId));
+      $contriPageInfo = CRM_Contribute_BAO_ContributionPage::getSectionInfo([$contribPageId]);
 
       foreach ($contriPageInfo[$contribPageId] as $section => $info) {
-        if (!$info) {
+        if (!$info && isset($tabs[$section])) {
           $tabs[$section]['valid'] = FALSE;
         }
       }
@@ -217,7 +177,7 @@ class CRM_Contribute_Form_ContributionPage_TabHeader {
       }
     }
 
-    $current = $current ? $current : 'settings';
+    $current = $current ?: 'settings';
     return $current;
   }
 

@@ -1,85 +1,91 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  * Ensure that various queue implementations comply with the interface
  * @group headless
+ * @group queue
  */
 class CRM_Queue_RunnerTest extends CiviUnitTestCase {
 
-  public function setUp() {
+  use \Civi\Test\QueueTestTrait;
+
+  /**
+   * @var CRM_Queue_Service
+   */
+  private $queueService;
+
+  /**
+   * @var CRM_Queue_Queue
+   */
+  private $queue;
+
+  public function setUp(): void {
     parent::setUp();
     $this->queueService = CRM_Queue_Service::singleton(TRUE);
-    $this->queue = $this->queueService->create(array(
+    $this->queue = $this->queueService->create([
       'type' => 'Sql',
       'name' => 'test-queue',
-    ));
-    self::$_recordedValues = array();
+    ]);
+    self::$_recordedValues = [];
   }
 
-  public function tearDown() {
+  public function tearDown(): void {
     unset($this->queue);
     unset($this->queueService);
 
     CRM_Utils_Time::resetTime();
 
-    $tablesToTruncate = array('civicrm_queue_item');
+    $tablesToTruncate = ['civicrm_queue_item'];
     $this->quickCleanup($tablesToTruncate);
+    parent::tearDown();
   }
 
-  public function testRunAllNormal() {
+  /**
+   * Test that the queue is not left in a state where another run causes an exception.
+   */
+  public function testRunAllTwice(): void {
+    $this->runAQueue();
+    $this->runAQueue();
+  }
+
+  public function testRunAllNormal(): void {
     // prepare a list of tasks with an error in the middle
     $this->queue->createItem(new CRM_Queue_Task(
-      array('CRM_Queue_RunnerTest', '_recordValue'),
-      array('a'),
+      ['CRM_Queue_RunnerTest', '_recordValue'],
+      ['a'],
       'Add "a"'
     ));
     $this->queue->createItem(new CRM_Queue_Task(
-      array('CRM_Queue_RunnerTest', '_recordValue'),
-      array('b'),
+      ['CRM_Queue_RunnerTest', '_recordValue'],
+      ['b'],
       'Add "b"'
     ));
     $this->queue->createItem(new CRM_Queue_Task(
-      array('CRM_Queue_RunnerTest', '_recordValue'),
-      array('c'),
+      ['CRM_Queue_RunnerTest', '_recordValue'],
+      ['c'],
       'Add "c"'
     ));
 
     // run the list of tasks
-    $runner = new CRM_Queue_Runner(array(
+    $runner = new CRM_Queue_Runner([
       'queue' => $this->queue,
       'errorMode' => CRM_Queue_Runner::ERROR_ABORT,
-    ));
-    $this->assertEquals(self::$_recordedValues, array());
-    $this->assertEquals(3, $this->queue->numberOfItems());
+    ]);
+    $this->assertEquals(self::$_recordedValues, []);
+    $this->assertQueueStats(3, 3, 0, $this->queue);
     $result = $runner->runAll();
     $this->assertEquals(TRUE, $result);
-    $this->assertEquals(self::$_recordedValues, array('a', 'b', 'c'));
-    $this->assertEquals(0, $this->queue->numberOfItems());
+    $this->assertEquals(self::$_recordedValues, ['a', 'b', 'c']);
+    $this->assertQueueStats(0, 0, 0, $this->queue);
   }
 
   /**
@@ -87,151 +93,154 @@ class CRM_Queue_RunnerTest extends CiviUnitTestCase {
    *
    * One of the tasks will insert more TODOs at the start of the list.
    */
-  public function testRunAll_AddMore() {
+  public function testRunAll_AddMore(): void {
     // Prepare a list of tasks with an error in the middle.
     $this->queue->createItem(new CRM_Queue_Task(
-      array('CRM_Queue_RunnerTest', '_recordValue'),
-      array('a'),
+      ['CRM_Queue_RunnerTest', '_recordValue'],
+      ['a'],
       'Add "a"'
     ));
     $this->queue->createItem(new CRM_Queue_Task(
-      array('CRM_Queue_RunnerTest', '_enqueueNumbers'),
-      array(1, 3),
+      ['CRM_Queue_RunnerTest', '_enqueueNumbers'],
+      [1, 3],
       'Add more'
     ));
     $this->queue->createItem(new CRM_Queue_Task(
-      array('CRM_Queue_RunnerTest', '_recordValue'),
-      array('b'),
+      ['CRM_Queue_RunnerTest', '_recordValue'],
+      ['b'],
       'Add "b"'
     ));
 
     // run the list of tasks
-    $runner = new CRM_Queue_Runner(array(
+    $runner = new CRM_Queue_Runner([
       'queue' => $this->queue,
       'errorMode' => CRM_Queue_Runner::ERROR_ABORT,
-    ));
-    $this->assertEquals(self::$_recordedValues, array());
-    $this->assertEquals(3, $this->queue->numberOfItems());
+    ]);
+    $this->assertEquals(self::$_recordedValues, []);
+    $this->assertQueueStats(3, 3, 0, $this->queue);
     $result = $runner->runAll();
     $this->assertEquals(TRUE, $result);
-    $this->assertEquals(self::$_recordedValues, array('a', 1, 2, 3, 'b'));
-    $this->assertEquals(0, $this->queue->numberOfItems());
+    $this->assertEquals(self::$_recordedValues, ['a', 1, 2, 3, 'b']);
+    $this->assertQueueStats(0, 0, 0, $this->queue);
   }
 
   /**
    * Run a series of tasks; when one throws an
    * exception, ignore it and continue
    */
-  public function testRunAll_Continue_Exception() {
+  public function testRunAll_Continue_Exception(): void {
     // prepare a list of tasks with an error in the middle
     $this->queue->createItem(new CRM_Queue_Task(
-      array('CRM_Queue_RunnerTest', '_recordValue'),
-      array('a'),
+      ['CRM_Queue_RunnerTest', '_recordValue'],
+      ['a'],
       'Add "a"'
     ));
     $this->queue->createItem(new CRM_Queue_Task(
-      array('CRM_Queue_RunnerTest', '_throwException'),
-      array('b'),
+      ['CRM_Queue_RunnerTest', '_throwException'],
+      ['b'],
       'Throw exception'
     ));
     $this->queue->createItem(new CRM_Queue_Task(
-      array('CRM_Queue_RunnerTest', '_recordValue'),
-      array('c'),
+      ['CRM_Queue_RunnerTest', '_recordValue'],
+      ['c'],
       'Add "c"'
     ));
 
     // run the list of tasks
-    $runner = new CRM_Queue_Runner(array(
+    $runner = new CRM_Queue_Runner([
       'queue' => $this->queue,
       'errorMode' => CRM_Queue_Runner::ERROR_CONTINUE,
-    ));
-    $this->assertEquals(self::$_recordedValues, array());
-    $this->assertEquals(3, $this->queue->numberOfItems());
+    ]);
+    $this->assertEquals(self::$_recordedValues, []);
+    $this->assertQueueStats(3, 3, 0, $this->queue);
+
     $result = $runner->runAll();
     // FIXME useless return
     $this->assertEquals(TRUE, $result);
-    $this->assertEquals(self::$_recordedValues, array('a', 'c'));
-    $this->assertEquals(0, $this->queue->numberOfItems());
+    $this->assertEquals(self::$_recordedValues, ['a', 'c']);
+    $this->assertQueueStats(0, 0, 0, $this->queue);
   }
 
   /**
    * Run a series of tasks; when one throws an exception,
    * abort processing and return it to the queue.
    */
-  public function testRunAll_Abort_Exception() {
+  public function testRunAll_Abort_Exception(): void {
     // prepare a list of tasks with an error in the middle
     $this->queue->createItem(new CRM_Queue_Task(
-      array('CRM_Queue_RunnerTest', '_recordValue'),
-      array('a'),
+      ['CRM_Queue_RunnerTest', '_recordValue'],
+      ['a'],
       'Add "a"'
     ));
     $this->queue->createItem(new CRM_Queue_Task(
-      array('CRM_Queue_RunnerTest', '_throwException'),
-      array('b'),
+      ['CRM_Queue_RunnerTest', '_throwException'],
+      ['b'],
       'Throw exception'
     ));
     $this->queue->createItem(new CRM_Queue_Task(
-      array('CRM_Queue_RunnerTest', '_recordValue'),
-      array('c'),
+      ['CRM_Queue_RunnerTest', '_recordValue'],
+      ['c'],
       'Add "c"'
     ));
 
     // run the list of tasks
-    $runner = new CRM_Queue_Runner(array(
+    $runner = new CRM_Queue_Runner([
       'queue' => $this->queue,
       'errorMode' => CRM_Queue_Runner::ERROR_ABORT,
-    ));
-    $this->assertEquals(self::$_recordedValues, array());
-    $this->assertEquals(3, $this->queue->numberOfItems());
+    ]);
+    $this->assertEquals(self::$_recordedValues, []);
+    $this->assertQueueStats(3, 3, 0, $this->queue);
+
     $result = $runner->runAll();
     $this->assertEquals(1, $result['is_error']);
     // nothing from 'c'
-    $this->assertEquals(self::$_recordedValues, array('a'));
+    $this->assertEquals(self::$_recordedValues, ['a']);
     // 'b' and 'c' remain
-    $this->assertEquals(2, $this->queue->numberOfItems());
+    $this->assertQueueStats(2, 2, 0, $this->queue);
   }
 
   /**
    * Run a series of tasks; when one returns false,
    * abort processing and return it to the queue.
    */
-  public function testRunAll_Abort_False() {
+  public function testRunAll_Abort_False(): void {
     // prepare a list of tasks with an error in the middle
     $this->queue->createItem(new CRM_Queue_Task(
-      array('CRM_Queue_RunnerTest', '_recordValue'),
-      array('a'),
+      ['CRM_Queue_RunnerTest', '_recordValue'],
+      ['a'],
       'Add "a"'
     ));
     $this->queue->createItem(new CRM_Queue_Task(
-      array('CRM_Queue_RunnerTest', '_returnFalse'),
-      array(),
+      ['CRM_Queue_RunnerTest', '_returnFalse'],
+      [],
       'Return false'
     ));
     $this->queue->createItem(new CRM_Queue_Task(
-      array('CRM_Queue_RunnerTest', '_recordValue'),
-      array('c'),
+      ['CRM_Queue_RunnerTest', '_recordValue'],
+      ['c'],
       'Add "c"'
     ));
 
     // run the list of tasks
-    $runner = new CRM_Queue_Runner(array(
+    $runner = new CRM_Queue_Runner([
       'queue' => $this->queue,
       'errorMode' => CRM_Queue_Runner::ERROR_ABORT,
-    ));
-    $this->assertEquals(self::$_recordedValues, array());
-    $this->assertEquals(3, $this->queue->numberOfItems());
+    ]);
+    $this->assertEquals(self::$_recordedValues, []);
+    $this->assertQueueStats(3, 3, 0, $this->queue);
     $result = $runner->runAll();
     $this->assertEquals(1, $result['is_error']);
     // nothing from 'c'
-    $this->assertEquals(self::$_recordedValues, array('a'));
+    $this->assertEquals(self::$_recordedValues, ['a']);
     // 'b' and 'c' remain
-    $this->assertEquals(2, $this->queue->numberOfItems());
+    $this->assertQueueStats(2, 2, 0, $this->queue);
   }
 
-  /* **** Queue tasks **** */
-
-
-  static $_recordedValues;
+  /**
+   * Queue tasks
+   * @var array
+   */
+  protected static $_recordedValues;
 
   /**
    * @param $taskCtx
@@ -239,7 +248,7 @@ class CRM_Queue_RunnerTest extends CiviUnitTestCase {
    *
    * @return bool
    */
-  static public function _recordValue($taskCtx, $value) {
+  public static function _recordValue($taskCtx, $value) {
     self::$_recordedValues[] = $value;
     return TRUE;
   }
@@ -249,7 +258,7 @@ class CRM_Queue_RunnerTest extends CiviUnitTestCase {
    *
    * @return bool
    */
-  static public function _returnFalse($taskCtx) {
+  public static function _returnFalse($taskCtx) {
     return FALSE;
   }
 
@@ -259,7 +268,7 @@ class CRM_Queue_RunnerTest extends CiviUnitTestCase {
    *
    * @throws Exception
    */
-  static public function _throwException($taskCtx, $value) {
+  public static function _throwException($taskCtx, $value) {
     throw new Exception("Manufactured error: $value");
   }
 
@@ -270,17 +279,41 @@ class CRM_Queue_RunnerTest extends CiviUnitTestCase {
    *
    * @return bool
    */
-  static public function _enqueueNumbers($taskCtx, $low, $high) {
+  public static function _enqueueNumbers($taskCtx, $low, $high) {
     for ($i = $low; $i <= $high; $i++) {
       $taskCtx->queue->createItem(new CRM_Queue_Task(
-        array('CRM_Queue_RunnerTest', '_recordValue'),
-        array($i),
+        ['CRM_Queue_RunnerTest', '_recordValue'],
+        [$i],
         sprintf('Add number "%d"', $i)
-      ), array(
+      ), [
         'weight' => -1,
-      ));
+      ]);
     }
     return TRUE;
+  }
+
+  protected function runAQueue(): void {
+    $this->queueService = CRM_Queue_Service::singleton(TRUE);
+    $queueName = 'seeing-double';
+    $queue = \Civi::queue($queueName, [
+      'type' => 'Sql',
+      'runner' => 'task',
+      'retry_limit' => 3,
+      'retry_interval' => 20,
+      'error' => 'abort',
+    ]);
+    // prepare a list of tasks with an error in the middle
+    $queue->createItem(new CRM_Queue_Task(
+      ['CRM_Queue_RunnerTest', '_recordValue'],
+      ['a'],
+      'Add "a"'
+    ));
+    // run the list of tasks
+    $runner = new CRM_Queue_Runner([
+      'queue' => $queue,
+      'errorMode' => CRM_Queue_Runner::ERROR_ABORT,
+    ]);
+    $runner->runAll();
   }
 
 }

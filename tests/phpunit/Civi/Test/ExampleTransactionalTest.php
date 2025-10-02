@@ -9,30 +9,31 @@ namespace Civi\Test;
  *
  * @group headless
  */
-class ExampleTransactionalTest extends \PHPUnit_Framework_TestCase implements HeadlessInterface, TransactionalInterface {
+class ExampleTransactionalTest extends \PHPUnit\Framework\TestCase implements HeadlessInterface, TransactionalInterface {
 
   /**
    * @var array
    *   Array(int $id).
    */
-  static $contactIds = array();
+  protected static $contactIds = [];
 
   public function setUpHeadless() {
     return \Civi\Test::headless()->apply();
   }
 
-  protected function setUp() {
+  protected function setUp(): void {
+    parent::setUp();
     /** @var \CRM_Contact_DAO_Contact $contact */
-    $contact = \CRM_Core_DAO::createTestObject('CRM_Contact_DAO_Contact', array(
+    $contact = \CRM_Core_DAO::createTestObject('CRM_Contact_DAO_Contact', [
       'contact_type' => 'Individual',
-    ));
+    ]);
     self::$contactIds[$this->getName()] = $contact->id;
   }
 
   /**
    * In the first test, we make make testDummy1. He exists.
    */
-  public function testDummy1() {
+  public function testDummy1(): void {
     $this->assertTrue(is_numeric(self::$contactIds['testDummy1']) && self::$contactIds['testDummy1'] > 0);
 
     // Still inside transaction. Data exists.
@@ -45,7 +46,7 @@ class ExampleTransactionalTest extends \PHPUnit_Framework_TestCase implements He
    * We previously made testDummy1, but he's been lost (rolled-back).
    * However, testDummy2 now exists.
    */
-  public function testDummy2() {
+  public function testDummy2(): void {
     $this->assertTrue(is_numeric(self::$contactIds['testDummy1']) && self::$contactIds['testDummy1'] > 0);
     $this->assertTrue(is_numeric(self::$contactIds['testDummy2']) && self::$contactIds['testDummy2'] > 0);
 
@@ -60,16 +61,13 @@ class ExampleTransactionalTest extends \PHPUnit_Framework_TestCase implements He
     $this->assertTrue((bool) $dao->find());
   }
 
-  public function tearDown() {
-  }
-
   /**
    * Both testDummy1 and testDummy2 have been created at some point (as part of the test runs),
    * but all the data was rolled-back
    *
    * @throws \Exception
    */
-  public static function tearDownAfterClass() {
+  public static function tearDownAfterClass(): void {
     if (!is_numeric(self::$contactIds['testDummy1'])) {
       throw new \Exception("Uh oh! The static \$contactIds does not include testDummy1! Did the test fail to execute?");
     }

@@ -2,6 +2,7 @@
 namespace Civi\Test;
 
 use Civi\Test\CiviEnvBuilder\CallbackStep;
+use Civi\Test\CiviEnvBuilder\CoreSchemaStep;
 use Civi\Test\CiviEnvBuilder\ExtensionsStep;
 use Civi\Test\CiviEnvBuilder\SqlFileStep;
 use Civi\Test\CiviEnvBuilder\SqlStep;
@@ -17,18 +18,46 @@ use RuntimeException;
  * reapply all the steps.
  */
 class CiviEnvBuilder {
+
+  public static ?CiviEnvBuilder $lastApplied = NULL;
+
   protected $name;
 
-  private $steps = array();
+  /**
+   *
+   * @var bool
+   */
+  private $useOnce = FALSE;
+
+  private $steps = [];
 
   /**
-   * @var string|NULL
+   * @var string|null
    *   A digest of the values in $steps.
    */
   private $targetSignature = NULL;
 
-  public function __construct($name) {
+  /**
+   * Identify which test/agent/process was responsible for creating this environment.
+   *
+   * @var string|null
+   */
+  private ?string $appliedBy = NULL;
+
+  /**
+   * A detailed snapshot of how the environment looked when it was first applied.
+   *
+   * @var array|null
+   */
+  private ?array $detailedSnapshot = NULL;
+
+  public function __construct(string $name = 'CiviEnvBuilder') {
     $this->name = $name;
+  }
+
+  public function setName(string $name) {
+    $this->name = $name;
+    return $this;
   }
 
   public function addStep(StepInterface $step) {
@@ -37,8 +66,31 @@ class CiviEnvBuilder {
     return $this;
   }
 
+  /**
+   * Mark this as a single-use environment.
+   *
+   * If enabled, then we will reinitialize the environment before and/or after
+   * the test. Use this if you have a sloppy test that fails to clean up after itself.
+   *
+   * @param bool $useOnce
+   * @return $this
+   */
+  public function useOnce(bool $useOnce = TRUE) {
+    $this->useOnce = $useOnce;
+    return $this;
+  }
+
   public function callback($callback, $signature = NULL) {
     return $this->addStep(new CallbackStep($callback, $signature));
+  }
+
+  /**
+   * Generate the core SQL tables.
+   *
+   * @return \Civi\Test\CiviEnvBuilder
+   */
+  public function coreSchema() {
+    return $this->addStep(new CoreSchemaStep());
   }
 
   public function sql($sql) {
@@ -100,7 +152,7 @@ class CiviEnvBuilder {
   protected function assertValid() {
     foreach ($this->steps as $step) {
       if (!$step->isValid()) {
-        throw new RuntimeException("Found invalid step: " . var_dump($step, 1));
+        throw new RuntimeException("Found invalid step: " . var_export($step, TRUE));
       }
     }
   }
@@ -110,9 +162,14 @@ class CiviEnvBuilder {
    */
   protected function getTargetSignature() {
     if ($this->targetSignature === NULL) {
-      $buf = '';
-      foreach ($this->steps as $step) {
-        $buf .= $step->getSig();
+      if ($this->useOnce) {
+        $buf = \random_bytes(24);
+      }
+      else {
+        $buf = '';
+        foreach ($this->steps as $step) {
+          $buf .= $step->getSig();
+        }
       }
       $this->targetSignature = md5($buf);
     }
@@ -168,24 +225,53 @@ class CiviEnvBuilder {
    * @return CiviEnvBuilder
    */
   public function apply($force = FALSE) {
-    $dbName = \Civi\Test::dsn('database');
-    $query = "USE {$dbName};"
-      . "CREATE TABLE IF NOT EXISTS civitest_revs (name VARCHAR(64) PRIMARY KEY, rev VARCHAR(64));";
+    return \Civi\Test::asPreInstall(function() use ($force) {
+      $dbName = \Civi\Test::dsn('database');
+      $query = "USE {$dbName};"
+        . "CREATE TABLE IF NOT EXISTS civitest_revs (name VARCHAR(64) PRIMARY KEY, rev VARCHAR(64));";
 
-    if (\Civi\Test::execute($query) === FALSE) {
-      throw new \RuntimeException("Failed to flag schema version: $query");
-    }
+      if (\Civi\Test::execute($query) === FALSE) {
+        throw new \RuntimeException("Failed to flag schema version: $query");
+      }
 
-    $this->assertValid();
+      if (empty($GLOBALS['CIVICRM_TEST_CASE'])) {
+        $this->appliedBy = 'Unknown';
+      }
+      else {
+        $test = $GLOBALS['CIVICRM_TEST_CASE'];
+        $this->appliedBy = get_class($test) . '::';
+        $this->appliedBy .= (is_callable([$test, 'name']) ? $test->name() : $test->getName());
+      }
 
-    if (!$force && $this->getSavedSignature() === $this->getTargetSignature()) {
+      $this->assertValid();
+
+      if (SloppyTestChecker::isActive() && static::$lastApplied && !static::$lastApplied->useOnce) {
+        $currentSnapshot = SloppyTestChecker::createSnapshot();
+        SloppyTestChecker::doComparison(static::$lastApplied->detailedSnapshot, $currentSnapshot, static::$lastApplied->appliedBy, $this->appliedBy);
+      }
+
+      if (!$force && $this->getSavedSignature() === $this->getTargetSignature()) {
+        $this->finalizeApply();
+        return $this;
+      }
+
+      fprintf(STDERR, "\nInitializing \"%s\" (%s) in \"%s\"\n", $this->name, $this->getTargetSignature(), $dbName);
+
+      foreach ($this->steps as $step) {
+        $step->run($this);
+      }
+      $this->setSavedSignature($this->getTargetSignature());
+      $this->finalizeApply();
+
       return $this;
+    });
+  }
+
+  private function finalizeApply(): void {
+    if (SloppyTestChecker::isActive()) {
+      $this->detailedSnapshot = SloppyTestChecker::createSnapshot();
     }
-    foreach ($this->steps as $step) {
-      $step->run($this);
-    }
-    $this->setSavedSignature($this->getTargetSignature());
-    return $this;
+    static::$lastApplied = $this;
   }
 
   /**

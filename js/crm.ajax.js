@@ -1,9 +1,9 @@
 // https://civicrm.org/licensing
 /**
- * @see https://wiki.civicrm.org/confluence/display/CRMDOC/AJAX+Interface
- * @see https://wiki.civicrm.org/confluence/display/CRMDOC/Ajax+Pages+and+Forms
+ * @see https://docs.civicrm.org/dev/en/latest/api/interfaces/#ajax
+ * @see https://docs.civicrm.org/dev/en/latest/framework/ajax/
  */
-(function($, CRM, undefined) {
+(function($, CRM, _, undefined) {
   /**
    * @param string path
    * @param string|object query
@@ -22,19 +22,30 @@
       mode = CRM.config && CRM.config.isFrontend ? 'front' : 'back';
     }
     query = query || '';
-    var frag = path.split('?');
-    var url = tplURL[mode].replace("*path*", frag[0]);
-
-    if (!query) {
-      url = url.replace(/[?&]\*query\*/, '');
+    var url, frag, hash = '';
+    if (path.indexOf('#') > -1) {
+      hash = '#' + path.split('#')[1];
+      path = path.split('#')[0];
     }
-    else {
-      url = url.replace("*query*", typeof query === 'string' ? query : $.param(query));
+    frag = path.split('?');
+    // Remove basepage as it can be changed on some CMS eg. WordPress frontend.
+    frag[0] = frag[0].replace('civicrm/', '/');
+    // Encode url path only if slashes in placeholder were also encoded
+    if (tplURL[mode].indexOf('/crmajax-placeholder-url-path') >= 0) {
+      url = tplURL[mode].replace('/crmajax-placeholder-url-path', frag[0]);
+    } else {
+      url = tplURL[mode].replace('%2Fcrmajax-placeholder-url-path', encodeURIComponent(frag[0]));
+    }
+
+    if (_.isEmpty(query)) {
+      url = url.replace(/[?&]civicrm-placeholder-url-query=1/, '');
+    } else {
+      url = url.replace('civicrm-placeholder-url-query=1', typeof query === 'string' ? query : $.param(query));
     }
     if (frag[1]) {
       url += (url.indexOf('?') < 0 ? '?' : '&') + frag[1];
     }
-    return url;
+    return url + hash;
   };
 
   $.fn.crmURL = function () {
@@ -45,9 +56,51 @@
     });
   };
 
+  // result is an array, but in js, an array is also an object
+  // Assign all the metadata properties to it, mirroring the results arrayObject in php
+  function arrayObject(data) {
+    var result = data.values || [];
+    if (_.isArray(result)) {
+      delete(data.values);
+      _.assign(result, data);
+    }
+    return result;
+  }
+
+  // https://docs.civicrm.org/dev/en/latest/api/interfaces/#ajax
+  CRM.api4 = function(entity, action, params, index) {
+    return new Promise(function(resolve, reject) {
+      if (typeof entity === 'string') {
+        $.post(CRM.url('civicrm/ajax/api4/' + entity + '/' + action), {
+          params: JSON.stringify(params),
+          index: index
+        })
+          .done(function (data) {
+            resolve(arrayObject(data));
+          })
+          .fail(function (data) {
+            reject(data.responseJSON);
+          });
+      } else {
+        $.post(CRM.url('civicrm/ajax/api4'), {
+          calls: JSON.stringify(entity)
+        })
+          .done(function(data) {
+            _.each(data, function(item, key) {
+              data[key] = arrayObject(item);
+            });
+            resolve(data);
+          })
+          .fail(function (data) {
+            reject(data.responseJSON);
+          });
+      }
+    });
+  };
+
   /**
    * AJAX api
-   * @link http://wiki.civicrm.org/confluence/display/CRMDOC/AJAX+Interface#AJAXInterface-CRM.api3
+   * @link https://docs.civicrm.org/dev/en/latest/api/interfaces/#ajax
    */
   CRM.api3 = function(entity, action, params, status) {
     if (typeof(entity) === 'string') {
@@ -68,7 +121,7 @@
       url: CRM.url('civicrm/ajax/rest'),
       dataType: 'json',
       data: params,
-      type: params.action.indexOf('get') < 0 ? 'POST' : 'GET'
+      type: params.action.indexOf('get') === 0 ? 'GET' : 'POST'
     });
     if (status) {
       // Default status messages
@@ -149,6 +202,7 @@
     options: {
       url: null,
       block: true,
+      post: null,
       crmForm: null
     },
     _originalContent: null,
@@ -164,11 +218,11 @@
         return false;
       }
       // Compare arguments
-      $.each(newUrl.split('?')[1].split('&'), function(k, v) {
+      $.each((newUrl.split('?')[1] || '').split('&'), function(k, v) {
         var arg = v.split('=');
         args[arg[0]] = arg[1];
       });
-      $.each(oldUrl.split('?')[1].split('&'), function(k, v) {
+      $.each((oldUrl.split('?')[1] || '').split('&'), function(k, v) {
         var arg = v.split('=');
         if (args[arg[0]] !== undefined && arg[1] !== args[arg[0]]) {
           same = false;
@@ -217,7 +271,11 @@
         if (url.search(/[&?]snippet=/) < 0) {
           url += (url.indexOf('?') < 0 ? '?' : '&') + 'snippet=' + snippetType;
         } else {
-          url = url.replace(/snippet=[^&]*/, 'snippet=' + snippetType);
+          url = url.replace(/([&?])snippet=[^&]*/, '$1snippet=' + snippetType);
+        }
+        // See Civi\Angular\AngularLoader
+        if (snippetType === 'json' && CRM.angular) {
+          url += '&crmAngularModules=' + CRM.angular.modules.join();
         }
       }
       return url;
@@ -234,12 +292,24 @@
         return false;
       });
     },
+    _ajax: function(url) {
+      if (!this.options.post || !this.isOriginalUrl()) {
+        return $.getJSON(url);
+      }
+      return $.post({
+        url: url,
+        dataType: 'json',
+        data: this.options.post
+      });
+    },
     refresh: function() {
-      var that = this;
-      var url = this._formatUrl(this.options.url, 'json');
+      var that = this,
+        hash = this.options.url.split('#')[1],
+        url = this._formatUrl(this.options.url, 'json');
+      $(this.element).data('urlHash', hash);
       if (this.options.crmForm) $('form', this.element).ajaxFormUnbind();
       if (this.options.block) this.element.block();
-      $.getJSON(url, function(data) {
+      this._ajax(url).then(function(data) {
         if (data.status === 'redirect') {
           that.options.url = data.userContext;
           return that.refresh();
@@ -268,7 +338,7 @@
             $('[name="'+formElement+'"]', that.element).crmError(msg);
           });
         }
-      }).fail(function(data, msg, status) {
+      }, function(data, msg, status) {
         that._onFailure(data, status);
       });
     },
@@ -292,7 +362,7 @@
   });
 
   var dialogCount = 0,
-    exclude = '[href^=#], [href^=javascript], [onclick], .no-popup, .cancel';
+    exclude = '[href^="#"], [href^=javascript], [onclick], .no-popup, .cancel';
 
   CRM.loadPage = function(url, options) {
     var settings = {
@@ -324,7 +394,7 @@
             $(this).dialog('option', 'title', data.title);
           }
           // Update print url
-          $(this).parent().find('a.crm-dialog-titlebar-print').attr('href', $(this).data('civiCrmSnippet')._formatUrl($(this).crmSnippet('option', 'url'), '2'));
+          $(this).parent().find('a.crm-dialog-titlebar-print').attr('href', $(this).data('civiCrmSnippet')._formatUrl($(this).crmSnippet('option', 'url'), '1'));
         });
     }
     $(settings.target).crmSnippet(settings).crmSnippet('refresh');
@@ -336,7 +406,7 @@
         ajaxForm: {},
         autoClose: true,
         validate: true,
-        refreshAction: ['next_new', 'submit_savenext', 'upload_new'],
+        refreshAction: ['next_new', 'upload_new'],
         cancelButton: '.cancel',
         openInline: 'a.open-inline, a.button, a.action-item, a.open-inline-noreturn',
         onCancel: function(event) {}
@@ -394,7 +464,8 @@
         }
       });
       if (settings.validate) {
-        $("form", this).crmValidate();
+        // Validate all forms that are not angular-based
+        $("form", this).not('crm-angular-js *').crmValidate();
       }
       $("form:not('[data-no-ajax-submit=true]')", this).ajaxForm($.extend({
         url: data.url.replace(/reset=1[&]?/, ''),
@@ -440,7 +511,7 @@
       if (settings.openInline) {
         settings.autoClose = $el.crmSnippet('isOriginalUrl');
         $(this).off('.openInline').on('click.openInline', settings.openInline, function(e) {
-          if ($(this).is(exclude + ', .crm-popup')) {
+          if ($(this).is(exclude + ', .crm-popup, [target=crm-popup]')) {
             return;
           }
           if ($(this).hasClass('open-inline-noreturn')) {
@@ -456,10 +527,11 @@
         var buttonContainers = '.crm-submit-buttons, .action-link',
           buttons = [],
           added = [];
-        $(buttonContainers, $el).find('input.crm-form-submit, a.button').each(function() {
+        $(buttonContainers, $el).find('.crm-form-submit, .crm-form-xbutton, a.button, button').each(function() {
           var $el = $(this),
             label = $el.is('input') ? $el.attr('value') : $el.text(),
             identifier = $el.attr('name') || $el.attr('href');
+          $el.attr('tabindex', '-1');
           if (!identifier || identifier === '#' || $.inArray(identifier, added) < 0) {
             var $icon = $el.find('.icon, .crm-i'),
               button = {'data-identifier': identifier, text: label, click: function() {
@@ -475,12 +547,12 @@
             added.push(identifier);
           }
           // display:none causes the form to not submit when pressing "enter"
-          $el.parents(buttonContainers).css({height: 0, padding: 0, margin: 0, overflow: 'hidden'}).find('.crm-button-icon').hide();
+          $el.parents(buttonContainers).css({height: 0, padding: 0, margin: 0, overflow: 'hidden'}).attr('aria-hidden', 'true');
         });
         $el.dialog('option', 'buttons', buttons);
       }
       // Allow a button to prevent ajax submit
-      $('input[data-no-ajax-submit=true]').click(function() {
+      $('input[data-no-ajax-submit=true], button[data-no-ajax-submit=true]').click(function() {
         $(this).closest('form').ajaxFormUnbind();
       });
       // For convenience, focus the first field
@@ -496,9 +568,9 @@
       url = $el.attr('href'),
       popup = $el.data('popup-type') === 'page' ? CRM.loadPage : CRM.loadForm,
       settings = $el.data('popup-settings') || {},
-      formSuccess = false;
+      formData = false;
     settings.dialog = settings.dialog || {};
-    if (e.isDefaultPrevented() || !CRM.config.ajaxPopupsEnabled || !url || $el.is(exclude)) {
+    if (e.isDefaultPrevented() || !CRM.config.ajaxPopupsEnabled || !url || $el.is(exclude + ', .open-inline, .open-inline-noreturn')) {
       return;
     }
     // Sized based on css class
@@ -507,18 +579,19 @@
       settings.dialog.height = 300;
     }
     else if ($el.hasClass('medium-popup')) {
-      settings.dialog.width = settings.dialog.height = '50%';
+      settings.dialog.width = '50%';
+      settings.dialog.height = '30%';
     }
     var dialog = popup(url, settings);
     // Trigger events from the dialog on the original link element
     $el.trigger('crmPopupOpen', [dialog]);
     // Listen for success events and buffer them so we only trigger once
-    dialog.on('crmFormSuccess.crmPopup crmPopupFormSuccess.crmPopup', function() {
-      formSuccess = true;
+    dialog.on('crmFormSuccess.crmPopup crmPopupFormSuccess.crmPopup', function(e, data) {
+      formData = data;
     });
     dialog.on('dialogclose.crmPopup', function(e, data) {
-      if (formSuccess) {
-        $el.trigger('crmPopupFormSuccess', [dialog, data]);
+      if (formData) {
+        $el.trigger('crmPopupFormSuccess', [dialog, formData]);
       }
       $el.trigger('crmPopupClose', [dialog, data]);
     });
@@ -547,7 +620,7 @@
 
   $(function($) {
     $('body')
-      .on('click', 'a.crm-popup', CRM.popup)
+      .on('click', 'a.crm-popup, a[target=crm-popup]', CRM.popup)
       // Close unsaved dialog messages
       .on('dialogopen', function(e) {
         $('.alert.unsaved-dialog .ui-notify-cross', '#crm-notification-container').click();
@@ -572,8 +645,11 @@
           var currentHeight = $wrapper.outerHeight(),
             padding = currentHeight - $dialog.height(),
             newHeight = $dialog.prop('scrollHeight') + padding,
-            menuHeight = $('#civicrm-menu').outerHeight(),
-            maxHeight = $(window).height() - menuHeight;
+            menuHeight = $('#civicrm-menu').outerHeight();
+          if ($('body').hasClass('crm-menubar-below-cms-menu')) {
+            menuHeight += $('#civicrm-menu').offset().top;
+          }
+          var maxHeight = $(window).height() - menuHeight;
           newHeight = newHeight > maxHeight ? maxHeight : newHeight;
           if (newHeight > (currentHeight + 15)) {
             $dialog.dialog('option', {
@@ -585,4 +661,4 @@
       });
   });
 
-}(jQuery, CRM));
+}(jQuery, CRM, _));

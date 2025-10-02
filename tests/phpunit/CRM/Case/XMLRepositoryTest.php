@@ -5,9 +5,9 @@
  * @group headless
  */
 class CRM_Case_XMLRepositoryTest extends CiviUnitTestCase {
-  protected $fixtures = array();
+  protected $fixtures = [];
 
-  protected function setUp() {
+  protected function setUp(): void {
     parent::setUp();
     $this->fixtures['CaseTypeWithSingleActivityType'] = '
 <CaseType>
@@ -96,47 +96,47 @@ class CRM_Case_XMLRepositoryTest extends CiviUnitTestCase {
 
   }
 
-  public function testGetAllDeclaredActivityTypes() {
+  public function testGetAllDeclaredActivityTypes(): void {
     $repo = new CRM_Case_XMLRepository(
-      array('CaseTypeWithTwoActivityTypes', 'CaseTypeWithThreeActivityTypes'),
-      array(
+      ['CaseTypeWithTwoActivityTypes', 'CaseTypeWithThreeActivityTypes'],
+      [
         'CaseTypeWithTwoActivityTypes' => new SimpleXMLElement($this->fixtures['CaseTypeWithTwoActivityTypes']),
         'CaseTypeWithThreeActivityTypes' => new SimpleXMLElement($this->fixtures['CaseTypeWithThreeActivityTypes']),
         /* healthful noise: */
         'CaseTypeWithSingleRole' => new SimpleXMLElement($this->fixtures['CaseTypeWithSingleRole']),
-      )
+      ]
     );
 
     // omitted: 'Single Activity Type'
-    $expected = array('First Activity Type', 'Second Activity Type', 'Third Activity Type');
+    $expected = ['First Activity Type', 'Second Activity Type', 'Third Activity Type'];
     $actual = $repo->getAllDeclaredActivityTypes();
     $this->assertEquals($expected, $actual);
   }
 
-  public function testGetAllDeclaredRelationshipTypes() {
+  public function testGetAllDeclaredRelationshipTypes(): void {
     $repo = new CRM_Case_XMLRepository(
-      array('CaseTypeWithTwoRoles', 'CaseTypeWithThreeRoles', 'CaseTypeWithSingleActivityType'),
-      array(
+      ['CaseTypeWithTwoRoles', 'CaseTypeWithThreeRoles', 'CaseTypeWithSingleActivityType'],
+      [
         'CaseTypeWithTwoRoles' => new SimpleXMLElement($this->fixtures['CaseTypeWithTwoRoles']),
         'CaseTypeWithThreeRoles' => new SimpleXMLElement($this->fixtures['CaseTypeWithThreeRoles']),
         /* healthful noise: */
         'CaseTypeWithSingleActivityType' => new SimpleXMLElement($this->fixtures['CaseTypeWithSingleActivityType']),
-      )
+      ]
     );
     // omitted: 'Single Role'
-    $expected = array('First Role', 'Second Role', 'Third Role');
+    $expected = ['First Role', 'Second Role', 'Third Role'];
     $actual = $repo->getAllDeclaredRelationshipTypes();
     $this->assertEquals($expected, $actual);
   }
 
-  public function testGetActivityReferenceCount_1() {
+  public function testGetActivityReferenceCount_1(): void {
     $repo = new CRM_Case_XMLRepository(
-      array('CaseTypeWithSingleActivityType'),
-      array(
+      ['CaseTypeWithSingleActivityType'],
+      [
         'CaseTypeWithSingleActivityType' => new SimpleXMLElement($this->fixtures['CaseTypeWithSingleActivityType']),
         /* healthful noise: */
         'CaseTypeWithSingleRole' => new SimpleXMLElement($this->fixtures['CaseTypeWithSingleRole']),
-      )
+      ]
     );
 
     $this->assertEquals(1, $repo->getActivityReferenceCount('Single Activity Type'));
@@ -145,15 +145,15 @@ class CRM_Case_XMLRepositoryTest extends CiviUnitTestCase {
     $this->assertEquals(0, $repo->getActivityReferenceCount('Third Activity Type'));
   }
 
-  public function testGetActivityReferenceCount_23() {
+  public function testGetActivityReferenceCount_23(): void {
     $repo = new CRM_Case_XMLRepository(
-      array('CaseTypeWithTwoActivityTypes', 'CaseTypeWithThreeActivityTypes'),
-      array(
+      ['CaseTypeWithTwoActivityTypes', 'CaseTypeWithThreeActivityTypes'],
+      [
         'CaseTypeWithTwoActivityTypes' => new SimpleXMLElement($this->fixtures['CaseTypeWithTwoActivityTypes']),
         'CaseTypeWithThreeActivityTypes' => new SimpleXMLElement($this->fixtures['CaseTypeWithThreeActivityTypes']),
         /* noise: */
         'CaseTypeWithSingleRole' => new SimpleXMLElement($this->fixtures['CaseTypeWithSingleRole']),
-      )
+      ]
     );
 
     $this->assertEquals(0, $repo->getActivityReferenceCount('Single Activity Type'));
@@ -162,14 +162,14 @@ class CRM_Case_XMLRepositoryTest extends CiviUnitTestCase {
     $this->assertEquals(1, $repo->getActivityReferenceCount('Third Activity Type'));
   }
 
-  public function testGetRoleReferenceCount_1() {
+  public function testGetRoleReferenceCount_1(): void {
     $repo = new CRM_Case_XMLRepository(
-      array('CaseTypeWithSingleRole', 'CaseTypeWithSingleActivityType'),
-      array(
+      ['CaseTypeWithSingleRole', 'CaseTypeWithSingleActivityType'],
+      [
         'CaseTypeWithSingleRole' => new SimpleXMLElement($this->fixtures['CaseTypeWithSingleRole']),
         /* healthful noise: */
         'CaseTypeWithSingleActivityType' => new SimpleXMLElement($this->fixtures['CaseTypeWithSingleActivityType']),
-      )
+      ]
     );
 
     $this->assertEquals(1, $repo->getRelationshipReferenceCount('Single Role'));
@@ -178,15 +178,15 @@ class CRM_Case_XMLRepositoryTest extends CiviUnitTestCase {
     $this->assertEquals(0, $repo->getRelationshipReferenceCount('Third Role'));
   }
 
-  public function testGetRoleReferenceCount_23() {
+  public function testGetRoleReferenceCount_23(): void {
     $repo = new CRM_Case_XMLRepository(
-      array('CaseTypeWithTwoRoles', 'CaseTypeWithThreeRoles', 'CaseTypeWithSingleActivityType'),
-      array(
+      ['CaseTypeWithTwoRoles', 'CaseTypeWithThreeRoles', 'CaseTypeWithSingleActivityType'],
+      [
         'CaseTypeWithTwoRoles' => new SimpleXMLElement($this->fixtures['CaseTypeWithTwoRoles']),
         'CaseTypeWithThreeRoles' => new SimpleXMLElement($this->fixtures['CaseTypeWithThreeRoles']),
         /* healthful noise: */
         'CaseTypeWithSingleActivityType' => new SimpleXMLElement($this->fixtures['CaseTypeWithSingleActivityType']),
-      )
+      ]
     );
 
     $this->assertEquals(0, $repo->getRelationshipReferenceCount('Single Role'));

@@ -1,36 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
- * $Id$
- *
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -47,11 +29,13 @@ class CRM_Event_Form_Task_PickProfile extends CRM_Event_Form_Task {
 
   /**
    * Maximum event participations that should be allowed to update.
+   * @var int
    */
   protected $_maxParticipations = 100;
 
   /**
    * Variable to store redirect path.
+   * @var string
    */
   protected $_userContext;
 
@@ -67,12 +51,15 @@ class CRM_Event_Form_Task_PickProfile extends CRM_Event_Form_Task {
     $session = CRM_Core_Session::singleton();
     $this->_userContext = $session->readUserContext();
 
-    CRM_Utils_System::setTitle(ts('Update multiple participants'));
+    $this->setTitle(ts('Update multiple participants'));
 
     $validate = FALSE;
     //validations
     if (count($this->_participantIds) > $this->_maxParticipations) {
-      CRM_Core_Session::setStatus("The maximum number of records you can select for Update multiple participants is {$this->_maxParticipations}. You have selected " . count($this->_participantIds) . ". Please select fewer participantions from your search results and try again.");
+      CRM_Core_Session::setStatus(ts("The maximum number of records you can select for Update multiple participants is %1. You have selected %2. Please select fewer participants from your search results and try again.", [
+        1 => $this->_maxParticipations,
+        2 => count($this->_participantIds),
+      ]));
       $validate = TRUE;
     }
 
@@ -89,18 +76,18 @@ class CRM_Event_Form_Task_PickProfile extends CRM_Event_Form_Task {
    * @return void
    */
   public function buildQuickForm() {
-    $types = array('Participant');
+    $types = ['Participant'];
     $profiles = CRM_Core_BAO_UFGroup::getProfiles($types, TRUE);
 
     if (empty($profiles)) {
-      CRM_Core_Session::setStatus("To use Update multiple participants, you need to configure a profile containing only Participant fields (e.g. Participant Status, Participant Role, etc.). Configure a profile at 'Administer CiviCRM >> Customize >> CiviCRM Profile'.");
+      CRM_Core_Session::setStatus(ts("To use Update multiple participants, you need to configure a profile containing only Participant fields (e.g. Participant Status, Participant Role, etc.). Configure a profile at 'Administer CiviCRM >> Customize >> CiviCRM Profile'."));
       CRM_Utils_System::redirect($this->_userContext);
     }
 
     $ufGroupElement = $this->add('select', 'uf_group_id', ts('Select Profile'),
-      array(
+      [
         '' => ts('- select profile -'),
-      ) + $profiles, TRUE
+      ] + $profiles, TRUE
     );
     $this->addDefaultButtons(ts('Continue'));
   }
@@ -112,7 +99,7 @@ class CRM_Event_Form_Task_PickProfile extends CRM_Event_Form_Task {
    * @return void
    */
   public function addRules() {
-    $this->addFormRule(array('CRM_Event_Form_Task_PickProfile', 'formRule'));
+    $this->addFormRule(['CRM_Event_Form_Task_PickProfile', 'formRule']);
   }
 
   /**

@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -42,7 +26,7 @@
  * module-extensions.
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 class CRM_Extension_Mapper {
 
@@ -61,9 +45,10 @@ class CRM_Extension_Mapper {
   protected $container;
 
   /**
-   * @var array (key => CRM_Extension_Info)
+   * @var \CRM_Extension_Info[]
+   * (key => CRM_Extension_Info)
    */
-  protected $infos = array();
+  protected $infos = [];
 
   /**
    * @var array
@@ -82,13 +67,19 @@ class CRM_Extension_Mapper {
   protected $civicrmUrl;
 
   /**
-   * @param CRM_Extension_Container_Interface $container
-   * @param CRM_Utils_Cache_Interface $cache
+   * @var array
+   *   Array(string $extKey => CRM_Extension_Upgrader_Interface $upgrader)
+   */
+  protected $upgraders = [];
+
+  /**
+   * @param CRM_Extension_Container_Interface|null $container
+   * @param CRM_Utils_Cache_Interface|null $cache
    * @param null $cacheKey
    * @param null $civicrmPath
    * @param null $civicrmUrl
    */
-  public function __construct(CRM_Extension_Container_Interface $container, CRM_Utils_Cache_Interface $cache = NULL, $cacheKey = NULL, $civicrmPath = NULL, $civicrmUrl = NULL) {
+  public function __construct(CRM_Extension_Container_Interface $container, ?CRM_Utils_Cache_Interface $cache = NULL, $cacheKey = NULL, $civicrmPath = NULL, $civicrmUrl = NULL) {
     $this->container = $container;
     $this->cache = $cache;
     $this->cacheKey = $cacheKey;
@@ -126,7 +117,7 @@ class CRM_Extension_Mapper {
    * Given the class, provides extension path.
    *
    *
-   * @param $clazz
+   * @param string $clazz
    *
    * @return string
    *   full path the extension .php file
@@ -149,7 +140,7 @@ class CRM_Extension_Mapper {
    */
   public function isExtensionKey($key) {
     // check if the string is an extension name or the class
-    return (strpos($key, '.') !== FALSE) ? TRUE : FALSE;
+    return (str_contains($key, '.')) ? TRUE : FALSE;
   }
 
   /**
@@ -176,7 +167,7 @@ class CRM_Extension_Mapper {
    * @param bool $fresh
    *
    * @throws CRM_Extension_Exception
-   * @throws Exception
+   *
    * @return CRM_Extension_Info
    */
   public function keyToInfo($key, $fresh = FALSE) {
@@ -186,10 +177,11 @@ class CRM_Extension_Mapper {
       }
       catch (CRM_Extension_Exception $e) {
         // file has more detailed info, but we'll fallback to DB if it's missing -- DB has enough info to uninstall
-        $this->infos[$key] = CRM_Extension_System::singleton()->getManager()->createInfoFromDB($key);
-        if (!$this->infos[$key]) {
+        $dbInfo = CRM_Extension_System::singleton()->getManager()->createInfoFromDB($key);
+        if (!$dbInfo) {
           throw $e;
         }
+        $this->infos[$key] = $dbInfo;
       }
     }
     return $this->infos[$key];
@@ -251,9 +243,11 @@ class CRM_Extension_Mapper {
    *
    * @return string
    *   url for resources in this extension
+   *
+   * @throws \CRM_Extension_Exception_MissingException
    */
   public function keyToUrl($key) {
-    if ($key == 'civicrm') {
+    if ($key === 'civicrm') {
       // CRM-12130 Workaround: If the domain's config_backend is NULL at the start of the request,
       // then the Mapper is wrongly constructed with an empty value for $this->civicrmUrl.
       if (empty($this->civicrmUrl)) {
@@ -272,22 +266,39 @@ class CRM_Extension_Mapper {
    * @param bool $fresh
    *   whether to forcibly reload extensions list from canonical store.
    * @return array
-   *   array(array('prefix' => $, 'file' => $))
+   *   array(array('prefix' => $, 'fullName' => $, 'filePath' => $))
    */
   public function getActiveModuleFiles($fresh = FALSE) {
-    $config = CRM_Core_Config::singleton();
-    if ($config->isUpgradeMode() || !defined('CIVICRM_DSN')) {
-      return array(); // hmm, ok
+    if (!defined('CIVICRM_DSN')) {
+      // hmm, ok
+      return [];
+    }
+
+    // The list of module files is cached in two tiers. The tiers are slightly
+    // different:
+    //
+    // 1. The persistent tier (cache) stores
+    // names WITHOUT absolute paths.
+    // 2. The ephemeral/thread-local tier (statics) stores names
+    // WITH absolute paths.
+    // Return static value instead of re-running query
+    if (isset(Civi::$statics[__CLASS__]['moduleExtensions']) && !$fresh) {
+      return Civi::$statics[__CLASS__]['moduleExtensions'];
     }
 
     $moduleExtensions = NULL;
+
+    // Checked if it's stored in the persistent cache.
     if ($this->cache && !$fresh) {
-      $moduleExtensions = $this->cache->get($this->cacheKey . '/moduleFiles');
+      $moduleExtensions = $this->cache->get($this->cacheKey . '_moduleFiles');
     }
 
+    // If cache is empty we build it from database.
     if (!is_array($moduleExtensions)) {
+      $compat = CRM_Extension_System::getCompatibilityInfo();
+
       // Check canonical module list
-      $moduleExtensions = array();
+      $moduleExtensions = [];
       $sql = '
         SELECT full_name, file
         FROM civicrm_extension
@@ -296,28 +307,39 @@ class CRM_Extension_Mapper {
       ';
       $dao = CRM_Core_DAO::executeQuery($sql);
       while ($dao->fetch()) {
-        try {
-          $moduleExtensions[] = array(
-            'prefix' => $dao->file,
-            'filePath' => $this->keyToPath($dao->full_name),
-          );
+        if (!empty($compat[$dao->full_name]['force-uninstall'])) {
+          continue;
         }
-        catch (CRM_Extension_Exception $e) {
-          // Putting a stub here provides more consistency
-          // in how getActiveModuleFiles when racing between
-          // dirty file-removals and cache-clears.
-          CRM_Core_Session::setStatus($e->getMessage(), '', 'error');
-          $moduleExtensions[] = array(
-            'prefix' => $dao->file,
-            'filePath' => NULL,
-          );
-        }
+        $moduleExtensions[] = [
+          'prefix' => $dao->file,
+          'fullName' => $dao->full_name,
+          'filePath' => NULL,
+        ];
       }
 
       if ($this->cache) {
-        $this->cache->set($this->cacheKey . '/moduleFiles', $moduleExtensions);
+        $this->cache->set($this->cacheKey . '_moduleFiles', $moduleExtensions);
       }
     }
+
+    // Since we're not caching the full path we add it now.
+    array_walk($moduleExtensions, function(&$value, $key) {
+      try {
+        if (!$value['filePath']) {
+          $value['filePath'] = $this->keyToPath($value['fullName']);
+        }
+      }
+      catch (CRM_Extension_Exception $e) {
+        // Putting a stub here provides more consistency
+        // in how getActiveModuleFiles when racing between
+        // dirty file-removals and cache-clears.
+        CRM_Core_Session::setStatus($e->getMessage(), '', 'error');
+        $value['filePath'] = NULL;
+      }
+    });
+
+    Civi::$statics[__CLASS__]['moduleExtensions'] = $moduleExtensions;
+
     return $moduleExtensions;
   }
 
@@ -326,18 +348,126 @@ class CRM_Extension_Mapper {
    *
    * @return array
    *   (string $extKey => string $baseUrl)
+   *
+   * @throws \CRM_Extension_Exception_MissingException
    */
   public function getActiveModuleUrls() {
     // TODO optimization/caching
-    $urls = array();
+    $urls = [];
     $urls['civicrm'] = $this->keyToUrl('civicrm');
+    /** @var CRM_Core_Module $module */
     foreach ($this->getModules() as $module) {
-      /** @var $module CRM_Core_Module */
       if ($module->is_active) {
-        $urls[$module->name] = $this->keyToUrl($module->name);
+        try {
+          $urls[$module->name] = $this->keyToUrl($module->name);
+        }
+        catch (CRM_Extension_Exception_MissingException $e) {
+          CRM_Core_Session::setStatus(ts('An enabled extension is missing from the extensions directory') . ':' . $module->name);
+        }
       }
     }
     return $urls;
+  }
+
+  /**
+   * Get a list of extension keys, filtered by the corresponding file path.
+   *
+   * @param string $pattern
+   *   A file path. To search subdirectories, append "*".
+   *   Ex: "/var/www/extensions/*"
+   *   Ex: "/var/www/extensions/org.foo.bar"
+   * @return array
+   *   Array(string $key).
+   *   Ex: array("org.foo.bar").
+   */
+  public function getKeysByPath($pattern) {
+    $keys = [];
+
+    if (str_ends_with($pattern, '*')) {
+      $prefix = rtrim($pattern, '*');
+      foreach ($this->container->getKeys() as $key) {
+        $path = CRM_Utils_File::addTrailingSlash($this->container->getPath($key));
+        if (realpath($prefix) == realpath($path) || CRM_Utils_File::isChildPath($prefix, $path)) {
+          $keys[] = $key;
+        }
+      }
+    }
+    else {
+      foreach ($this->container->getKeys() as $key) {
+        $path = CRM_Utils_File::addTrailingSlash($this->container->getPath($key));
+        if (realpath($pattern) == realpath($path)) {
+          $keys[] = $key;
+        }
+      }
+    }
+
+    return $keys;
+  }
+
+  /**
+   * Get a list of extensions which match a given tag.
+   *
+   * @param string $tag
+   *   Ex: 'foo'
+   * @return array
+   *   Array(string $key).
+   *   Ex: array("org.foo.bar").
+   */
+  public function getKeysByTag($tag) {
+    $allTags = $this->getAllTags();
+    return $allTags[$tag] ?? [];
+  }
+
+  /**
+   * Get a list of extension tags.
+   *
+   * @return array
+   *   Ex: ['form-building' => ['org.civicrm.afform-gui', 'org.civicrm.afform-html']]
+   */
+  public function getAllTags() {
+    $tags = Civi::cache('short')->get('extension_tags', NULL);
+    if ($tags !== NULL) {
+      return $tags;
+    }
+
+    $tags = [];
+    $allInfos = $this->getAllInfos();
+    foreach ($allInfos as $key => $info) {
+      foreach ($info->tags as $tag) {
+        $tags[$tag][] = $key;
+      }
+    }
+    return $tags;
+  }
+
+  /**
+   * @return CRM_Extension_Info[]
+   *   Ex: $result['org.civicrm.foobar'] = new CRM_Extension_Info(...).
+   *   Note: This only returns well-formed/available info's.
+   * @throws \CRM_Extension_Exception
+   * @throws \Exception
+   */
+  public function getAllInfos() {
+    foreach ($this->container->getKeys() as $key) {
+      try {
+        $this->keyToInfo($key);
+      }
+      catch (CRM_Extension_Exception_ParseException $e) {
+        CRM_Core_Session::setStatus(ts('Parse error in extension %1: %2', [
+          1 => $key,
+          2 => $e->getMessage(),
+        ]), '', 'error');
+        CRM_Core_Error::debug_log_message("Parse error in extension " . $key . ": " . $e->getMessage());
+        continue;
+      }
+      catch (CRM_Extension_Exception_MissingException $e) {
+        // If we're in here, it suggests that someone has deleted an extension that was previously stored in the index.
+        // In particular, the extension was probably inactive and deleted. (If it was active+deleted, then errors would arise elsewhere.)
+        // getAllInfos() is for inspecting available exts. If it's not there, then it's not there. 🙈🙊
+        continue;
+      }
+    }
+    return $this->infos;
   }
 
   /**
@@ -358,16 +488,15 @@ class CRM_Extension_Mapper {
   /**
    * Get a list of all installed modules, including enabled and disabled ones
    *
-   * @return array
-   *   CRM_Core_Module
+   * @return CRM_Core_Module[]
    */
   public function getModules() {
-    $result = array();
+    $result = [];
     $dao = new CRM_Core_DAO_Extension();
     $dao->type = 'module';
     $dao->find();
     while ($dao->fetch()) {
-      $result[] = new CRM_Core_Module($dao->full_name, $dao->is_active);
+      $result[] = new CRM_Core_Module($dao->full_name, $dao->is_active, $dao->label);
     }
     return $result;
   }
@@ -394,7 +523,7 @@ class CRM_Extension_Mapper {
   }
 
   /**
-   * Given te class, provides the template name.
+   * Given the class, provides the template name.
    * @todo consider multiple templates, support for one template for now
    *
    *
@@ -410,13 +539,67 @@ class CRM_Extension_Mapper {
   }
 
   public function refresh() {
-    $this->infos = array();
+    $this->infos = [];
     $this->moduleExtensions = NULL;
     if ($this->cache) {
-      $this->cache->delete($this->cacheKey . '/moduleFiles');
+      $this->cache->delete($this->cacheKey . '_moduleFiles');
     }
     // FIXME: How can code so code wrong be so right?
     CRM_Extension_System::singleton()->getClassLoader()->refresh();
+    CRM_Extension_System::singleton()->getMixinLoader()->run(TRUE);
+  }
+
+  /**
+   * This returns a formatted string containing an extension upgrade link for the UI.
+   * @todo We should improve this to return more appropriate text. eg. when an extension is not installed
+   *   it should not say "version xx is installed".
+   *
+   * @param CRM_Extension_Info $remoteExtensionInfo
+   * @param array $localExtensionInfo
+   *
+   * @return string
+   */
+  public function getUpgradeLink($remoteExtensionInfo, $localExtensionInfo) {
+    if (!empty($remoteExtensionInfo) && version_compare($localExtensionInfo['version'] ?? '', $remoteExtensionInfo->version, '<')) {
+      return ts('Version %1 is installed. <a %2>Upgrade to version %3</a>.', [
+        1 => $localExtensionInfo['version'],
+        2 => 'href="' . CRM_Utils_System::url('civicrm/admin/extensions', "action=update&id={$localExtensionInfo['key']}&key={$localExtensionInfo['key']}") . '"',
+        3 => $remoteExtensionInfo->version,
+      ]);
+    }
+  }
+
+  /**
+   * @param string $key
+   *   Long name of the extension.
+   *   Ex: 'org.example.myext'
+   *
+   * @return \CRM_Extension_Upgrader_Interface
+   */
+  public function getUpgrader(string $key) {
+    if (!array_key_exists($key, $this->upgraders)) {
+      $this->upgraders[$key] = NULL;
+
+      try {
+        $info = $this->keyToInfo($key);
+      }
+      catch (CRM_Extension_Exception_ParseException $e) {
+        CRM_Core_Session::setStatus(ts('Parse error in extension %1: %2', [
+          1 => $key,
+          2 => $e->getMessage(),
+        ]), '', 'error');
+        CRM_Core_Error::debug_log_message("Parse error in extension " . $key . ": " . $e->getMessage());
+        return NULL;
+      }
+
+      if (!empty($info->upgrader)) {
+        $class = $info->upgrader;
+        $u = new $class();
+        $u->init(['key' => $key]);
+        $this->upgraders[$key] = $u;
+      }
+    }
+    return $this->upgraders[$key];
   }
 
 }

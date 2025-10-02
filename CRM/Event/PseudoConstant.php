@@ -1,159 +1,74 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
- * $Id$
- *
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
- * This class holds all the Pseudo constants that are specific to Event. This avoids
- * polluting the core class and isolates the Event
+ * @deprecated functions. Use the API instead.
  */
 class CRM_Event_PseudoConstant extends CRM_Core_PseudoConstant {
 
   /**
-   * Event
+   * Get all events
    *
-   * @var array
-   */
-  private static $event;
-
-  /**
-   * Participant Status
-   *
-   * @var array
-   */
-  private static $participantStatus;
-
-  /**
-   * Participant Role
-   *
-   * @var array
-   */
-  private static $participantRole;
-
-  /**
-   * Participant Listing
-   *
-   * @var array
-   */
-  private static $participantListing;
-
-  /**
-   * Event Type.
-   *
-   * @var array
-   */
-  private static $eventType;
-
-  /**
-   * Event template titles
-   * @var array
-   */
-  private static $eventTemplates;
-
-  /**
-   * Personal campaign pages
-   * @var array
-   */
-  private static $pcPage;
-
-  /**
-   * Get all the n events
-   *
-   *
-   * @param int $id
+   * @param int|null $id
    * @param bool $all
-   * @param null $condition
+   * @param string|null $condition
+   *   Optional SQL where condition
    *
-   * @return array
+   * @return array|string|null
    *   array of all events if any
    */
   public static function event($id = NULL, $all = FALSE, $condition = NULL) {
-    $key = "{$id}_{$all}_{$condition}";
-
-    if (!isset(self::$event[$key])) {
-      self::$event[$key] = array();
-    }
-
-    if (!self::$event[$key]) {
-      CRM_Core_PseudoConstant::populate(self::$event[$key],
-        'CRM_Event_DAO_Event',
-        $all, 'title', 'is_active', $condition, NULL
-      );
-    }
+    $options = [];
+    CRM_Core_PseudoConstant::populate($options,
+      'CRM_Event_DAO_Event',
+      $all, 'title', 'is_active', $condition, NULL
+    );
 
     if ($id) {
-      if (array_key_exists($id, self::$event[$key])) {
-        return self::$event[$key][$id];
-      }
-      else {
-        return NULL;
-      }
+      return $options[$id] ?? NULL;
     }
-    return self::$event[$key];
+    return $options;
   }
 
   /**
-   * Get all the n participant statuses.
+   * Get all the event participant statuses.
    *
    *
-   * @param int $id
-   * @param null $cond
+   * @param int|null $id
+   *   Return the specified participant status, or null to return all
+   * @param string|null $cond
+   *   Optional SQL where condition
    * @param string $retColumn
    *   Tells populate() whether to return 'name' (default) or 'label' values.
    *
-   * @return array
-   *   array reference of all participant statuses if any
+   * @return array|string
+   *   array reference of all participant statuses if any, or single value if $id was passed
    */
-  public static function &participantStatus($id = NULL, $cond = NULL, $retColumn = 'name') {
-    if (self::$participantStatus === NULL) {
-      self::$participantStatus = array();
-    }
-
-    $index = $cond ? $cond : 'No Condition';
-    $index = "{$index}_{$retColumn}";
-    if (!CRM_Utils_Array::value($index, self::$participantStatus)) {
-      self::$participantStatus[$index] = array();
-      CRM_Core_PseudoConstant::populate(self::$participantStatus[$index],
-        'CRM_Event_DAO_ParticipantStatusType',
-        FALSE, $retColumn, 'is_active', $cond, 'weight'
-      );
-    }
+  public static function participantStatus($id = NULL, $cond = NULL, $retColumn = 'name') {
+    $statuses = [];
+    CRM_Core_PseudoConstant::populate($statuses,
+      'CRM_Event_DAO_ParticipantStatusType',
+      FALSE, $retColumn, 'is_active', $cond, 'weight'
+    );
 
     if ($id) {
-      return self::$participantStatus[$index][$id];
+      return $statuses[$id] ?? NULL;
     }
-
-    return self::$participantStatus[$index];
+    return $statuses;
   }
 
   /**
@@ -162,12 +77,12 @@ class CRM_Event_PseudoConstant extends CRM_Core_PseudoConstant {
    * @return array
    */
   public static function participantStatusClassOptions() {
-    return array(
+    return [
       'Positive' => ts('Positive'),
       'Pending' => ts('Pending'),
       'Waiting' => ts('Waiting'),
       'Negative' => ts('Negative'),
-    );
+    ];
   }
 
   /**
@@ -176,13 +91,9 @@ class CRM_Event_PseudoConstant extends CRM_Core_PseudoConstant {
    * @return array
    *   Array of status classes, keyed by status type
    */
-  public static function &participantStatusClass() {
-    static $statusClasses = NULL;
-
-    if ($statusClasses === NULL) {
-      self::populate($statusClasses, 'CRM_Event_DAO_ParticipantStatusType', TRUE, 'class');
-    }
-
+  public static function participantStatusClass() {
+    $statusClasses = [];
+    self::populate($statusClasses, 'CRM_Event_DAO_ParticipantStatusType', TRUE, 'class');
     return $statusClasses;
   }
 
@@ -191,53 +102,38 @@ class CRM_Event_PseudoConstant extends CRM_Core_PseudoConstant {
    *
    *
    * @param int $id
-   * @param null $cond
+   * @param string|null $cond
+   *   Optional SQL where condition
    *
-   * @return array
+   * @return array|string
    *   array reference of all participant roles if any
    */
-  public static function &participantRole($id = NULL, $cond = NULL) {
-    $index = $cond ? $cond : 'No Condition';
-    if (!CRM_Utils_Array::value($index, self::$participantRole)) {
-      self::$participantRole[$index] = array();
-
-      $condition = NULL;
-
-      if ($cond) {
-        $condition = "AND $cond";
-      }
-
-      self::$participantRole[$index] = CRM_Core_OptionGroup::values('participant_role', FALSE, FALSE,
-        FALSE, $condition
-      );
-    }
+  public static function participantRole($id = NULL, $cond = NULL) {
+    $condition = empty($cond) ? NULL : "AND $cond";
+    $options = CRM_Core_OptionGroup::values('participant_role', FALSE, FALSE, FALSE, $condition);
 
     if ($id) {
-      return self::$participantRole[$index][$id];
+      return $options[$id] ?? NULL;
     }
-    return self::$participantRole[$index];
+    return $options;
   }
 
   /**
    * Get all the participant listings.
    *
-   *
+   * @deprecated
    * @param int $id
-   *
-   * @return array
+   * @return array|string
    *   array reference of all participant listings if any
    */
-  public static function &participantListing($id = NULL) {
-    if (!self::$participantListing) {
-      self::$participantListing = array();
-      self::$participantListing = CRM_Core_OptionGroup::values('participant_listing');
-    }
+  public static function participantListing($id = NULL) {
+    CRM_Core_Error::deprecatedFunctionWarning('Function participantListing will be removed');
+    $options = CRM_Core_OptionGroup::values('participant_listing');
 
     if ($id) {
-      return self::$participantListing[$id];
+      return $options[$id];
     }
-
-    return self::$participantListing;
+    return $options;
   }
 
   /**
@@ -245,20 +141,16 @@ class CRM_Event_PseudoConstant extends CRM_Core_PseudoConstant {
    *
    *
    * @param int $id
-   * @return array
+   * @return array|string
    *   array reference of all event types.
    */
-  public static function &eventType($id = NULL) {
-    if (!self::$eventType) {
-      self::$eventType = array();
-      self::$eventType = CRM_Core_OptionGroup::values('event_type');
-    }
+  public static function eventType($id = NULL) {
+    $options = CRM_Core_OptionGroup::values('event_type');
 
     if ($id) {
-      return self::$eventType[$id];
+      return $options[$id] ?? NULL;
     }
-
-    return self::$eventType;
+    return $options;
   }
 
   /**
@@ -268,26 +160,28 @@ class CRM_Event_PseudoConstant extends CRM_Core_PseudoConstant {
    *
    * @return array
    *   Array of event id → template title pairs
+   *
+   * @deprecated Use the API instead
    */
-  public static function &eventTemplates($id = NULL) {
-    if (!self::$eventTemplates) {
-      CRM_Core_PseudoConstant::populate(self::$eventTemplates,
-        'CRM_Event_DAO_Event',
-        FALSE,
-        'template_title',
-        'is_active',
-        'is_template = 1'
-      );
-    }
+  public static function eventTemplates($id = NULL) {
+    CRM_Core_Error::deprecatedFunctionWarning('Use the api');
+    $options = [];
+    CRM_Core_PseudoConstant::populate($options,
+      'CRM_Event_DAO_Event',
+      FALSE,
+      'template_title',
+      'is_active',
+      'is_template = 1'
+    );
     if ($id) {
-      return self::$eventTemplates[$id];
+      return $options[$id];
     }
-    return self::$eventTemplates;
+    return $options;
   }
 
   /**
    * Flush given pseudoconstant so it can be reread from db
-   * nex time it's requested.
+   * next time it's requested.
    *
    *
    * @param bool|string $name pseudoconstant to be flushed
@@ -301,22 +195,22 @@ class CRM_Event_PseudoConstant extends CRM_Core_PseudoConstant {
   /**
    * Get all the Personal campaign pages.
    *
-   *
+   * @deprecated
    * @param int $id
    * @return array
    *   array reference of all pcp if any
    */
-  public static function &pcPage($id = NULL) {
-    if (!self::$pcPage) {
-      CRM_Core_PseudoConstant::populate(self::$pcPage,
-        'CRM_PCP_DAO_PCP',
-        FALSE, 'title'
-      );
-    }
+  public static function pcPage($id = NULL) {
+    CRM_Core_Error::deprecatedFunctionWarning('Function pcPage will be removed');
+    $options = [];
+    CRM_Core_PseudoConstant::populate($options,
+      'CRM_PCP_DAO_PCP',
+      FALSE, 'title'
+    );
     if ($id) {
-      return CRM_Utils_Array::value($id, self::$pcPage);
+      return $options[$id] ?? NULL;
     }
-    return self::$pcPage;
+    return $options;
   }
 
 }

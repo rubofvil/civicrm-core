@@ -6,28 +6,43 @@
  */
 class CRM_Utils_HookTest extends CiviUnitTestCase {
 
-  static $activeTest = NULL;
+  /**
+   * @var object|null
+   */
+  public static $activeTest = NULL;
 
-  var $fakeModules;
+  /**
+   * @var array
+   */
+  public $fakeModules;
 
-  var $log;
+  /**
+   * @var array
+   */
+  public $log;
 
-  public function setUp() {
+  /**
+   * @var CRM_Utils_Hook_UnitTests
+   */
+  public $hook;
+
+  public function setUp(): void {
     parent::setUp();
-    $this->fakeModules = array(
+    $this->useTransaction();
+    $this->fakeModules = [
       'hooktesta',
       'hooktestb',
       'hooktestc',
       'hooktestd',
       'hookteste',
-    );
+    ];
     // our goal is to test a helper in CRM_Utils_Hook, but we need a concrete class
     $this->hook = new CRM_Utils_Hook_UnitTests();
-    $this->log = array();
+    $this->log = [];
     self::$activeTest = $this;
   }
 
-  public function tearDown() {
+  public function tearDown(): void {
     self::$activeTest = $this;
     parent::tearDown();
   }
@@ -35,18 +50,19 @@ class CRM_Utils_HookTest extends CiviUnitTestCase {
   /**
    * Verify that runHooks() is reentrant by invoking one hook which calls another hooks
    */
-  public function testRunHooks_reentrancy() {
+  public function testRunHooks_reentrancy(): void {
     $arg1 = 'whatever';
-    $this->hook->runHooks($this->fakeModules, 'civicrm_testRunHooks_outer', 1, $arg1, CRM_Utils_Hook::$_nullObject, CRM_Utils_Hook::$_nullObject, CRM_Utils_Hook::$_nullObject, CRM_Utils_Hook::$_nullObject, CRM_Utils_Hook::$_nullObject);
+    $null = NULL;
+    $this->hook->runHooks($this->fakeModules, 'civicrm_testRunHooks_outer', 1, $arg1, $null, $null, $null, $null, $null);
     $this->assertEquals(
-      array(
+      [
         'a-outer',
         'b-outer-1',
         'a-inner',
         'b-inner',
         'b-outer-2',
         'c-outer',
-      ),
+      ],
       $this->log
     );
   }
@@ -54,14 +70,15 @@ class CRM_Utils_HookTest extends CiviUnitTestCase {
   /**
    * Verify that the results of runHooks() are correctly merged
    */
-  public function testRunHooks_merge() {
-    $result = $this->hook->runHooks($this->fakeModules, 'civicrm_testRunHooks_merge', 0, CRM_Utils_Hook::$_nullObject, CRM_Utils_Hook::$_nullObject, CRM_Utils_Hook::$_nullObject, CRM_Utils_Hook::$_nullObject, CRM_Utils_Hook::$_nullObject, CRM_Utils_Hook::$_nullObject);
+  public function testRunHooks_merge(): void {
+    $null = NULL;
+    $result = $this->hook->runHooks($this->fakeModules, 'civicrm_testRunHooks_merge', 0, $null, $null, $null, $null, $null, $null);
     $this->assertEquals(
-      array(
+      [
         'from-module-a1',
         'from-module-a2',
         'from-module-e',
-      ),
+      ],
       $result
     );
   }
@@ -81,7 +98,8 @@ function hooktesta_civicrm_testRunHooks_outer() {
 function hooktestb_civicrm_testRunHooks_outer() {
   $test = CRM_Utils_HookTest::$activeTest;
   $test->log[] = 'b-outer-1';
-  $test->hook->runHooks($test->fakeModules, 'civicrm_testRunHooks_inner', 0, CRM_Utils_Hook::$_nullObject, CRM_Utils_Hook::$_nullObject, CRM_Utils_Hook::$_nullObject, CRM_Utils_Hook::$_nullObject, CRM_Utils_Hook::$_nullObject, CRM_Utils_Hook::$_nullObject);
+  $null = NULL;
+  $test->hook->runHooks($test->fakeModules, 'civicrm_testRunHooks_inner', 0, $null, $null, $null, $null, $null, $null);
   $test->log[] = 'b-outer-2';
 }
 
@@ -104,7 +122,7 @@ function hooktestb_civicrm_testRunHooks_inner() {
  * @return array
  */
 function hooktesta_civicrm_testRunHooks_merge() {
-  return array('from-module-a1', 'from-module-a2');
+  return ['from-module-a1', 'from-module-a2'];
 }
 
 // OMIT: function hooktestb_civicrm_testRunHooks_merge
@@ -113,7 +131,7 @@ function hooktesta_civicrm_testRunHooks_merge() {
  * Implements hook_civicrm_testRunHooks_merge().
  */
 function hooktestc_civicrm_testRunHooks_merge() {
-  return array();
+  return [];
 }
 
 /**
@@ -127,5 +145,5 @@ function hooktestd_civicrm_testRunHooks_merge() {
  * @return array
  */
 function hookteste_civicrm_testRunHooks_merge() {
-  return array('from-module-e');
+  return ['from-module-e'];
 }

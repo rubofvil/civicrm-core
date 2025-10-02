@@ -1,35 +1,18 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 {* this template is used for adding/editing badge layouts *}
 <h3>{if $action eq 1}{ts}New Badge Layout{/ts}{elseif $action eq 2}{ts}Edit Badge Layout{/ts}{else}{ts}Delete Badge Layout{/ts}{/if}</h3>
 <div class="crm-block crm-form-block crm-badge-layout-form-block">
-  <div class="crm-submit-buttons">{include file="CRM/common/formButtons.tpl" location="top"}</div>
   {if $action eq 8}
     <div class="messages status no-popup">
-      <div class="icon inform-icon"></div>
+      {icon icon="fa-info-circle"}{/icon}
       {ts}This may mean the loss of a substantial amount of data, and the action cannot be undone.{/ts} {ts}Do you want to continue?{/ts}
     </div>
   {else}
@@ -40,7 +23,7 @@
       </tr>
       <tr class="crm-badge-layout-form-block-label_format_name">
         <td class="label">{$form.label_format_name.label}</td>
-        <td>{$form.label_format_name.html} {help id="id-label_format"}</td>
+        <td>{$form.label_format_name.html} {help id="label_format_name" file="CRM/Badge/Form/Layout.hlp"}</td>
       </tr>
       <tr class="crm-badge-layout-form-block-description">
         <td class="label">{$form.description.label}</td>
@@ -52,7 +35,7 @@
          <table>
            <tr>
             <td>{$form.image_1.html}
-               <a href="#" class="crm-hover-button clear-image" title="{ts}Clear{/ts}"><i class="crm-i fa-times"></i></a>
+               <a href="#" class="crm-hover-button clear-image" title="{ts escape='htmlattribute'}Clear{/ts}"><i class="crm-i fa-times" role="img" aria-hidden="true"></i></a>
              <br/>
              <span class="description">{ts}Click above and select a file by double clicking on it.{/ts}</span>
             </td>
@@ -60,7 +43,7 @@
              {$form.width_image_1.html}<br/>{$form.width_image_1.label}
             </td>
            <td>
-              {$form.height_image_1.html}</br>{$form.height_image_1.label}
+              {$form.height_image_1.html}<br/>{$form.height_image_1.label}
             </td>
            </tr>
          </table>
@@ -72,7 +55,7 @@
          <table>
           <tr>
            <td>{$form.image_2.html}
-              <a href="#" class="crm-hover-button clear-image" title="{ts}Clear{/ts}"><i class="crm-i fa-times"></i></a>
+              <a href="#" class="crm-hover-button clear-image" title="{ts escape='htmlattribute'}Clear{/ts}"><i class="crm-i fa-times" role="img" aria-hidden="true"></i></a>
             <br/>
             <span class="description">{ts}Click above and select a file by double clicking on it.{/ts}</span>
            </td>
@@ -99,17 +82,17 @@
              {$form.width_participant_image.html}<br/>{$form.width_participant_image.label}
             </td>
            <td>
-              {$form.height_participant_image.html}</br>{$form.height_participant_image.label}
+              {$form.height_participant_image.html}<br/>{$form.height_participant_image.label}
             </td>
            <td>
-              {$form.alignment_participant_image.html}</br>{$form.alignment_participant_image.label}
+              {$form.alignment_participant_image.html}<br/>{$form.alignment_participant_image.label}
             </td>
            </tr>
          </table>
         </td>
       </tr>
       <tr class="crm-badge-layout-form-block-elements">
-        <td class="label">{ts}Elements{/ts}</td>
+        <td class="label"><label>{ts}Elements{/ts}</label></td>
         <td>
           <table class="form-layout-compressed">
             <tr>

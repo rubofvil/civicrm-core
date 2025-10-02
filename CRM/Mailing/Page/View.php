@@ -1,43 +1,29 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
  * A page for mailing preview.
  */
 class CRM_Mailing_Page_View extends CRM_Core_Page {
+
   protected $_mailingID;
   protected $_mailing;
   protected $_contactID;
+  private $_mailingIDIsHash;
 
   /**
    * Lets do permission checking here.
@@ -59,14 +45,9 @@ class CRM_Mailing_Page_View extends CRM_Core_Page {
     }
 
     // if user is an admin, return true
-    if (CRM_Core_Permission::check('administer CiviCRM') ||
-      CRM_Core_Permission::check('approve mailings') ||
-      CRM_Core_Permission::check('access CiviMail')
-    ) {
-      return TRUE;
-    }
-
-    return FALSE;
+    return CRM_Core_Permission::check([
+      ['administer CiviCRM', /* OR */ 'approve mailings', /* OR */ 'access CiviMail'],
+    ]);
   }
 
   /**
@@ -81,13 +62,14 @@ class CRM_Mailing_Page_View extends CRM_Core_Page {
    *   Not really sure if anything should be returned - parent doesn't
    */
   public function run($id = NULL, $contactID = NULL, $print = TRUE, $allowID = FALSE) {
-    if (is_numeric($id)) {
-      $this->_mailingID = $id;
-    }
-    else {
+    if (empty($id) || is_array($id)) {
       $print = TRUE;
-      $this->_mailingID = CRM_Utils_Request::retrieve('id', 'String', CRM_Core_DAO::$_nullObject, TRUE);
     }
+    $this->getMailingID($id);
+
+    // Retrieve contact ID and checksum from the URL
+    $cs = CRM_Utils_Request::retrieve('cs', 'String');
+    $cid = CRM_Utils_Request::retrieve('cid', 'Int');
 
     // # CRM-7651
     // override contactID from the function level if passed in
@@ -96,18 +78,30 @@ class CRM_Mailing_Page_View extends CRM_Core_Page {
     ) {
       $this->_contactID = $contactID;
     }
+
+    // Support checksummed view of the mailing to replace tokens
+    elseif (!empty($cs) && !empty($cid) && CRM_Contact_BAO_Contact_Utils::validChecksum($cid, $cs)) {
+      $this->_contactID = $cid;
+    }
+
     else {
-      $this->_contactID = CRM_Core_Session::singleton()->getLoggedInContactID();
+      $this->_contactID = CRM_Core_Session::getLoggedInContactID();
     }
 
     // mailing key check
     if (Civi::settings()->get('hash_mailing_url')) {
       $this->_mailing = new CRM_Mailing_BAO_Mailing();
+      if ($this->_mailingIDIsHash) {
 
-      if (!is_numeric($this->_mailingID)) {
+        //lets get the id from the hash
+        $result_id = civicrm_api3('Mailing', 'get', [
+          'return' => ['id'],
+          'hash' => $this->_mailingID,
+        ]);
         $this->_mailing->hash = $this->_mailingID;
+        $this->_mailingID     = $result_id['id'];
       }
-      elseif (is_numeric($this->_mailingID)) {
+      else {
         $this->_mailing->id = $this->_mailingID;
         // if mailing is present and associated hash is present
         // while 'hash' is not been used for mailing view : throw 'permissionDenied'
@@ -132,61 +126,29 @@ class CRM_Mailing_Page_View extends CRM_Core_Page {
       return NULL;
     }
 
-    CRM_Mailing_BAO_Mailing::tokenReplace($this->_mailing);
+    $contactId = $this->_contactID ?? 0;
 
-    // get and format attachments
-    $attachments = CRM_Core_BAO_File::getEntityFile('civicrm_mailing',
-      $this->_mailing->id
-    );
-
-    // get contact detail and compose if contact id exists
-    $returnProperties = $this->_mailing->getReturnProperties();
-    if (isset($this->_contactID)) {
-      // get details of contact with token value including Custom Field Token Values.CRM-3734
-      $params = array('contact_id' => $this->_contactID);
-      $details = CRM_Utils_Token::getTokenDetails($params,
-        $returnProperties,
-        FALSE, TRUE, NULL,
-        $this->_mailing->getFlattenedTokens(),
-        get_class($this)
-      );
-      $details = $details[0][$this->_contactID];
-      $contactId = $this->_contactID;
-    }
-    else {
-      // get tokens that are not contact specific resolved
-      $params = array('contact_id' => 0);
-      $details = CRM_Utils_Token::getAnonymousTokenDetails($params,
-        $returnProperties,
-        TRUE, TRUE, NULL,
-        $this->_mailing->getFlattenedTokens(),
-        get_class($this)
-      );
-
-      $details = CRM_Utils_Array::value(0, $details[0]);
-      $contactId = 0;
-    }
-    $mime = $this->_mailing->compose(NULL, NULL, NULL, $contactId,
-      $this->_mailing->from_email,
-      $this->_mailing->from_email,
-      TRUE, $details, $attachments
-    );
+    $result = civicrm_api3('Mailing', 'preview', [
+      'id' => $this->_mailingID,
+      'contact_id' => $contactId,
+    ]);
+    $mailing = $result['values'] ?? NULL;
 
     $title = NULL;
-    if (isset($this->_mailing->body_html) && empty($_GET['text'])) {
+    if (!empty($mailing['body_html']) && empty($_GET['text'])) {
       $header = 'text/html; charset=utf-8';
-      $content = $mime->getHTMLBody();
-      if (strpos($content, '<head>') === FALSE && strpos($content, '<title>') === FALSE) {
-        $title = '<head><title>' . $this->_mailing->subject . '</title></head>';
+      $content = $mailing['body_html'];
+      if (!str_contains($content, '<head>') && !str_contains($content, '<title>')) {
+        $title = '<head><title>' . $mailing['subject'] . '</title></head>';
       }
     }
     else {
       $header = 'text/plain; charset=utf-8';
-      $content = $mime->getTXTBody();
+      $content = $mailing['body_text'];
     }
-    CRM_Utils_System::setTitle($this->_mailing->subject);
+    CRM_Utils_System::setTitle($mailing['subject']);
 
-    if (CRM_Utils_Array::value('snippet', $_GET) === 'json') {
+    if (($_GET['snippet'] ?? NULL) === 'json') {
       CRM_Core_Page_AJAX::returnJsonResponse($content);
     }
     if ($print) {
@@ -197,6 +159,33 @@ class CRM_Mailing_Page_View extends CRM_Core_Page {
     }
     else {
       return $content;
+    }
+  }
+
+  public function getMailingID($id): void {
+    if (!empty($id) && !is_array($id)) {
+      $check = CRM_Core_DAO::singleValueQuery("SELECT id FROM civicrm_mailing WHERE CAST(id AS CHAR) = %1", [
+        1 => [$id, 'String'],
+      ]);
+      $this->_mailingID = $id;
+      if (!empty($check)) {
+        $this->_mailingIDIsHash = FALSE;
+      }
+      else {
+        $this->_mailingIDIsHash = TRUE;
+      }
+    }
+    else {
+      $this->_mailingID = CRM_Utils_Request::retrieveValue('id', 'String', NULL, TRUE);
+      $check = CRM_Core_DAO::singleValueQuery("SELECT id FROM civicrm_mailing WHERE CAST(id AS CHAR) = %1", [
+        1 => [$this->_mailingID, 'String'],
+      ]);
+      if (!empty($check)) {
+        $this->_mailingIDIsHash = FALSE;
+      }
+      else {
+        $this->_mailingIDIsHash = TRUE;
+      }
     }
   }
 

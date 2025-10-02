@@ -1,34 +1,22 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
+use Civi\Api4\ActivityContact;
+use Civi\Api4\Mailing;
+use Civi\Api4\MailingJob;
+use Civi\FlexMailer\FlexMailer;
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 require_once 'Mail.php';
@@ -45,75 +33,60 @@ class CRM_Mailing_BAO_MailingJob extends CRM_Mailing_DAO_MailingJob {
    *
    * @var int
    */
-  static $mailsProcessed = 0;
+  public static $mailsProcessed = 0;
 
   /**
-   * Class constructor.
-   */
-  public function __construct() {
-    parent::__construct();
-  }
-
-  /**
+   * Create mailing job.
+   *
    * @param array $params
    *
-   * @return CRM_Mailing_BAO_MailingJob
+   * @deprecated since 5.71 will be removed around 5.85
+   *
+   * @return \CRM_Mailing_BAO_MailingJob
+   * @throws \CRM_Core_Exception
    */
-  static public function create($params) {
-    $job = new CRM_Mailing_BAO_MailingJob();
-    $job->mailing_id = $params['mailing_id'];
-    $job->status = $params['status'];
-    $job->scheduled_date = $params['scheduled_date'];
-    $job->is_test = $params['is_test'];
-    $job->save();
-    $mailing = new CRM_Mailing_BAO_Mailing();
-    $mailing->id = $params['mailing_id'];
-    if ($mailing->id && $mailing->find(TRUE)) {
-      $mailing->getRecipients($job->id, $params['mailing_id'], TRUE, $mailing->dedupe_email);
-      return $job;
+  public static function create(array $params): self {
+    CRM_Core_Error::deprecatedWarning('use the api');
+    $jobDAO = self::writeRecord($params);
+    if (!empty($params['mailing_id']) && empty('is_calling_function_updated_to_reflect_deprecation')) {
+      CRM_Core_Error::deprecatedWarning('mail recipients should not be generated during MailingJob::create');
+      CRM_Mailing_BAO_Mailing::getRecipients($params['mailing_id']);
     }
-    else {
-      throw new CRM_Core_Exception("Failed to create job: Unknown mailing ID");
-    }
+    return $jobDAO;
   }
 
   /**
-   * Initiate all pending/ready jobs
+   * Initiate all pending/ready jobs.
    *
    * @param array $testParams
-   * @param null $mode
+   * @param string|null $mode
+   *   Either 'sms' or null
+   *
+   * @return bool|null
    */
   public static function runJobs($testParams = NULL, $mode = NULL) {
-    $job = new CRM_Mailing_BAO_MailingJob();
-
-    $config = CRM_Core_Config::singleton();
-    $jobTable = CRM_Mailing_DAO_MailingJob::getTableName();
-    $mailingTable = CRM_Mailing_DAO_Mailing::getTableName();
     $mailerBatchLimit = Civi::settings()->get('mailerBatchLimit');
 
     if (!empty($testParams)) {
       $query = "
       SELECT *
-        FROM $jobTable
+        FROM civicrm_mailing_job
        WHERE id = {$testParams['job_id']}";
-      $job->query($query);
+      $result = CRM_Core_DAO::executeQuery($query);
     }
     else {
       $currentTime = date('YmdHis');
       $mailingACL = CRM_Mailing_BAO_Mailing::mailingACL('m');
       $domainID = CRM_Core_Config::domainID();
 
-      $modeClause = 'AND m.sms_provider_id IS NULL';
-      if ($mode == 'sms') {
-        $modeClause = 'AND m.sms_provider_id IS NOT NULL';
-      }
+      $modeClause = 'AND m.sms_provider_id ' . ($mode === 'sms' ? 'IS NOT NULL' : 'IS NULL');
 
       // Select the first child job that is scheduled
       // CRM-6835
       $query = "
       SELECT   j.*
-        FROM   $jobTable     j,
-           $mailingTable m
+        FROM   civicrm_mailing_job     j,
+           civicrm_mailing m
        WHERE   m.id = j.mailing_id AND m.domain_id = {$domainID}
                      {$modeClause}
          AND   j.is_test = 0
@@ -128,12 +101,13 @@ class CRM_Mailing_BAO_MailingJob extends CRM_Mailing_DAO_MailingJob {
         j.id
       ";
 
-      $job->query($query);
+      $result = CRM_Core_DAO::executeQuery($query);
     }
 
-    while ($job->fetch()) {
+    while ($result->fetch()) {
+      $mailingID = $result->mailing_id;
       // still use job level lock for each child job
-      $lock = Civi::lockManager()->acquire("data.mailing.job.{$job->id}");
+      $lock = Civi::lockManager()->acquire("data.mailing.job.{$result->id}");
       if (!$lock->isAcquired()) {
         continue;
       }
@@ -143,17 +117,17 @@ class CRM_Mailing_BAO_MailingJob extends CRM_Mailing_DAO_MailingJob {
         // we've got the lock, but while we were waiting and processing
         // other emails, this job might have changed under us
         // lets get the job status again and check
-        $job->status = CRM_Core_DAO::getFieldValue(
+        $result->status = CRM_Core_DAO::getFieldValue(
           'CRM_Mailing_DAO_MailingJob',
-          $job->id,
+          $result->id,
           'status',
           'id',
           TRUE
         );
 
         if (
-          $job->status != 'Running' &&
-          $job->status != 'Scheduled'
+          $result->status !== 'Running' &&
+          $result->status !== 'Scheduled'
         ) {
           // this includes Cancelled and other statuses, CRM-4246
           $lock->release();
@@ -163,51 +137,55 @@ class CRM_Mailing_BAO_MailingJob extends CRM_Mailing_DAO_MailingJob {
 
       /* Queue up recipients for the child job being launched */
 
-      if ($job->status != 'Running') {
+      if ($result->status !== 'Running') {
         $transaction = new CRM_Core_Transaction();
 
         // have to queue it up based on the offset and limits
         // get the parent ID, and limit and offset
-        $job->queue($testParams);
+        if (!empty($testParams)) {
+          CRM_Mailing_BAO_Mailing::getTestRecipients($testParams, (int) $mailingID);
+        }
+        else {
+          self::queue((int) $result->mailing_id, (int) $result->job_offset, (int) $result->job_limit, (int) $result->id);
+        }
 
-        // Mark up the starting time
-        $saveJob = new CRM_Mailing_DAO_MailingJob();
-        $saveJob->id = $job->id;
-        $saveJob->start_date = date('YmdHis');
-        $saveJob->status = 'Running';
-        $saveJob->save();
+        // Update to show job has started.
+        $startDate = date('YmdHis');
+        MailingJob::update(FALSE)->setValues([
+          'id' => $result->id,
+          'start_date' => date('YmdHis'),
+          'status' => 'Running',
+        ])->execute();
 
         $transaction->commit();
       }
 
-      // Get the mailer
-      if ($mode === NULL) {
-        $mailer = \Civi::service('pear_mail');
-      }
-      elseif ($mode == 'sms') {
-        $mailer = CRM_SMS_Provider::singleton(array('mailing_id' => $job->mailing_id));
-      }
-
       // Compose and deliver each child job
-      $isComplete = $job->deliver($mailer, $testParams);
+      if ($mode === NULL) {
+        $job = new CRM_Mailing_BAO_MailingJob();
+        $job->id = $result->id;
+        $job->find(TRUE);
+        $mailer = \Civi::service('pear_mail');
+        $isComplete = FlexMailer::createAndRun($job, $mailer, $testParams);
+      }
+      elseif ($mode === 'sms') {
+        $smsJob = new CRM_Mailing_BAO_SMSJob();
+        $smsJob->id = $result->id;
+        $smsJob->find(TRUE);
+        $isComplete = $smsJob->deliver(NULL, !empty($testParams));
+      }
 
-      CRM_Utils_Hook::post('create', 'CRM_Mailing_DAO_Spool', $job->id, $isComplete);
+      CRM_Utils_Hook::post('create', 'CRM_Mailing_DAO_Spool', $result->id, $isComplete);
 
       // Mark the child complete
       if ($isComplete) {
         // Finish the job.
 
-        $transaction = new CRM_Core_Transaction();
-
-        $saveJob = new CRM_Mailing_DAO_MailingJob();
-        $saveJob->id = $job->id;
-        $saveJob->end_date = date('YmdHis');
-        $saveJob->status = 'Complete';
-        $saveJob->save();
-
-        $transaction->commit();
-
-        // don't mark the mailing as complete
+        MailingJob::update(FALSE)->setValues([
+          'id' => $result->id,
+          'end_date' => 'now',
+          'status' => 'Complete',
+        ])->execute();
       }
 
       // Release the child joblock
@@ -228,25 +206,22 @@ class CRM_Mailing_BAO_MailingJob extends CRM_Mailing_DAO_MailingJob {
   /**
    * Post process to determine if the parent job
    * as well as the mailing is complete after the run.
-   * @param null $mode
+   * @param string|null $mode
+   *   Either 'sms' or null
    */
   public static function runJobs_post($mode = NULL) {
 
     $job = new CRM_Mailing_BAO_MailingJob();
 
     $mailing = new CRM_Mailing_BAO_Mailing();
-
-    $config = CRM_Core_Config::singleton();
-    $jobTable = CRM_Mailing_DAO_MailingJob::getTableName();
     $mailingTable = CRM_Mailing_DAO_Mailing::getTableName();
 
     $currentTime = date('YmdHis');
-    $mailingACL = CRM_Mailing_BAO_Mailing::mailingACL('m');
     $domainID = CRM_Core_Config::domainID();
 
     $query = "
                 SELECT   j.*
-                  FROM   $jobTable     j,
+                  FROM   civicrm_mailing_job     j,
                                  $mailingTable m
                  WHERE   m.id = j.mailing_id AND m.domain_id = {$domainID}
                    AND   j.is_test = 0
@@ -271,7 +246,7 @@ class CRM_Mailing_BAO_MailingJob extends CRM_Mailing_DAO_MailingJob {
                         AND j.job_type = 'child'
                         AND j.parent_id = %1
             AND j.status <> 'Complete'";
-      $params = array(1 => array($job->id, 'Integer'));
+      $params = [1 => [$job->id, 'Integer']];
 
       $anyChildLeft = CRM_Core_DAO::singleValueQuery($child_job_sql, $params);
 
@@ -290,6 +265,8 @@ class CRM_Mailing_BAO_MailingJob extends CRM_Mailing_DAO_MailingJob {
         $mailing->reset();
         $mailing->id = $job->mailing_id;
         $mailing->is_completed = TRUE;
+        $mailing->status = 'Complete';
+        $mailing->end_date = date('Y-m-d H:i:s');
         $mailing->save();
         $transaction->commit();
 
@@ -299,27 +276,23 @@ class CRM_Mailing_BAO_MailingJob extends CRM_Mailing_DAO_MailingJob {
     }
   }
 
-
   /**
    * before we run jobs, we need to split the jobs
+   *
    * @param int $offset
-   * @param null $mode
+   * @param string|null $mode
+   *   Either 'sms' or null
+   *
+   * @throws \CRM_Core_Exception
    */
-  public static function runJobs_pre($offset = 200, $mode = NULL) {
-    $job = new CRM_Mailing_BAO_MailingJob();
-
-    $jobTable = CRM_Mailing_DAO_MailingJob::getTableName();
-    $mailingTable = CRM_Mailing_DAO_Mailing::getTableName();
-
+  public static function runJobs_pre(int $offset = 200, $mode = NULL): void {
     $currentTime = date('YmdHis');
-    $mailingACL = CRM_Mailing_BAO_Mailing::mailingACL('m');
-
     $workflowClause = CRM_Mailing_BAO_MailingJob::workflowClause();
 
     $domainID = CRM_Core_Config::domainID();
 
     $modeClause = 'AND m.sms_provider_id IS NULL';
-    if ($mode == 'sms') {
+    if ($mode === 'sms') {
       $modeClause = 'AND m.sms_provider_id IS NOT NULL';
     }
 
@@ -327,8 +300,8 @@ class CRM_Mailing_BAO_MailingJob extends CRM_Mailing_DAO_MailingJob {
     // when the mailing is submitted or scheduled.
     $query = "
     SELECT   j.*
-      FROM   $jobTable     j,
-         $mailingTable m
+      FROM civicrm_mailing_job j,
+         civicrm_mailing m
      WHERE   m.id = j.mailing_id AND m.domain_id = {$domainID}
                  $workflowClause
                  $modeClause
@@ -341,7 +314,7 @@ class CRM_Mailing_BAO_MailingJob extends CRM_Mailing_DAO_MailingJob {
     ORDER BY j.scheduled_date,
          j.start_date";
 
-    $job->query($query);
+    $job = CRM_Core_DAO::executeQuery($query);
 
     // For each of the "Parent Jobs" we find, we split them into
     // X Number of child jobs
@@ -362,22 +335,27 @@ class CRM_Mailing_BAO_MailingJob extends CRM_Mailing_DAO_MailingJob {
         'id',
         TRUE
       );
-      if ($job->status != 'Scheduled') {
+      if ($job->status !== 'Scheduled') {
         $lock->release();
         continue;
       }
 
-      $job->split_job($offset);
-
-      // update the status of the parent job
       $transaction = new CRM_Core_Transaction();
 
-      $saveJob = new CRM_Mailing_DAO_MailingJob();
-      $saveJob->id = $job->id;
-      $saveJob->start_date = date('YmdHis');
-      $saveJob->status = 'Running';
-      $saveJob->save();
+      self::split_job((int) $offset, (int) $job->id, (int) $job->mailing_id, $job->scheduled_date);
 
+      // Update the status of the parent job
+      MailingJob::update(FALSE)->setValues([
+        'id' => $job->id,
+        'start_date' => 'now',
+        'status' => 'Running',
+      ])->execute();
+      // Update Mailing record as we have now started the sending process
+      Mailing::update(FALSE)->setValues([
+        'id' => $job->mailing_id,
+        'start_date' => 'now',
+        'status' => 'Running',
+      ])->execute();
       $transaction->commit();
 
       // Release the job lock
@@ -388,29 +366,30 @@ class CRM_Mailing_BAO_MailingJob extends CRM_Mailing_DAO_MailingJob {
   /**
    * Split the parent job into n number of child job based on an offset.
    * If null or 0 , we create only one child job
+   *
    * @param int $offset
+   * @param int $jobID
+   * @param int $mailingID
+   * @param string $scheduledDate
+   *
+   * @throws \Civi\Core\Exception\DBQueryException
    */
-  public function split_job($offset = 200) {
-    $recipient_count = CRM_Mailing_BAO_Recipients::mailingSize($this->mailing_id);
-
-    $jobTable = CRM_Mailing_DAO_MailingJob::getTableName();
-
-    $dao = new CRM_Core_DAO();
-
-    $sql = "
+  private static function split_job(int $offset, int $jobID, int $mailingID, string $scheduledDate): void {
+    $recipient_count = CRM_Mailing_BAO_MailingRecipients::mailingSize($mailingID);
+    $sql = '
 INSERT INTO civicrm_mailing_job
 (`mailing_id`, `scheduled_date`, `status`, `job_type`, `parent_id`, `job_offset`, `job_limit`)
 VALUES (%1, %2, %3, %4, %5, %6, %7)
-";
-    $params = array(
-      1 => array($this->mailing_id, 'Integer'),
-      2 => array($this->scheduled_date, 'String'),
-      3 => array('Scheduled', 'String'),
-      4 => array('child', 'String'),
-      5 => array($this->id, 'Integer'),
-      6 => array(0, 'Integer'),
-      7 => array($recipient_count, 'Integer'),
-    );
+';
+    $params = [
+      1 => [$mailingID, 'Integer'],
+      2 => [$scheduledDate, 'String'],
+      3 => ['Scheduled', 'String'],
+      4 => ['child', 'String'],
+      5 => [$jobID, 'Integer'],
+      6 => [0, 'Integer'],
+      7 => [$recipient_count, 'Integer'],
+    ];
 
     // create one child job if the mailing size is less than the offset
     // probably use a CRM_Mailing_DAO_MailingJob( );
@@ -421,413 +400,112 @@ VALUES (%1, %2, %3, %4, %5, %6, %7)
     }
     else {
       // Creating 'child jobs'
-      for ($i = 0; $i < $recipient_count; $i = $i + $offset) {
+      $scheduled_unix_time = strtotime($scheduledDate);
+      for ($i = 0, $s = 0; $i < $recipient_count; $i += $offset, $s++) {
+        $params[2][0] = date('Y-m-d H:i:s', $scheduled_unix_time + $s);
         $params[6][0] = $i;
         $params[7][0] = $offset;
         CRM_Core_DAO::executeQuery($sql, $params);
       }
     }
+
   }
 
   /**
-   * @param array $testParams
-   */
-  public function queue($testParams = NULL) {
-    $mailing = new CRM_Mailing_BAO_Mailing();
-    $mailing->id = $this->mailing_id;
-    if (!empty($testParams)) {
-      $mailing->getTestRecipients($testParams);
-    }
-    else {
-      // We are still getting all the recipients from the parent job
-      // so we don't mess with the include/exclude logic.
-      $recipients = CRM_Mailing_BAO_Recipients::mailingQuery($this->mailing_id, $this->job_offset, $this->job_limit);
-
-      // FIXME: this is not very smart, we should move this to one DB call
-      // INSERT INTO ... SELECT FROM ..
-      // the thing we need to figure out is how to generate the hash automatically
-      $now = time();
-      $params = array();
-      $count = 0;
-      while ($recipients->fetch()) {
-        // CRM-18543: there are situations when both the email and phone are null.
-        // Skip the recipient in this case.
-        if (empty($recipients->email_id) && empty($recipients->phone_id)) {
-          continue;
-        }
-
-        if ($recipients->phone_id) {
-          $recipients->email_id = "null";
-        }
-        else {
-          $recipients->phone_id = "null";
-        }
-
-        $params[] = array(
-          $this->id,
-          $recipients->email_id,
-          $recipients->contact_id,
-          $recipients->phone_id,
-        );
-        $count++;
-        if ($count % CRM_Mailing_Config::BULK_MAIL_INSERT_COUNT == 0) {
-          CRM_Mailing_Event_BAO_Queue::bulkCreate($params, $now);
-          $count = 0;
-          $params = array();
-        }
-      }
-
-      if (!empty($params)) {
-        CRM_Mailing_Event_BAO_Queue::bulkCreate($params, $now);
-      }
-    }
-  }
-
-  /**
-   * Send the mailing.
+   * @param int $mailingID
+   * @param int $jobOffset
+   * @param int $limit
+   * @param int $jobID
    *
-   * @param object $mailer
-   *   A Mail object to send the messages.
-   *
-   * @param array $testParams
+   * @return void
    */
-  public function deliver(&$mailer, $testParams = NULL) {
-    $mailing = new CRM_Mailing_BAO_Mailing();
-    $mailing->id = $this->mailing_id;
-    $mailing->find(TRUE);
-    $mailing->free();
+  private static function queue(int $mailingID, int $jobOffset, int $limit, int $jobID): void {
+    // We are still getting all the recipients from the parent job
+    // so we don't mess with the include/exclude logic.
+    $recipients = CRM_Mailing_BAO_MailingRecipients::mailingQuery($mailingID, $jobOffset, $limit);
 
-    $eq = new CRM_Mailing_Event_BAO_Queue();
-    $eqTable = CRM_Mailing_Event_BAO_Queue::getTableName();
-    $emailTable = CRM_Core_BAO_Email::getTableName();
-    $phoneTable = CRM_Core_DAO_Phone::getTableName();
-    $contactTable = CRM_Contact_BAO_Contact::getTableName();
-    $edTable = CRM_Mailing_Event_BAO_Delivered::getTableName();
-    $ebTable = CRM_Mailing_Event_BAO_Bounce::getTableName();
-
-    list($aclJoin, $aclWhere) = CRM_ACL_BAO_ACL::buildAcl($mailing->created_id);
-
-    $query = "  SELECT      $eqTable.id,
-                                $emailTable.email as email,
-                                $eqTable.contact_id,
-                                $eqTable.hash,
-                                NULL as phone
-                    FROM        $eqTable
-                    INNER JOIN  $emailTable
-                            ON  $eqTable.email_id = $emailTable.id
-                    INNER JOIN  $contactTable contact_a
-                            ON  contact_a.id = $emailTable.contact_id
-                    LEFT JOIN   $edTable
-                            ON  $eqTable.id = $edTable.event_queue_id
-                    LEFT JOIN   $ebTable
-                            ON  $eqTable.id = $ebTable.event_queue_id
-                    $aclJoin
-                    WHERE       $eqTable.job_id = " . $this->id . "
-                        AND     $edTable.id IS null
-                        AND     $ebTable.id IS null
-                        AND    contact_a.is_opt_out = 0 
-                        $aclWhere";
-
-    if ($mailing->sms_provider_id) {
-      $query = "
-                    SELECT      $eqTable.id,
-                                $phoneTable.phone as phone,
-                                $eqTable.contact_id,
-                                $eqTable.hash,
-                                NULL as email
-                    FROM        $eqTable
-                    INNER JOIN  $phoneTable
-                            ON  $eqTable.phone_id = $phoneTable.id
-                    INNER JOIN  $contactTable contact_a
-                            ON  contact_a.id = $phoneTable.contact_id
-                    LEFT JOIN   $edTable
-                            ON  $eqTable.id = $edTable.event_queue_id
-                    LEFT JOIN   $ebTable
-                            ON  $eqTable.id = $ebTable.event_queue_id
-                    $aclJoin
-                    WHERE       $eqTable.job_id = " . $this->id . "
-                        AND     $edTable.id IS null
-                        AND     $ebTable.id IS null
-                        AND    ( contact_a.is_opt_out = 0
-                        OR       contact_a.do_not_sms = 0 )
-                        $aclWhere";
-    }
-    $eq->query($query);
-
-    $config = NULL;
-
-    if ($config == NULL) {
-      $config = CRM_Core_Config::singleton();
-    }
-
-    if (property_exists($mailing, 'language') && $mailing->language && $mailing->language != 'en_US') {
-      $swapLang = CRM_Utils_AutoClean::swap('global://dbLocale?getter', 'call://i18n/setLocale', $mailing->language);
-    }
-
-    $job_date = CRM_Utils_Date::isoToMysql($this->scheduled_date);
-    $fields = array();
-
-    if (!empty($testParams)) {
-      $mailing->subject = ts('[CiviMail Draft]') . ' ' . $mailing->subject;
-    }
-
-    CRM_Mailing_BAO_Mailing::tokenReplace($mailing);
-
-    // get and format attachments
-    $attachments = CRM_Core_BAO_File::getEntityFile('civicrm_mailing', $mailing->id);
-
-    if (defined('CIVICRM_MAIL_SMARTY') && CIVICRM_MAIL_SMARTY) {
-      CRM_Core_Smarty::registerStringResource();
-    }
-
-    // CRM-12376
-    // This handles the edge case scenario where all the mails
-    // have been delivered in prior jobs.
-    $isDelivered = TRUE;
-
-    // make sure that there's no more than $mailerBatchLimit mails processed in a run
-    $mailerBatchLimit = Civi::settings()->get('mailerBatchLimit');
-    while ($eq->fetch()) {
-      // if ( ( $mailsProcessed % 100 ) == 0 ) {
-      // CRM_Utils_System::xMemory( "$mailsProcessed: " );
-      // }
-
-      if ($mailerBatchLimit > 0 && self::$mailsProcessed >= $mailerBatchLimit) {
-        if (!empty($fields)) {
-          $this->deliverGroup($fields, $mailing, $mailer, $job_date, $attachments);
-        }
-        $eq->free();
-        return FALSE;
-      }
-      self::$mailsProcessed++;
-
-      $fields[] = array(
-        'id' => $eq->id,
-        'hash' => $eq->hash,
-        'contact_id' => $eq->contact_id,
-        'email' => $eq->email,
-        'phone' => $eq->phone,
-      );
-      if (count($fields) == self::MAX_CONTACTS_TO_PROCESS) {
-        $isDelivered = $this->deliverGroup($fields, $mailing, $mailer, $job_date, $attachments);
-        if (!$isDelivered) {
-          $eq->free();
-          return $isDelivered;
-        }
-        $fields = array();
-      }
-    }
-
-    $eq->free();
-
-    if (!empty($fields)) {
-      $isDelivered = $this->deliverGroup($fields, $mailing, $mailer, $job_date, $attachments);
-    }
-    return $isDelivered;
-  }
-
-  /**
-   * @param array $fields
-   *   List of intended recipients.
-   *   Each recipient is an array with keys 'hash', 'contact_id', 'email', etc.
-   * @param $mailing
-   * @param $mailer
-   * @param $job_date
-   * @param $attachments
-   *
-   * @return bool|null
-   * @throws Exception
-   */
-  public function deliverGroup(&$fields, &$mailing, &$mailer, &$job_date, &$attachments) {
-    static $smtpConnectionErrors = 0;
-
-    if (!is_object($mailer) || empty($fields)) {
-      CRM_Core_Error::fatal();
-    }
-
-    // get the return properties
-    $returnProperties = $mailing->getReturnProperties();
-    $params = $targetParams = $deliveredParams = array();
+    $params = [];
     $count = 0;
-
-    // CRM-15702: Sending bulk sms to contacts without e-mail address fails.
-    // Solution is to skip checking for on hold
-    $skipOnHold = TRUE;    //do include a statement to check wether e-mail address is on hold
-    if ($mailing->sms_provider_id) {
-      $skipOnHold = FALSE; //do not include a statement to check wether e-mail address is on hold
-    }
-
-    foreach ($fields as $key => $field) {
-      $params[] = $field['contact_id'];
-    }
-
-    $details = CRM_Utils_Token::getTokenDetails(
-      $params,
-      $returnProperties,
-      $skipOnHold, TRUE, NULL,
-      $mailing->getFlattenedTokens(),
-      get_class($this),
-      $this->id
-    );
-
-    $config = CRM_Core_Config::singleton();
-    foreach ($fields as $key => $field) {
-      $contactID = $field['contact_id'];
-      if (!array_key_exists($contactID, $details[0])) {
-        $details[0][$contactID] = array();
-      }
-
-      // Compose the mailing.
-      $recipient = $replyToEmail = NULL;
-      $replyValue = strcmp($mailing->replyto_email, $mailing->from_email);
-      if ($replyValue) {
-        $replyToEmail = $mailing->replyto_email;
-      }
-
-      $message = $mailing->compose(
-        $this->id, $field['id'], $field['hash'],
-        $field['contact_id'], $field['email'],
-        $recipient, FALSE, $details[0][$contactID], $attachments,
-        FALSE, NULL, $replyToEmail
-      );
-      if (empty($message)) {
-        // lets keep the message in the queue
-        // most likely a permissions related issue with smarty templates
-        // or a bad contact id? CRM-9833
+    // dev/core#1768 Get the mail sync interval.
+    $mail_sync_interval = Civi::settings()->get('civimail_sync_interval');
+    while ($recipients->fetch()) {
+      // CRM-18543: there are situations when both the email and phone are null.
+      // Skip the recipient in this case.
+      if (empty($recipients->email_id) && empty($recipients->phone_id)) {
         continue;
       }
+      $params[] = [
+        'job_id' => $jobID,
+        'email_id' => $recipients->email_id ? (int) $recipients->email_id : NULL,
+        'phone_id' => $recipients->phone_id ? (int) $recipients->phone_id : NULL,
+        'contact_id' => $recipients->contact_id ? (int) $recipients->contact_id : NULL,
+        'mailing_id' => (int) $mailingID,
+        'is_test' => FALSE,
+      ];
+      $count++;
+      /*
+      The mail sync interval is used here to determine how
+      many rows to insert in each insert statement.
+      The discussion & name of the setting implies that the intent of the
+      setting is the frequency with which the mailing tables are updated
+      with information about actions taken on the mailings (ie if you send
+      an email & quickly update the delivered table that impacts information
+      availability.
 
-      // Send the mailing.
+      However, here it is used to manage the size of each individual
+      insert statement. It is unclear why as the trade offs are out of sync
+      ie. you want you insert statements here to be 'big, but not so big they
+      stall out' but in the delivery context it's a trade off between
+      information availability & performance.
+      https://github.com/civicrm/civicrm-core/pull/17367 */
 
-      $body = &$message->get();
-      $headers = &$message->headers();
-
-      if ($mailing->sms_provider_id) {
-        $provider = CRM_SMS_Provider::singleton(array('mailing_id' => $mailing->id));
-        $body = $provider->getMessage($message, $field['contact_id'], $details[0][$contactID]);
-        $headers = $provider->getRecipientDetails($field, $details[0][$contactID]);
-      }
-
-      // make $recipient actually be the *encoded* header, so as not to baffle Mail_RFC822, CRM-5743
-      $recipient = $headers['To'];
-      $result = NULL;
-
-      // disable error reporting on real mailings (but leave error reporting for tests), CRM-5744
-      if ($job_date) {
-        $errorScope = CRM_Core_TemporaryErrorScope::ignoreException();
-      }
-
-      $result = $mailer->send($recipient, $headers, $body, $this->id);
-
-      if ($job_date) {
-        unset($errorScope);
-      }
-
-      if (is_a($result, 'PEAR_Error') && !$mailing->sms_provider_id) {
-        // CRM-9191
-        $message = $result->getMessage();
-        if (
-          strpos($message, 'Failed to write to socket') !== FALSE ||
-          strpos($message, 'Failed to set sender') !== FALSE
-        ) {
-          // lets log this message and code
-          $code = $result->getCode();
-          CRM_Core_Error::debug_log_message("SMTP Socket Error or failed to set sender error. Message: $message, Code: $code");
-
-          // these are socket write errors which most likely means smtp connection errors
-          // lets skip them
-          $smtpConnectionErrors++;
-          if ($smtpConnectionErrors <= 5) {
-            continue;
-          }
-
-          // seems like we have too many of them in a row, we should
-          // write stuff to disk and abort the cron job
-          $this->writeToDB(
-            $deliveredParams,
-            $targetParams,
-            $mailing,
-            $job_date
-          );
-
-          CRM_Core_Error::debug_log_message("Too many SMTP Socket Errors. Exiting");
-          CRM_Utils_System::civiExit();
-        }
-
-        // Register the bounce event.
-
-        $params = array(
-          'event_queue_id' => $field['id'],
-          'job_id' => $this->id,
-          'hash' => $field['hash'],
-        );
-        $params = array_merge($params,
-          CRM_Mailing_BAO_BouncePattern::match($result->getMessage())
-        );
-        CRM_Mailing_Event_BAO_Bounce::create($params);
-      }
-      elseif (is_a($result, 'PEAR_Error') && $mailing->sms_provider_id) {
-        // Handle SMS errors: CRM-15426
-        $job_id = intval($this->id);
-        $mailing_id = intval($mailing->id);
-        CRM_Core_Error::debug_log_message("Failed to send SMS message. Vars: mailing_id: ${mailing_id}, job_id: ${job_id}. Error message follows.");
-        CRM_Core_Error::debug_log_message($result->getMessage());
-      }
-      else {
-        // Register the delivery event.
-        $deliveredParams[] = $field['id'];
-        $targetParams[] = $field['contact_id'];
-
-        $count++;
-        if ($count % CRM_Mailing_Config::BULK_MAIL_INSERT_COUNT == 0) {
-          $this->writeToDB(
-            $deliveredParams,
-            $targetParams,
-            $mailing,
-            $job_date
-          );
-          $count = 0;
-
-          // hack to stop mailing job at run time, CRM-4246.
-          // to avoid making too many DB calls for this rare case
-          // lets do it when we snapshot
-          $status = CRM_Core_DAO::getFieldValue(
-            'CRM_Mailing_DAO_MailingJob',
-            $this->id,
-            'status',
-            'id',
-            TRUE
-          );
-
-          if ($status != 'Running') {
-            return FALSE;
-          }
-        }
-      }
-
-      unset($result);
-
-      // seems like a successful delivery or bounce, lets decrement error count
-      // only if we have smtp connection errors
-      if ($smtpConnectionErrors > 0) {
-        $smtpConnectionErrors--;
-      }
-
-      // If we have enabled the Throttle option, this is the time to enforce it.
-      $mailThrottleTime = Civi::settings()->get('mailThrottleTime');
-      if (!empty($mailThrottleTime)) {
-        usleep((int ) $mailThrottleTime);
+      if ($count % $mail_sync_interval === 0) {
+        CRM_Mailing_Event_BAO_MailingEventQueue::writeRecords($params);
+        $count = 0;
+        $params = [];
       }
     }
 
-    $result = $this->writeToDB(
-      $deliveredParams,
-      $targetParams,
-      $mailing,
-      $job_date
-    );
+    if (!empty($params)) {
+      CRM_Mailing_Event_BAO_MailingEventQueue::writeRecords($params);
+    }
+  }
 
-    return $result;
+  /**
+   * Determine if an SMTP error is temporary or permanent.
+   *
+   * @param string $message
+   *   PEAR error message.
+   * @return bool
+   *   TRUE - Temporary/retriable error
+   *   FALSE - Permanent/non-retriable error
+   */
+  protected function isTemporaryError($message) {
+    // SMTP response code is buried in the message.
+    $code = preg_match('/ \(code: (.+), response: /', $message, $matches) ? $matches[1] : '';
+
+    if (str_contains($message, 'Failed to write to socket')) {
+      return TRUE;
+    }
+
+    // Register 5xx SMTP response code (permanent failure) as bounce.
+    if (isset($code[0]) && $code[0] === '5') {
+      return FALSE;
+    }
+
+    if (str_contains($message, 'Failed to set sender')) {
+      return TRUE;
+    }
+
+    if (str_contains($message, 'Failed to add recipient')) {
+      return TRUE;
+    }
+
+    if (str_contains($message, 'Failed to send data')) {
+      return TRUE;
+    }
+
+    return FALSE;
   }
 
   /**
@@ -845,17 +523,17 @@ AND    is_test = 0
 AND    ( ( job_type IS NULL ) OR
            job_type <> 'child' )
 ";
-    $params = array(1 => array($mailingId, 'Integer'));
+    $params = [1 => [$mailingId, 'Integer']];
     $job = CRM_Core_DAO::executeQuery($sql, $params);
     if ($job->fetch() &&
-      in_array($job->status, array('Scheduled', 'Running', 'Paused'))
+      in_array($job->status, ['Scheduled', 'Running', 'Paused'])
     ) {
 
-      $newJob = new CRM_Mailing_BAO_MailingJob();
-      $newJob->id = $job->id;
-      $newJob->end_date = date('YmdHis');
-      $newJob->status = 'Canceled';
-      $newJob->save();
+      self::create(['id' => $job->id, 'end_date' => date('YmdHis'), 'status' => 'Canceled']);
+      Mailing::update(FALSE)
+        ->setValues(['end_date' => date('YmdHis'), 'status' => 'Canceled'])
+        ->addWhere('id', '=', $mailingId)
+        ->execute();
 
       // also cancel all child jobs
       $sql = "
@@ -867,14 +545,61 @@ AND    is_test = 0
 AND    job_type = 'child'
 AND    status IN ( 'Scheduled', 'Running', 'Paused' )
 ";
-      $params = array(
-        1 => array($job->id, 'Integer'),
-        2 => array(date('YmdHis'), 'Timestamp'),
-      );
+      $params = [
+        1 => [$job->id, 'Integer'],
+        2 => [date('YmdHis'), 'Timestamp'],
+      ];
       CRM_Core_DAO::executeQuery($sql, $params);
-
-      CRM_Core_Session::setStatus(ts('The mailing has been canceled.'), ts('Canceled'), 'success');
     }
+  }
+
+  /**
+   * Pause a mailing
+   *
+   * @param int $mailingID
+   *   The id of the mailing to be paused.
+   */
+  public static function pause($mailingID) {
+    $sql = "
+      UPDATE civicrm_mailing_job
+      SET status = 'Paused'
+      WHERE mailing_id = %1
+      AND is_test = 0
+      AND status IN ('Scheduled', 'Running')
+    ";
+    Mailing::update(FALSE)
+      ->setValues(['status:name' => 'Paused'])
+      ->addWhere('id', '=', $mailingID)
+      ->execute();
+    CRM_Core_DAO::executeQuery($sql, [1 => [$mailingID, 'Integer']]);
+  }
+
+  /**
+   * Resume a mailing
+   *
+   * @param int $mailingID
+   *   The id of the mailing to be resumed.
+   */
+  public static function resume($mailingID) {
+    $sql = "
+      UPDATE civicrm_mailing_job
+      SET status = 'Scheduled'
+      WHERE mailing_id = %1
+      AND is_test = 0
+      AND start_date IS NULL
+      AND status = 'Paused'
+    ";
+    CRM_Core_DAO::executeQuery($sql, [1 => [$mailingID, 'Integer']]);
+
+    $sql = "
+      UPDATE civicrm_mailing_job
+      SET status = 'Running'
+      WHERE mailing_id = %1
+      AND is_test = 0
+      AND start_date IS NOT NULL
+      AND status = 'Paused'
+    ";
+    CRM_Core_DAO::executeQuery($sql, [1 => [$mailingID, 'Integer']]);
   }
 
   /**
@@ -890,15 +615,15 @@ AND    status IN ( 'Scheduled', 'Running', 'Paused' )
     static $translation = NULL;
 
     if (empty($translation)) {
-      $translation = array(
+      $translation = [
         'Scheduled' => ts('Scheduled'),
         'Running' => ts('Running'),
         'Complete' => ts('Complete'),
         'Paused' => ts('Paused'),
         'Canceled' => ts('Canceled'),
-      );
+      ];
     }
-    return CRM_Utils_Array::value($status, $translation, ts('Not scheduled'));
+    return $translation[$status] ?? ts('Not scheduled');
   }
 
   /**
@@ -912,10 +637,7 @@ AND    status IN ( 'Scheduled', 'Running', 'Paused' )
     // add an additional check and only process
     // jobs that are approved
     if (CRM_Mailing_Info::workflowEnabled()) {
-      $approveOptionID = CRM_Core_OptionGroup::getValue('mail_approval_status',
-        'Approved',
-        'name'
-      );
+      $approveOptionID = CRM_Core_PseudoConstant::getKey('CRM_Mailing_BAO_Mailing', 'approval_status_id', 'Approved');
       if ($approveOptionID) {
         return " AND m.approval_status_id = $approveOptionID ";
       }
@@ -943,8 +665,8 @@ AND    status IN ( 'Scheduled', 'Running', 'Paused' )
     static $writeActivity = NULL;
 
     if (!empty($deliveredParams)) {
-      CRM_Mailing_Event_BAO_Delivered::bulkCreate($deliveredParams);
-      $deliveredParams = array();
+      CRM_Mailing_Event_BAO_MailingEventDelivered::bulkCreate($deliveredParams);
+      $deliveredParams = [];
     }
 
     if ($writeActivity === NULL) {
@@ -960,36 +682,26 @@ AND    status IN ( 'Scheduled', 'Running', 'Paused' )
       if (!$activityTypeID) {
         if ($mailing->sms_provider_id) {
           $mailing->subject = $mailing->name;
-          $activityTypeID = CRM_Core_OptionGroup::getValue(
-            'activity_type',
-            'Mass SMS',
-            'name'
+          $activityTypeID = CRM_Core_PseudoConstant::getKey('CRM_Activity_BAO_Activity', 'activity_type_id', 'Mass SMS'
           );
         }
         else {
-          $activityTypeID = CRM_Core_OptionGroup::getValue(
-            'activity_type',
-            'Bulk Email',
-            'name'
-          );
+          $activityTypeID = CRM_Core_PseudoConstant::getKey('CRM_Activity_BAO_Activity', 'activity_type_id', 'Bulk Email');
         }
         if (!$activityTypeID) {
-          CRM_Core_Error::fatal();
+          throw new CRM_Core_Exception(ts('No relevant activity type found when recording Mailing Event delivered Activity'));
         }
       }
 
-      $activity = array(
+      $activity = [
         'source_contact_id' => $mailing->scheduled_id,
-        // CRM-9519
-        'target_contact_id' => array_unique($targetParams),
         'activity_type_id' => $activityTypeID,
         'source_record_id' => $this->mailing_id,
         'activity_date_time' => $job_date,
         'subject' => $mailing->subject,
-        'status_id' => 2,
-        'deleteActivityTarget' => FALSE,
+        'status_id' => 'Completed',
         'campaign_id' => $mailing->campaign_id,
-      );
+      ];
 
       //check whether activity is already created for this mailing.
       //if yes then create only target contact record.
@@ -1000,47 +712,63 @@ WHERE  civicrm_activity.activity_type_id = %1
 AND    civicrm_activity.source_record_id = %2
 ";
 
-      $queryParams = array(
-        1 => array($activityTypeID, 'Integer'),
-        2 => array($this->mailing_id, 'Integer'),
-      );
+      $queryParams = [
+        1 => [$activityTypeID, 'Integer'],
+        2 => [$this->mailing_id, 'Integer'],
+      ];
       $activityID = CRM_Core_DAO::singleValueQuery($query, $queryParams);
+      $targetRecordID = CRM_Core_PseudoConstant::getKey('CRM_Activity_BAO_ActivityContact', 'record_type_id', 'Activity Targets');
 
+      $activityTargets = [];
+      foreach ($targetParams as $id) {
+        $activityTargets[$id] = ['contact_id' => (int) $id];
+      }
       if ($activityID) {
         $activity['id'] = $activityID;
 
         // CRM-9519
         if (CRM_Core_BAO_Email::isMultipleBulkMail()) {
-          static $targetRecordID = NULL;
-          if (!$targetRecordID) {
-            $activityContacts = CRM_Core_OptionGroup::values('activity_contacts', FALSE, FALSE, FALSE, NULL, 'name');
-            $targetRecordID = CRM_Utils_Array::key('Activity Targets', $activityContacts);
-          }
-
           // make sure we don't attempt to duplicate the target activity
-          foreach ($activity['target_contact_id'] as $key => $targetID) {
+          // @todo - we don't have to do one contact at a time....
+          foreach ($activityTargets as $key => $target) {
             $sql = "
 SELECT id
 FROM   civicrm_activity_contact
 WHERE  activity_id = $activityID
-AND    contact_id = $targetID
+AND    contact_id = {$target['contact_id']}
 AND    record_type_id = $targetRecordID
 ";
             if (CRM_Core_DAO::singleValueQuery($sql)) {
-              unset($activity['target_contact_id'][$key]);
+              unset($activityTargets[$key]);
             }
           }
         }
       }
 
-      if (is_a(CRM_Activity_BAO_Activity::create($activity), 'CRM_Core_Error')) {
+      try {
+        $activity = civicrm_api3('Activity', 'create', $activity);
+        ActivityContact::save(FALSE)->setRecords($activityTargets)->setDefaults(['activity_id' => $activity['id'], 'record_type_id' => $targetRecordID])->execute();
+      }
+      catch (Exception $e) {
         $result = FALSE;
       }
 
-      $targetParams = array();
+      $targetParams = [];
     }
 
     return $result;
+  }
+
+  /**
+   * Delete the mailing job.
+   *
+   * @param int $id
+   * @deprecated
+   * @return bool
+   */
+  public static function del($id) {
+    CRM_Core_Error::deprecatedFunctionWarning('deleteRecord');
+    return (bool) self::deleteRecord(['id' => $id]);
   }
 
 }

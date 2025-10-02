@@ -1,54 +1,32 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 class CRM_Mailing_BAO_BouncePattern extends CRM_Mailing_DAO_BouncePattern {
 
   /**
    * Pseudo-constant pattern array.
+   * @var array
    */
-  static $_patterns = NULL;
-
-  /**
-   * Class constructor.
-   */
-  public function __construct() {
-    parent::__construct();
-  }
+  public static $_patterns = NULL;
 
   /**
    * Build the static pattern array.
    */
   public static function buildPatterns() {
-    self::$_patterns = array();
+    self::$_patterns = [];
     $bp = new CRM_Mailing_BAO_BouncePattern();
     $bp->find();
 
@@ -75,7 +53,7 @@ class CRM_Mailing_BAO_BouncePattern extends CRM_Mailing_DAO_BouncePattern {
    * @return array
    *   Tuple (bounce_type, bounce_reason)
    */
-  public static function &match(&$message) {
+  public static function match($message) {
     // clean up $message and replace all white space by a single space, CRM-4767
     $message = preg_replace('/\s+/', ' ', $message);
 
@@ -85,18 +63,18 @@ class CRM_Mailing_BAO_BouncePattern extends CRM_Mailing_DAO_BouncePattern {
 
     foreach (self::$_patterns as $type => $re) {
       if (preg_match($re, $message, $matches)) {
-        $bounce = array(
+        $bounce = [
           'bounce_type_id' => $type,
           'bounce_reason' => $message,
-        );
+        ];
         return $bounce;
       }
     }
 
-    $bounce = array(
+    $bounce = [
       'bounce_type_id' => NULL,
       'bounce_reason' => $message,
-    );
+    ];
 
     return $bounce;
   }

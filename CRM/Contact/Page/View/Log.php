@@ -1,36 +1,26 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 class CRM_Contact_Page_View_Log extends CRM_Core_Page {
+
+  /**
+   * @var int
+   * @internal
+   */
+  public $_contactId;
 
   /**
    * Called when action is browse.
@@ -49,27 +39,32 @@ class CRM_Contact_Page_View_Log extends CRM_Core_Page {
     }
 
     $log = new CRM_Core_DAO_Log();
+    $modifiers = [];
 
     $log->entity_table = 'civicrm_contact';
     $log->entity_id = $this->_contactId;
     $log->orderBy('modified_date desc');
     $log->find();
 
-    $logEntries = array();
+    $logEntries = [];
     while ($log->fetch()) {
-      list($displayName, $contactImage) = CRM_Contact_BAO_Contact::getDisplayAndImage($log->modified_id);
-      $logEntries[] = array(
+      if ($log->modified_id && !isset($modifiers[$log->modified_id])) {
+        $displayInfo = CRM_Contact_BAO_Contact::getDisplayAndImage($log->modified_id);
+        $modifiers[$log->modified_id] = ['name' => $displayInfo[0] ?? '', 'image' => $displayInfo[1] ?? ''];
+      }
+
+      $logEntries[] = [
         'id' => $log->modified_id,
-        'name' => $displayName,
-        'image' => $contactImage,
+        'name' => $modifiers[$log->modified_id]['name'] ?? '',
+        'image' => $modifiers[$log->modified_id]['image'] ?? '',
         'date' => $log->modified_date,
-      );
+      ];
     }
 
     $this->assign('logCount', count($logEntries));
     $this->ajaxResponse['tabCount'] = count($logEntries);
     $this->ajaxResponse += CRM_Contact_Form_Inline::renderFooter($this->_contactId, FALSE);
-    $this->assign_by_ref('log', $logEntries);
+    $this->assign('log', $logEntries);
   }
 
   public function preProcess() {

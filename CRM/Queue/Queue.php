@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -36,27 +20,85 @@
  */
 abstract class CRM_Queue_Queue {
 
+  const DEFAULT_LEASE_TIME = 3600;
+
   /**
    * @var string
    */
   private $_name;
 
   /**
+   * @var array{name: string, type: string, runner: string, batch_limit: int, lease_time: ?int, retry_limit: int, retry_interval: ?int}
+   * @see \CRM_Queue_Service::create()
+   */
+  protected $queueSpec;
+
+  /**
    * Create a reference to queue. After constructing the queue, one should
    * usually call createQueue (if it's a new queue) or loadQueue (if it's
    * known to be an existing queue).
    *
-   * @param array $queueSpec
-   *   Array with keys:
-   *   - type: string, required, e.g. "interactive", "immediate", "stomp",
-   *     "beanstalk"
-   *   - name: string, required, e.g. "upgrade-tasks"
-   *   - reset: bool, optional; if a queue is found, then it should be
-   *     flushed; default to TRUE
-   *   - (additional keys depending on the queue provider).
+   * @param array{name: string, type: string, runner: string, batch_limit: int, lease_time: ?int, retry_limit: int, retry_interval: ?int} $queueSpec
+   *   Ex: ['name' => 'my-import', 'type' => 'SqlParallel']
+   *   The full definition of queueSpec is defined in CRM_Queue_Service.
+   * @see \CRM_Queue_Service::create()
    */
   public function __construct($queueSpec) {
     $this->_name = $queueSpec['name'];
+    $this->queueSpec = $queueSpec;
+    unset($this->queueSpec['status']);
+    // Status may be meaningfully + independently toggled (eg when using type=SqlParallel,error=abort).
+    // Retaining a copy of 'status' in here would be misleading.
+  }
+
+  /**
+   * Determine whether this queue is currently active.
+   *
+   * @return bool
+   *   TRUE if runners should continue claiming new tasks from this queue
+   * @throws \CRM_Core_Exception
+   */
+  public function isActive(): bool {
+    return ($this->getStatus() === 'active');
+  }
+
+  /**
+   * @return string|null
+   * @throws \CRM_Core_Exception
+   * @see \CRM_Queue_BAO_Queue::getStatuses()
+   */
+  public function getStatus() {
+    // Queues work with concurrent processes. We want to make sure status info is up-to-date (never cached).
+    $status = CRM_Core_DAO::getFieldValue('CRM_Queue_DAO_Queue', $this->_name, 'status', 'name', TRUE);
+    if ($status === 'active') {
+      $suspend = CRM_Core_DAO::singleValueQuery('SELECT value FROM civicrm_setting WHERE name = "queue_paused" AND domain_id = %1', [
+        1 => [CRM_Core_BAO_Domain::getDomain()->id, 'Positive'],
+      ]);
+      if (!empty(CRM_Utils_String::unserialize($suspend))) {
+        $status = 'paused';
+      }
+    }
+    CRM_Utils_Hook::queueActive($status, $this->getName(), $this->queueSpec);
+    // Note in future we might want to consider whether an upgrade is in progress.
+    // Should we set the setting at that point?
+    return $status;
+  }
+
+  /**
+   * Change the status of the queue.
+   *
+   * @param string $status
+   *   Ex: 'active', 'draft', 'aborted'
+   */
+  public function setStatus(string $status): void {
+    $result = CRM_Core_DAO::executeQuery('UPDATE civicrm_queue SET status = %1 WHERE name = %2', [
+      1 => [$status, 'String'],
+      2 => [$this->getName(), 'String'],
+    ]);
+    // If multiple workers try to setStatus('completed') at roughly the same time, only one will fire an event.
+    if ($result->affectedRows() > 0) {
+      CRM_Utils_Hook::queueStatus($this, $status);
+    }
   }
 
   /**
@@ -69,26 +111,44 @@ abstract class CRM_Queue_Queue {
   }
 
   /**
-   * Perform any registation or resource-allocation for a new queue
+   * Get a property from the queueSpec.
+   *
+   * @param string $field
+   * @return mixed|null
    */
-  public abstract function createQueue();
+  public function getSpec(string $field) {
+    return $this->queueSpec[$field] ?? NULL;
+  }
+
+  /**
+   * Perform any registration or resource-allocation for a new queue
+   */
+  abstract public function createQueue();
 
   /**
    * Perform any loading or pre-fetch for an existing queue.
    */
-  public abstract function loadQueue();
+  abstract public function loadQueue();
 
   /**
    * Release any resources claimed by the queue (memory, DB rows, etc)
    */
-  public abstract function deleteQueue();
+  abstract public function deleteQueue();
 
   /**
    * Check if the queue exists.
    *
    * @return bool
    */
-  public abstract function existsQueue();
+  abstract public function existsQueue();
+
+  /**
+   * Delete all items in the queue.
+   */
+  public function resetQueue(): void {
+    $this->deleteQueue();
+    $this->createQueue();
+  }
 
   /**
    * Add a new item to the queue.
@@ -98,26 +158,47 @@ abstract class CRM_Queue_Queue {
    * @param array $options
    *   Queue-dependent options; for example, if this is a
    *   priority-queue, then $options might specify the item's priority.
+   *   Ex: ['release_time' => strtotime('+3 hours')]
    */
-  public abstract function createItem($data, $options = array());
+  abstract public function createItem($data, $options = []);
 
   /**
    * Determine number of items remaining in the queue.
    *
    * @return int
+   * @deprecated
+   *   Use `getStatistic(string $name)` instead.
+   *   The definition of `numberOfItems()` has become conflicted among different subclasses.
    */
-  public abstract function numberOfItems();
+  public function numberOfItems() {
+    // This is the statistic traditionally reported by core queue implementations.
+    // However, it may not be as useful, and subclasses may have different interpretations.
+    return $this->getStatistic('total');
+  }
+
+  /**
+   * Get summary information about items in the queue.
+   *
+   * @param string $name
+   *   The desired statistic. Ex:
+   *   - 'ready': The number of items ready for execution (not currently claimed, not scheduled for future).
+   *   - 'blocked': The number of items that may be runnable in the future, but cannot be run right now.
+   *   - 'total': The total number of items known to the queue, regardless of whether their current status.
+   * @return int|float|null
+   *   The value of the statistic, or NULL if the queue backend does not unsupport this statistic.
+   */
+  abstract public function getStatistic(string $name);
 
   /**
    * Get the next item.
    *
-   * @param int $lease_time
-   *   Seconds.
-   *
+   * @param int|null $lease_time
+   *   Hold a lease on the claimed item for $X seconds.
+   *   If NULL, inherit a default.
    * @return object
    *   with key 'data' that matches the inputted data
    */
-  public abstract function claimItem($lease_time = 3600);
+  abstract public function claimItem($lease_time = NULL);
 
   /**
    * Get the next item, even if there's an active lease
@@ -128,7 +209,7 @@ abstract class CRM_Queue_Queue {
    * @return object
    *   with key 'data' that matches the inputted data
    */
-  public abstract function stealItem($lease_time = 3600);
+  abstract public function stealItem($lease_time = NULL);
 
   /**
    * Remove an item from the queue.
@@ -136,7 +217,18 @@ abstract class CRM_Queue_Queue {
    * @param object $item
    *   The item returned by claimItem.
    */
-  public abstract function deleteItem($item);
+  abstract public function deleteItem($item);
+
+  /**
+   * Get the full data for an item.
+   *
+   * This is a passive peek - it does not claim/steal/release anything.
+   *
+   * @param int|string $id
+   *   The unique ID of the task within the queue.
+   * @return CRM_Queue_DAO_QueueItem|object|null $dao
+   */
+  abstract public function fetchItem($id);
 
   /**
    * Return an item that could not be processed.
@@ -144,6 +236,6 @@ abstract class CRM_Queue_Queue {
    * @param object $item
    *   The item returned by claimItem.
    */
-  public abstract function releaseItem($item);
+  abstract public function releaseItem($item);
 
 }

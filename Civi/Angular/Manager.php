@@ -14,28 +14,49 @@ class Manager {
   protected $res = NULL;
 
   /**
-   * @var array|NULL
-   *   Each item has some combination of these keys:
-   *   - ext: string
-   *     The Civi extension which defines the Angular module.
-   *   - js: array(string $relativeFilePath)
-   *     List of JS files (relative to the extension).
-   *   - css: array(string $relativeFilePath)
-   *     List of CSS files (relative to the extension).
-   *   - partials: array(string $relativeFilePath)
-   *     A list of partial-HTML folders (relative to the extension).
-   *     This will be mapped to "~/moduleName" by crmResource.
-   *   - settings: array(string $key => mixed $value)
-   *     List of settings to preload.
+   * Static cache of html partials.
+   *
+   * Stashing it here because it's too big to store in SqlCache
+   * FIXME: So that probably means we shouldn't be storing in memory either!
+   * @var array
    */
-  protected $modules = NULL;
+  private $partials = [];
+
+  /**
+   * @var \CRM_Utils_Cache_Interface
+   */
+  protected $cache;
+
+  /**
+   * @var array
+   *   Array(string $name => ChangeSet $change).
+   */
+  protected $changeSets = NULL;
 
   /**
    * @param \CRM_Core_Resources $res
    *   The resource manager.
+   * @param $cache
    */
-  public function __construct($res) {
+  public function __construct($res, ?\CRM_Utils_Cache_Interface $cache = NULL) {
     $this->res = $res;
+    $this->cache = $cache ?: new \CRM_Utils_Cache_ArrayCache([]);
+  }
+
+  /**
+   * Clear out any runtime-cached metadata.
+   *
+   * This is useful if, eg, you have recently added or destroyed Angular modules.
+   *
+   * @return static
+   */
+  public function clear() {
+    $this->cache->clear();
+    $this->partials = [];
+    $this->changeSets = NULL;
+    // Force-refresh assetBuilder files
+    \Civi::container()->get('asset_builder')->clear(FALSE);
+    return $this;
   }
 
   /**
@@ -56,105 +77,51 @@ class Manager {
    *     List of settings to preload.
    */
   public function getModules() {
-    if ($this->modules === NULL) {
-      $config = \CRM_Core_Config::singleton();
-
-      $angularModules = array();
-      $angularModules['angularFileUpload'] = array(
-        'ext' => 'civicrm',
-        'js' => array('bower_components/angular-file-upload/angular-file-upload.min.js'),
-      );
-      $angularModules['crmApp'] = array(
-        'ext' => 'civicrm',
-        'js' => array('ang/crmApp.js'),
-      );
-      $angularModules['crmAttachment'] = array(
-        'ext' => 'civicrm',
-        'js' => array('ang/crmAttachment.js'),
-        'css' => array('ang/crmAttachment.css'),
-        'partials' => array('ang/crmAttachment'),
-        'settings' => array(
-          'token' => \CRM_Core_Page_AJAX_Attachment::createToken(),
-        ),
-      );
-      $angularModules['crmAutosave'] = array(
-        'ext' => 'civicrm',
-        'js' => array('ang/crmAutosave.js'),
-      );
-      $angularModules['crmCxn'] = array(
-        'ext' => 'civicrm',
-        'js' => array('ang/crmCxn.js', 'ang/crmCxn/*.js'),
-        'css' => array('ang/crmCxn.css'),
-        'partials' => array('ang/crmCxn'),
-      );
-      //$angularModules['crmExample'] = array(
-      //  'ext' => 'civicrm',
-      //  'js' => array('ang/crmExample.js'),
-      //  'partials' => array('ang/crmExample'),
-      //);
-      $angularModules['crmResource'] = array(
-        'ext' => 'civicrm',
-        // 'js' => array('js/angular-crmResource/byModule.js'), // One HTTP request per module.
-        'js' => array('js/angular-crmResource/all.js'), // One HTTP request for all modules.
-      );
-      $angularModules['crmUi'] = array(
-        'ext' => 'civicrm',
-        'js' => array('ang/crmUi.js'),
-        'partials' => array('ang/crmUi'),
-      );
-      $angularModules['crmUtil'] = array(
-        'ext' => 'civicrm',
-        'js' => array('ang/crmUtil.js'),
-      );
-      // https://github.com/jwstadler/angular-jquery-dialog-service
-      $angularModules['dialogService'] = array(
-        'ext' => 'civicrm',
-        'js' => array('bower_components/angular-jquery-dialog-service/dialog-service.js'),
-      );
-      $angularModules['ngRoute'] = array(
-        'ext' => 'civicrm',
-        'js' => array('bower_components/angular-route/angular-route.min.js'),
-      );
-      $angularModules['ngSanitize'] = array(
-        'ext' => 'civicrm',
-        'js' => array('bower_components/angular-sanitize/angular-sanitize.min.js'),
-      );
-      $angularModules['ui.utils'] = array(
-        'ext' => 'civicrm',
-        'js' => array('bower_components/angular-ui-utils/ui-utils.min.js'),
-      );
-      $angularModules['ui.sortable'] = array(
-        'ext' => 'civicrm',
-        'js' => array('bower_components/angular-ui-sortable/sortable.min.js'),
-      );
-      $angularModules['unsavedChanges'] = array(
-        'ext' => 'civicrm',
-        'js' => array('bower_components/angular-unsavedChanges/dist/unsavedChanges.min.js'),
-      );
-
-      $angularModules['statuspage'] = array(
-        'ext' => 'civicrm',
-        'js' => array('ang/crmStatusPage.js', 'ang/crmStatusPage/*.js'),
-        'css' => array('ang/crmStatusPage.css'),
-        'partials' => array('ang/crmStatusPage'),
-        'settings' => array(),
-      );
-
-      foreach (\CRM_Core_Component::getEnabledComponents() as $component) {
-        $angularModules = array_merge($angularModules, $component->getAngularModules());
+    $angularModules = $this->cache->get('angularModules') ?? [];
+    // Cache not set, fetch fresh list of modules and store in cache
+    if (!$angularModules) {
+      // Load all modules from CiviCRM core
+      $files = (array) glob(\Civi::paths()->getPath('[civicrm.root]/ang/*.ang.php'));
+      foreach ($files as $file) {
+        $name = basename($file, '.ang.php');
+        $module = include $file;
+        $module['ext'] = 'civicrm';
+        $angularModules[$name] = $module;
       }
+
+      // Load all modules from extensions
       \CRM_Utils_Hook::angularModules($angularModules);
-      $this->modules = $this->resolvePatterns($angularModules);
+
+      foreach ($angularModules as $module => $info) {
+        // This property must be an array. If null, set to the historical default of ['civicrm/a']
+        // (historical default preserved for backward-compat reasons, but a better default would be the more common value of []).
+        $angularModules[$module]['basePages'] ??= ['civicrm/a'];
+        if (!empty($info['settings'])) {
+          \CRM_Core_Error::deprecatedWarning(sprintf('The Angular file "%s" from extension "%s" must be updated to use "settingsFactory" instead of "settings". See https://github.com/civicrm/civicrm-core/pull/19052', $info['module'], $info['ext']));
+        }
+        // Validate settingsFactory callables
+        if (isset($info['settingsFactory'])) {
+          // To keep the cache small, we want `settingsFactory` to contain the string names of class & function, not an object
+          if (!is_array($info['settingsFactory']) && !is_string($info['settingsFactory'])) {
+            throw new \CRM_Core_Exception($module . ' settingsFactory must be a callable array or string');
+          }
+          // To keep the cache small, convert full object to just the class name
+          if (is_array($info['settingsFactory']) && is_object($info['settingsFactory'][0])) {
+            $angularModules[$module]['settingsFactory'][0] = get_class($info['settingsFactory'][0]);
+          }
+        }
+      }
+      $angularModules = $this->resolvePatterns($angularModules);
+      $this->cache->set('angularModules', $angularModules);
     }
 
-    return $this->modules;
+    return $angularModules;
   }
 
   /**
    * Get the descriptor for an Angular module.
    *
-   * @param string $name
-   *   Module name.
+   * @param string $moduleName
    * @return array
    *   Details about the module:
    *   - ext: string, the name of the Civi extension which defines the module
@@ -163,12 +130,63 @@ class Manager {
    *   - partials: array(string $relativeFilePath).
    * @throws \Exception
    */
-  public function getModule($name) {
-    $modules = $this->getModules();
-    if (!isset($modules[$name])) {
+  public function getModule($moduleName) {
+    $module = $this->cache->get("module $moduleName") ?? $this->getModules()[$moduleName] ?? NULL;
+    if (!isset($module)) {
       throw new \Exception("Unrecognized Angular module");
     }
-    return $modules[$name];
+    return $module;
+  }
+
+  /**
+   * Resolve a full list of Angular dependencies.
+   *
+   * @param array $names
+   *   List of Angular modules.
+   *   Ex: array('crmMailing').
+   * @return array
+   *   List of Angular modules, include all dependencies.
+   *   Ex: array('crmMailing', 'crmUi', 'crmUtil', 'ngRoute').
+   * @throws \CRM_Core_Exception
+   */
+  public function resolveDependencies($names) {
+    $allModules = $this->getModules();
+    $visited = [];
+    $result = $names;
+    while (($missingModules = array_diff($result, array_keys($visited))) && !empty($missingModules)) {
+      foreach ($missingModules as $module) {
+        $visited[$module] = 1;
+        if (!isset($allModules[$module])) {
+          throw new \CRM_Core_Exception("Unrecognized Angular module {$module}. Please ensure that all Angular modules are declared.");
+        }
+        elseif (isset($allModules[$module]['requires'])) {
+          $result = array_unique(array_merge($result, $allModules[$module]['requires']));
+        }
+      }
+    }
+    sort($result);
+    return $result;
+  }
+
+  /**
+   * Get a list of Angular modules that should be loaded on the given
+   * base-page.
+   *
+   * @param string $basePage
+   *   The name of the base-page for which we want a list of moudles.
+   * @return array
+   *   List of Angular modules.
+   *   Ex: array('crmMailing', 'crmUi', 'crmUtil', 'ngRoute').
+   */
+  public function resolveDefaultModules($basePage) {
+    $modules = $this->getModules();
+    $result = [];
+    foreach ($modules as $moduleName => $module) {
+      if (in_array($basePage, $module['basePages']) || in_array('*', $module['basePages'])) {
+        $result[] = $moduleName;
+      }
+    }
+    return $result;
   }
 
   /**
@@ -180,10 +198,10 @@ class Manager {
    *   Updated list of Angular modules
    */
   protected function resolvePatterns($modules) {
-    $newModules = array();
+    $newModules = [];
 
     foreach ($modules as $moduleKey => $module) {
-      foreach (array('js', 'css', 'partials') as $fileset) {
+      foreach (['js', 'css', 'partials'] as $fileset) {
         if (!isset($module[$fileset])) {
           continue;
         }
@@ -193,6 +211,35 @@ class Manager {
     }
 
     return $newModules;
+  }
+
+  /**
+   * Get the partial HTML documents for a module (unfiltered).
+   *
+   * @param string $name
+   *   Angular module name.
+   * @return array
+   *   Array(string $extFilePath => string $html)
+   * @throws \Exception
+   *   Invalid partials configuration.
+   */
+  public function getRawPartials($name) {
+    $module = $this->getModule($name);
+    $result = !empty($module['partialsCallback'])
+      ? \Civi\Core\Resolver::singleton()->call($module['partialsCallback'], [$name, $module])
+      : [];
+    if (isset($module['partials'])) {
+      foreach ($module['partials'] as $partialDir) {
+        $partialDir = $this->res->getPath($module['ext']) . '/' . $partialDir;
+        $files = \CRM_Utils_File::findFiles($partialDir, '*.html', TRUE);
+        foreach ($files as $file) {
+          $filename = '~/' . $name . '/' . $file;
+          $result[$filename] = file_get_contents($partialDir . '/' . $file);
+        }
+      }
+      return $result;
+    }
+    return $result;
   }
 
   /**
@@ -206,19 +253,10 @@ class Manager {
    *   Invalid partials configuration.
    */
   public function getPartials($name) {
-    $module = $this->getModule($name);
-    $result = array();
-    if (isset($module['partials'])) {
-      foreach ($module['partials'] as $partialDir) {
-        $partialDir = $this->res->getPath($module['ext']) . '/' . $partialDir;
-        $files = \CRM_Utils_File::findFiles($partialDir, '*.html', TRUE);
-        foreach ($files as $file) {
-          $filename = '~/' . $name . '/' . $file;
-          $result[$filename] = file_get_contents($partialDir . '/' . $file);
-        }
-      }
+    if (!isset($this->partials[$name])) {
+      $this->partials[$name] = ChangeSet::applyResourceFilters($this->getChangeSets(), 'partials', $this->getRawPartials($name));
     }
-    return $result;
+    return $this->partials[$name];
   }
 
   /**
@@ -231,14 +269,14 @@ class Manager {
    */
   public function getTranslatedStrings($name) {
     $module = $this->getModule($name);
-    $result = array();
+    $result = [];
     $strings = $this->getStrings($name);
     foreach ($strings as $string) {
       // TODO: should we pass translation domain based on $module[ext] or $module[tsDomain]?
       // It doesn't look like client side really supports the domain right now...
-      $translated = ts($string, array(
-        'domain' => array($module['ext'], NULL),
-      ));
+      $translated = _ts($string, [
+        'domain' => [$module['ext'], NULL],
+      ]);
       if ($translated != $string) {
         $result[$string] = $translated;
       }
@@ -256,7 +294,7 @@ class Manager {
    */
   public function getStrings($name) {
     $module = $this->getModule($name);
-    $result = array();
+    $result = [];
     if (isset($module['js'])) {
       foreach ($module['js'] as $file) {
         $strings = $this->res->getStrings()->get(
@@ -267,25 +305,22 @@ class Manager {
         $result = array_unique(array_merge($result, $strings));
       }
     }
-    if (isset($module['partials'])) {
-      foreach ($module['partials'] as $partialDir) {
-        $partialDir = $this->res->getPath($module['ext']) . '/' . $partialDir;
-        $files = \CRM_Utils_File::findFiles($partialDir, '*.html');
-        foreach ($files as $file) {
-          $strings = $this->res->getStrings()->get(
-            $module['ext'],
-            $file,
-            'text/html'
-          );
-          $result = array_unique(array_merge($result, $strings));
-        }
-      }
+    $partials = $this->getPartials($name);
+    foreach ($partials as $partial) {
+      $result = array_unique(array_merge($result, \CRM_Utils_JS::parseStrings($partial)));
     }
     return $result;
   }
 
   /**
-   * Get resources for one or more modules.
+   * Get resources for one or more modules, applying any changesets.
+   *
+   * NOTE: The output of this function is a little quirky; depending on the type of resource requested,
+   * the results will either be a non-associative array (for path and url-type resources)
+   * or an array indexed by moduleName (for pass-thru resources like settingsFactory, requires, permissions, bundles).
+   *
+   * Note: ChangeSets will be applied
+   * @see \CRM_Utils_Hook::alterAngular()
    *
    * @param string|array $moduleNames
    *   List of module names.
@@ -294,17 +329,27 @@ class Manager {
    * @param string $refType
    *   Type of reference to the resource ('cacheUrl', 'rawUrl', 'path', 'settings').
    * @return array
-   *   List of URLs or paths.
+   *   Indexed or non-associative array, depending on resource requested (see note)
    * @throws \CRM_Core_Exception
    */
   public function getResources($moduleNames, $resType, $refType) {
-    $result = array();
-    $moduleNames = (array) $moduleNames;
-    foreach ($moduleNames as $moduleName) {
+    $result = [];
+    // Properties that do not require interpolation - they are added to the output keyed by moduleName
+    $passThru = ['settings', 'settingsFactory', 'requires', 'permissions', 'bundles'];
+
+    foreach ((array) $moduleNames as $moduleName) {
       $module = $this->getModule($moduleName);
-      if (isset($module[$resType])) {
+      if (isset($module[$resType]) && in_array($resType, $passThru, TRUE)) {
+        $result[$moduleName] = $module[$resType];
+      }
+      elseif (isset($module[$resType])) {
         foreach ($module[$resType] as $file) {
-          switch ($refType) {
+          $refTypeSuffix = '';
+          if (is_string($file) && preg_match(';^(assetBuilder|ext)://;', $file)) {
+            $refTypeSuffix = '-' . parse_url($file, PHP_URL_SCHEME);
+          }
+
+          switch ($refType . $refTypeSuffix) {
             case 'path':
               $result[] = $this->res->getPath($module['ext'], $file);
               break;
@@ -317,10 +362,35 @@ class Manager {
               $result[] = $this->res->getUrl($module['ext'], $file, TRUE);
               break;
 
-            case 'settings':
-              if (!empty($module[$resType])) {
-                $result[$moduleName] = $module[$resType];
-              }
+            case 'relUrl':
+              $result[] = ['ext' => $module['ext'], 'file' => $file];
+              break;
+
+            case 'path-assetBuilder':
+              $assetName = parse_url($file, PHP_URL_HOST) . parse_url($file, PHP_URL_PATH);
+              $assetParams = [];
+              parse_str('' . parse_url($file, PHP_URL_QUERY), $assetParams);
+              $result[] = \Civi::service('asset_builder')->getPath($assetName, $assetParams);
+              break;
+
+            case 'rawUrl-assetBuilder':
+            case 'cacheUrl-assetBuilder':
+              $assetName = parse_url($file, PHP_URL_HOST) . parse_url($file, PHP_URL_PATH);
+              $assetParams = [];
+              parse_str('' . parse_url($file, PHP_URL_QUERY), $assetParams);
+              $result[] = \Civi::service('asset_builder')->getUrl($assetName, $assetParams);
+              break;
+
+            case 'path-ext':
+              $result[] = $this->res->getPath(parse_url($file, PHP_URL_HOST), ltrim(parse_url($file, PHP_URL_PATH), '/'));
+              break;
+
+            case 'rawUrl-ext':
+              $result[] = $this->res->getUrl(parse_url($file, PHP_URL_HOST), ltrim(parse_url($file, PHP_URL_PATH), '/'));
+              break;
+
+            case 'cacheUrl-ext':
+              $result[] = $this->res->getUrl(parse_url($file, PHP_URL_HOST), ltrim(parse_url($file, PHP_URL_PATH), '/'), TRUE);
               break;
 
             default:
@@ -329,7 +399,29 @@ class Manager {
         }
       }
     }
-    return $result;
+
+    return ChangeSet::applyResourceFilters($this->getChangeSets(), $resType, $result);
+  }
+
+  /**
+   * @return array
+   *   Array(string $name => ChangeSet $changeSet).
+   */
+  public function getChangeSets() {
+    if ($this->changeSets === NULL) {
+      $this->changeSets = [];
+      \CRM_Utils_Hook::alterAngular($this);
+    }
+    return $this->changeSets;
+  }
+
+  /**
+   * @param ChangeSet $changeSet
+   * @return \Civi\Angular\Manager
+   */
+  public function add($changeSet) {
+    $this->changeSets[$changeSet->getName()] = $changeSet;
+    return $this;
   }
 
 }

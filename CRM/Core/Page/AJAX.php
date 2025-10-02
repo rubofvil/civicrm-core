@@ -1,36 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
- * $Id$
- *
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -50,7 +32,7 @@ class CRM_Core_Page_AJAX {
     }
 
     if (!$className) {
-      CRM_Core_Error::fatal(ts('Invalid className: %1', array(1 => $className)));
+      throw new CRM_Core_Exception(ts('Invalid className: %1', [1 => $className]));
     }
 
     $fnName = NULL;
@@ -64,7 +46,7 @@ class CRM_Core_Page_AJAX {
 
     switch ($type) {
       case 'method':
-        call_user_func(array($className, $fnName));
+        call_user_func([$className, $fnName]);
         break;
 
       case 'page':
@@ -98,31 +80,28 @@ class CRM_Core_Page_AJAX {
       $id = CRM_Utils_Type::escape($_REQUEST['id'], 'Integer');
     }
 
-    if (!empty($_REQUEST['context'])) {
-      $context = CRM_Utils_Type::escape($_REQUEST['context'], 'String');
-    }
+    $context = CRM_Utils_Request::retrieve('context', 'Alphanumeric');
+
     // return false if $id is null and
     // $context is not civicrm_event or civicrm_contribution_page
-    if (!$id || !in_array($context, array('civicrm_event', 'civicrm_contribution_page'))) {
+    if (!$id || !in_array($context, ['civicrm_event', 'civicrm_contribution_page'])) {
       return FALSE;
     }
     $priceSetId = CRM_Price_BAO_PriceSet::getFor($context, $id, NULL);
     if ($priceSetId) {
-      $result = CRM_Price_BAO_PriceSet::setIsQuickConfig($priceSetId, 0);
+      $sql = "UPDATE
+       civicrm_price_set cps
+       INNER JOIN civicrm_price_set_entity cpse ON cps.id = cpse.price_set_id
+       INNER JOIN {$context} ce ON cpse.entity_id = ce.id AND ce.id = %1
+       SET cps.is_quick_config = 0, cps.financial_type_id = IF(cps.financial_type_id IS NULL, ce.financial_type_id, cps.financial_type_id)
+      ";
+      CRM_Core_DAO::executeQuery($sql, [1 => [$id, 'Integer']]);
+
       if ($context == 'civicrm_event') {
-        $sql = "UPDATE
-          civicrm_price_set cps
-          INNER JOIN civicrm_discount cd ON cd.price_set_id = cps.id
-          SET cps.is_quick_config = 0
-          WHERE cd.entity_id = (%1) AND cd.entity_table = 'civicrm_event' ";
-        $params = array(1 => array($id, 'Integer'));
-        CRM_Core_DAO::executeQuery($sql, $params);
         CRM_Core_BAO_Discount::del($id, $context);
       }
     }
-    if (!$result) {
-      $priceSetId = NULL;
-    }
+
     CRM_Utils_JSON::output($priceSetId);
   }
 
@@ -139,6 +118,7 @@ class CRM_Core_Page_AJAX {
    * @return bool
    */
   public static function checkAuthz($type, $className, $fnName = NULL) {
+    self::validateAjaxRequestMethod();
     switch ($type) {
       case 'method':
         if (!preg_match('/^CRM_[a-zA-Z0-9]+_Page_AJAX$/', $className)) {
@@ -165,35 +145,48 @@ class CRM_Core_Page_AJAX {
   }
 
   /**
+   * Guards against CSRF by validating the request method appears to be an ajax request
+   */
+  public static function validateAjaxRequestMethod(): void {
+    if (!CRM_Utils_REST::isWebServiceRequest()) {
+      http_response_code(400);
+      Civi::log()->debug('SECURITY ALERT: Ajax requests can only be issued by javascript clients.',
+        [
+          'IP' => CRM_Utils_System::ipAddress(),
+          'level' => 'security',
+          'referer' => $_SERVER['HTTP_REFERER'] ?? '',
+          'reason' => 'CSRF suspected',
+        ]
+      );
+      throw new CRM_Core_Exception('SECURITY ALERT: Ajax requests can only be issued by javascript clients.');
+    }
+  }
+
+  /**
    * Outputs the CiviCRM standard json-formatted page/form response
    * @param array|string $response
    */
   public static function returnJsonResponse($response) {
     // Allow lazy callers to not wrap content in an array
     if (is_string($response)) {
-      $response = array('content' => $response);
+      $response = ['content' => $response];
     }
     // Add session variables to response
     $session = CRM_Core_Session::singleton();
-    $response += array(
+    $response += [
       'status' => 'success',
       'userContext' => htmlspecialchars_decode($session->readUserContext()),
       'title' => CRM_Utils_System::$title,
-    );
+    ];
     // crmMessages will be automatically handled by our ajax preprocessor
     // @see js/Common.js
     if ($session->getStatus(FALSE)) {
       $response['crmMessages'] = $session->getStatus(TRUE);
     }
-    $output = json_encode($response);
+    $output = json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
-    // CRM-11831 @see http://www.malsup.com/jquery/form/#file-upload
-    if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest') {
-      CRM_Utils_System::setHttpHeader('Content-Type', 'application/json');
-    }
-    else {
-      $output = "<textarea>$output</textarea>";
-    }
+    CRM_Utils_System::setHttpHeader('Content-Type', 'application/json');
+
     echo $output;
     CRM_Utils_System::civiExit();
   }
@@ -201,7 +194,7 @@ class CRM_Core_Page_AJAX {
   /**
    * Set headers appropriate for a js file.
    *
-   * @param int|NULL $ttl
+   * @param int|null $ttl
    *   Time-to-live (seconds).
    */
   public static function setJsHeaders($ttl = NULL) {
@@ -214,12 +207,22 @@ class CRM_Core_Page_AJAX {
     CRM_Utils_System::setHttpHeader('Cache-Control', "max-age=$ttl, public");
   }
 
+  /**
+   * Set defaults for sort and pager.
+   *
+   * @param int $defaultOffset
+   * @param int $defaultRowCount
+   * @param string $defaultSort
+   * @param string $defaultsortOrder
+   *
+   * @return array
+   */
   public static function defaultSortAndPagerParams($defaultOffset = 0, $defaultRowCount = 25, $defaultSort = NULL, $defaultsortOrder = 'asc') {
-    $params = array(
-      '_raw_values' => array(),
-    );
+    $params = [
+      '_raw_values' => [],
+    ];
 
-    $sortMapper = array();
+    $sortMapper = [];
     if (isset($_GET['columns'])) {
       foreach ($_GET['columns'] as $key => $value) {
         $sortMapper[$key] = CRM_Utils_Type::validate($value['data'], 'MysqlColumnNameOrAlias');
@@ -246,16 +249,31 @@ class CRM_Core_Page_AJAX {
     return $params;
   }
 
-  public static function validateParams($requiredParams = array(), $optionalParams = array()) {
-    $params = array();
+  /**
+   * Validate ajax input parameters.
+   *
+   * @param array $requiredParams
+   * @param array $optionalParams
+   *
+   * @return array
+   */
+  public static function validateParams($requiredParams = [], $optionalParams = []) {
+    $params = [];
 
     foreach ($requiredParams as $param => $type) {
-      $params[$param] = CRM_Utils_Type::validate(CRM_Utils_Array::value($param, $_GET), $type);
+      $params[$param] = CRM_Utils_Type::validate($_GET[$param] ?? NULL, $type);
     }
 
     foreach ($optionalParams as $param => $type) {
-      if (CRM_Utils_Array::value($param, $_GET)) {
-        $params[$param] = CRM_Utils_Type::validate(CRM_Utils_Array::value($param, $_GET), $type);
+      if (!empty($_GET[$param])) {
+        if (!is_array($_GET[$param])) {
+          $params[$param] = CRM_Utils_Type::validate($_GET[$param], $type);
+        }
+        else {
+          foreach ($_GET[$param] as $index => $value) {
+            $params[$param][$index] = CRM_Utils_Type::validate($value, $type);
+          }
+        }
       }
     }
 

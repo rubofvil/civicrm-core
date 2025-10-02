@@ -11,7 +11,6 @@
     getFieldsCache = {},
     getActionsCache = {},
     params = {},
-    smartyPhp,
     entityDoc,
     fieldTpl = _.template($('#api-param-tpl').html()),
     optionsTpl = _.template($('#api-options-tpl').html()),
@@ -19,9 +18,9 @@
     chainTpl = _.template($('#api-chain-tpl').html()),
     docCodeTpl = _.template($('#doc-code-tpl').html()),
     joinTpl = _.template($('#join-tpl').html()),
+    restTpl = _.template($('#api-rest-tpl').html()),
 
-    // The following apis do not support the syntax for joins
-    // FIXME: the solution is to convert these apis to use _civicrm_api3_basic_get
+    // The following apis do not use Api3SelectQuery so do not support advanced features like joins or OR
     NO_JOINS = ['Contact', 'Contribution', 'Pledge', 'Participant'],
 
     // These types of entityRef don't require any input to open
@@ -56,11 +55,22 @@
   }
 
   /**
-   * Data provider for select2 "field" selectors
+   * Data provider for select2 "fields to return" selector
    * @returns {{results: Array.<T>}}
    */
   function returnFields() {
     return {results: fields.concat({id: '-', text: ts('Other') + '...', description: ts('Choose a field not in this list')})};
+  }
+
+  /**
+   * Data provider for select2 "field" selectors
+   * @returns {{results: Array.<T>}}
+   */
+  function selectFields() {
+    var items = _.filter(fields, function(field) {
+      return params[field.id] === undefined;
+    });
+    return {results: items.concat({id: '-', text: ts('Other') + '...', description: ts('Choose a field not in this list')})};
   }
 
   /**
@@ -98,24 +108,40 @@
    * @returns {*}
    */
   function getField(name) {
-    if (!name) {
-      return {};
-    }
-    if (getFieldData[name]) {
-      return getFieldData[name];
-    }
-    var ent = entity,
-      act = action,
-      prefix = '';
-    _.each(name.split('.'), function(piece) {
-      if (joins[prefix]) {
-        ent = joins[prefix];
-        act = 'get';
+    var field = {};
+    if (name && getFieldData[name]) {
+      field = _.cloneDeep(getFieldData[name]);
+    } else if (name) {
+      var ent = entity,
+        act = action,
+        prefix = '';
+      _.each(name.split('.'), function(piece) {
+        if (joins[prefix]) {
+          ent = joins[prefix];
+          act = 'get';
+        }
+        name = piece;
+        prefix += (prefix.length ? '.' : '') + piece;
+      });
+      if (getFieldsCache[ent+act].values[name]) {
+        field = _.cloneDeep(getFieldsCache[ent+act].values[name]);
       }
-      name = piece;
-      prefix += (prefix.length ? '.' : '') + piece;
-    });
-    return getFieldsCache[ent+act].values[name] || {};
+    }
+    addJoinInfo(field, name);
+    return field;
+  }
+
+  function addJoinInfo(field, name) {
+    if (field.name === 'entity_id') {
+      var entityTableParam = name.slice(0, -2) + 'table',
+        entityField = params[entityTableParam] ? getField(entityTableParam) : {};
+      if (entityField.options) {
+        field.FKApiName = entityField.options[params[entityTableParam]];
+      }
+    }
+    if (field.pseudoconstant && field.pseudoconstant.optionGroupName) {
+      field.FKApiName = 'OptionValue';
+    }
   }
 
   /**
@@ -126,7 +152,8 @@
     $('#api-params').append($(fieldTpl({name: name || '', noOps: _.includes(NO_OPERATORS, action)})));
     var $row = $('tr:last-child', '#api-params');
     $('input.api-param-name', $row).crmSelect2({
-      data: returnFields,
+      data: selectFields,
+      allowClear: false,
       formatSelection: function(field) {
         return field.text +
           (field.required ? ' <span class="crm-marker">*</span>' : '');
@@ -149,13 +176,20 @@
       $('#api-params').append($(optionsTpl({})));
     }
     var $row = $('.api-options-row:last', '#api-params');
-    $('.api-option-name', $row).crmSelect2({data: [
-      {id: 'limit', text: 'limit'},
-      {id: 'offset', text: 'offset'},
-      {id: 'sort', text: 'sort'},
-      {id: 'metadata', text: 'metadata'},
-      {id: '-', text: ts('Other') + '...'}
-    ]});
+    $('.api-option-name', $row).crmSelect2({
+      data: [
+        {id: 'limit', text: 'limit'},
+        {id: 'offset', text: 'offset'},
+        {id: 'match', text: 'match'},
+        {id: 'match-mandatory', text: 'match-mandatory'},
+        {id: 'metadata', text: 'metadata'},
+        {id: 'reload', text: 'reload'},
+        {id: 'sort', text: 'sort'},
+        {id: '-', text: ts('Other') + '...'}
+      ],
+      allowClear: false
+    })
+      .select2('open');
   }
 
   /**
@@ -166,12 +200,14 @@
     var $row = $('tr:last-child', '#api-params');
     $('.api-chain-entity', $row).crmSelect2({
       formatSelection: function(item) {
-        return '<i class="crm-i fa-link"></i> API ' +
+        return '<i class="crm-i fa-link" role="img" aria-hidden="true"></i> API ' +
           ($(item.element).hasClass('strikethrough') ? '<span class="strikethrough">' + item.text + '</span>' : item.text);
       },
-      placeholder: '<i class="crm-i fa-link"></i> ' + ts('Entity'),
+      placeholder: '<i class="crm-i fa-link" role="img" aria-hidden="true"></i> ' + ts('Entity'),
+      allowClear: false,
       escapeMarkup: function(m) {return m;}
-    });
+    })
+      .select2('open');
   }
 
   /**
@@ -185,7 +221,7 @@
     if (entity) {
       $selector.prop('disabled', true);
       getActions(entity)
-        .done(function(actions) {
+        .then(function(actions) {
           $selector.prop('disabled', false);
           CRM.utils.setOptions($('.api-chain-action', $row), _.transform(actions.values, function(ret, item) {ret.push({value: item, key: item});}));
         });
@@ -211,7 +247,7 @@
         apiCalls.getactions = [entity, 'getactions'];
       }
       CRM.api3(apiCalls)
-        .done(function(data) {
+        .then(function(data) {
           data.getfields.values = _.indexBy(data.getfields.values, 'name');
           getFieldsCache[entity+action] = data.getfields;
           getActionsCache[entity] = getActionsCache[entity] || data.getactions;
@@ -242,6 +278,8 @@
     fields = [];
     joins = [];
     getFieldData = {};
+    // Sequential doesn't make sense in getsingle context, and is only a sensible default for get
+    $('label[for=sequential-checkbox]').toggle(action !== 'getsingle').find('input').prop('checked', action === 'get').change();
     // Special case for getfields
     if (action === 'getfields') {
       fields.push({
@@ -255,11 +293,12 @@
           return ret;
         }, {})
       };
+      getFieldsCache[entity+action] = {values: _.cloneDeep(getFieldData)};
       showFields(['api_action']);
       renderJoinSelector();
       return;
     }
-    getMetadata(entity, action).done(function(data) {
+    getMetadata(entity, action).then(function(data) {
       if ($(changedElement).is('#api-entity')) {
         actions = getActionsCache[entity];
         populateActions();
@@ -270,10 +309,19 @@
       populateFields(fields, entity, action, '', required);
       showFields(required);
       renderJoinSelector();
-      if (_.includes(['get', 'getsingle', 'getvalue', 'getstat'], action)) {
+      if (_.includes(['get', 'getsingle', 'getvalue', 'getstat', 'gettree'], action)) {
         showReturn();
       }
     });
+  }
+
+  function changeFKEntity() {
+    var $row = $(this).closest('tr'),
+      name = $('input.api-param-name', $row).val(),
+      operator = $('.api-param-op', $row).val();
+    if (name && name.slice(-12) === 'entity_table') {
+      $('input[value=' + name.slice(0, -5) + 'id]', '#api-join').prop('checked', false).change();
+    }
   }
 
   /**
@@ -301,6 +349,11 @@
     }
     $('#api-params').prepend($(returnTpl({title: title, required: action == 'getvalue'})));
     $('#api-return-value').crmSelect2(params);
+    $("#api-return-value").select2("container").find("ul.select2-choices").sortable({
+      containment: 'parent',
+      start: function() { $("#api-return-value").select2("onSortStart"); },
+      update: function() { $("#api-return-value").select2("onSortEnd"); }
+    });
   }
 
   /**
@@ -395,7 +448,7 @@
     if (operator !== '=') {
       return false;
     }
-    return true;
+    return fieldName !== 'entity_table';
     /*
      * Attempt to resolve the ambiguity of the = operator using metadata
      * commented out because there is not enough metadata in the api at this time
@@ -523,7 +576,6 @@
 
   /**
    * Format value to look like php code
-   * TODO: Use short array syntax when we drop support for php 5.3
    * @param val
    */
   function phpFormat(val) {
@@ -532,30 +584,15 @@
       $.each(val, function(k, v) {
         ret += (ret ? ', ' : '') + "'" + k + "' => " + phpFormat(v);
       });
-      return 'array(' + ret + ')';
+      return '[' + ret + ']';
     }
     if ($.isArray(val)) {
       $.each(val, function(k, v) {
         ret += (ret ? ', ' : '') + phpFormat(v);
       });
-      return 'array(' + ret + ')';
+      return '[' + ret + ']';
     }
     return JSON.stringify(val).replace(/\$/g, '\\$');
-  }
-
-  /**
-   * @param value string
-   * @param js string
-   * @param key string
-   */
-  function smartyFormat(value, js, key) {
-    var varName = 'param_' + key.replace(/[. -]/g, '_').toLowerCase();
-    // Can't pass array literals directly into smarty so we add a php snippet
-    if (_.includes(js, '[') || _.includes(js, '{')) {
-      smartyPhp.push('$this->assign("'+ varName + '", '+ phpFormat(value) +');');
-      return '$' + varName;
-    }
-    return js;
   }
 
   /**
@@ -609,6 +646,7 @@
       }
     });
     if (entity && action) {
+      handleAndOr();
       formatQuery();
     }
   }
@@ -624,7 +662,7 @@
         .addClass('crm-error')
         .css('width', '82%')
         .attr('title', msg)
-        .before('<i class="crm-i fa-exclamation-triangle crm-i-red" title="'+msg+'"></i> ')
+        .before('<i class="crm-i fa-exclamation-triangle crm-i-red" title="'+msg+'" role="img" aria-hidden="true"></i> ')
         .tooltip();
     }
   }
@@ -646,22 +684,29 @@
    * Render the api request in various formats
    */
   function formatQuery() {
+    var http = {
+      url: CRM.config.resourceBase + "extern/rest.php",
+      method:  action.startsWith('get') ? 'GET' : 'POST',
+      query: {entity: entity, action: action, json: JSON.stringify(params), api_key: 'FIXME_USER_KEY', key: 'FIXME_SITE_KEY'}
+    };
     var i = 0, q = {
       smarty: "{crmAPI var='result' entity='" + entity + "' action='" + action + "'" + (params.sequential ? '' : ' sequential=0'),
       php: "$result = civicrm_api3('" + entity + "', '" + action + "'",
       json: "CRM.api3('" + entity + "', '" + action + "'",
+      cv: "cv api " + entity + '.' + action + ' ',
       drush: "drush cvapi " + entity + '.' + action + ' ',
       wpcli: "wp cv api " + entity + '.' + action + ' ',
-      rest: CRM.config.resourceBase + "extern/rest.php?entity=" + entity + "&action=" + action + "&api_key=userkey&key=sitekey&json=" + JSON.stringify(params)
+      curl: http.method === 'GET' ?
+        "curl '" + http.url + "?" + $.param(http.query) + "'"
+        : "curl -X " + http.method + " -d '" + $.param(http.query) +"' \\\n  '" + http.url + "'"
     };
-    smartyPhp = [];
     $.each(params, function(key, value) {
       var json = JSON.stringify(value),
         // Encourage 'return' to be an array - at least in php & js
         js = key === 'return' && action !== 'getvalue' ? JSON.stringify(evaluate(value, true)) : json,
         php = key === 'return' && action !== 'getvalue' ? phpFormat(evaluate(value, true)) : phpFormat(value);
       if (!(i++)) {
-        q.php += ", array(\n";
+        q.php += ", [\n";
         q.json += ", {\n";
       } else {
         q.json += ",\n";
@@ -670,24 +715,24 @@
       q.json += "  \"" + key + '": ' + js;
       // smarty already defaults to sequential
       if (key !== 'sequential') {
-        q.smarty += ' ' + key + '=' + smartyFormat(value, json, key);
+        q.smarty += ' ' + key + '=' + phpFormat(value);
       }
       // FIXME: This is not totally correct cli syntax
+      q.cv += key + '=' + json + ' ';
       q.drush += key + '=' + json + ' ';
       q.wpcli += key + '=' + json + ' ';
     });
     if (i) {
-      q.php += ")";
+      q.php += "]";
       q.json += "\n}";
     }
     q.php += ");";
-    q.json += ").done(function(result) {\n  // do something\n});";
+    q.json += ").then(function(result) {\n  // do something with result\n}, function(error) {\n  // oops\n});";
     q.smarty += "}\n{foreach from=$result.values item=" + entity.toLowerCase() + "}\n  {$" + entity.toLowerCase() + ".some_field}\n{/foreach}";
     if (!_.includes(action, 'get')) {
       q.smarty = '{* Smarty API only works with get actions *}';
-    } else if (smartyPhp.length) {
-      q.smarty = "{php}\n  " + smartyPhp.join("\n  ") + "\n{/php}\n" + q.smarty;
     }
+    $('#api-rest').html(restTpl(http));
     $.each(q, function(type, val) {
       $('#api-' + type).text(val);
     });
@@ -704,7 +749,7 @@
       alert(ts('Select an entity.'));
       return;
     }
-    if (!_.includes(action, 'get') && action != 'check') {
+    if (!_.includes(action, 'get') && !_.includes(action, 'check')) {
       var msg = action === 'delete' ? ts('This will delete data from CiviCRM. Are you sure?') : ts('This will write to the database. Continue?');
       CRM.confirm({title: ts('Confirm %1', {1: action}), message: msg}).on('crmConfirm:yes', execute);
     } else {
@@ -729,7 +774,7 @@
       },
       type: _.includes(action, 'get') ? 'GET' : 'POST',
       dataType: 'text'
-    }).done(function(text) {
+    }).then(function(text) {
       // There may be debug information appended to the end of the json string
       var footerPos = text.indexOf("\n}<");
       if (footerPos) {
@@ -745,42 +790,12 @@
   }
 
   /**
-   * Fetch list of example files for a given entity
-   */
-  function getExamples() {
-    CRM.utils.setOptions($('#example-action').prop('disabled', true).addClass('loading'), []);
-    $.getJSON(CRM.url('civicrm/ajax/apiexample', {entity: $(this).val()}))
-      .done(function(result) {
-        CRM.utils.setOptions($('#example-action').prop('disabled', false).removeClass('loading'), result);
-      });
-  }
-
-  /**
-   * Fetch and display an example file
-   */
-  function getExample() {
-    var
-      entity = $('#example-entity').val(),
-      action = $('#example-action').val();
-    if (entity && action) {
-      $('#example-result').block();
-      $.get(CRM.url('civicrm/ajax/apiexample', {file: entity + '/' + action}))
-        .done(function(result) {
-          $('#example-result').unblock().text(result);
-          prettyPrint('#example-result');
-        });
-    } else {
-      $('#example-result').text($('#example-result').attr('placeholder'));
-    }
-  }
-
-  /**
    * Fetch entity docs & actions
    */
   function getDocEntity() {
     CRM.utils.setOptions($('#doc-action').prop('disabled', true).addClass('loading'), []);
     $.getJSON(CRM.url('civicrm/ajax/apidoc', {entity: $(this).val()}))
-      .done(function(result) {
+      .then(function(result) {
         entityDoc = result.doc;
         CRM.utils.setOptions($('#doc-action').prop('disabled', false).removeClass('loading'), result.actions);
         $('#doc-result').html(result.doc);
@@ -798,7 +813,7 @@
     if (entity && action) {
       $('#doc-result').block();
       $.get(CRM.url('civicrm/ajax/apidoc', {entity: entity, action: action}))
-        .done(function(result) {
+        .then(function(result) {
           $('#doc-result').unblock().html(result.doc);
           if (result.code) {
             $('#doc-result').append(docCodeTpl(result));
@@ -828,15 +843,16 @@
    */
   function renderJoinSelector() {
     $('#api-join').hide();
-    if (!_.includes(NO_JOINS, entity) && _.includes(['get', 'getsingle'], action)) {
+    if (!_.includes(NO_JOINS, entity) && _.includes(['get', 'getsingle', 'getcount'], action)) {
       var joinable = {};
       (function recurse(fields, joinable, prefix, depth, entities) {
         _.each(fields, function(field) {
+          var name = prefix + field.name;
+          addJoinInfo(field, name);
           var entity = field.FKApiName;
-          if (entity && field.FKClassName) {
-            var name = prefix + field.name;
+          if (entity && (field.is_core_field || field.supports_joins)) {
             joinable[name] = {
-              title: field.title,
+              title: field.title + ' (' + field.FKApiName + ')',
               entity: entity,
               checked: !!joins[name]
             };
@@ -845,9 +861,15 @@
               joinable[name].children = {};
               recurse(getFieldsCache[entity+'get'].values, joinable[name].children, name + '.', depth+1, entities.concat(entity));
             }
+          } else if (field.name == 'entity_id' && fields.entity_table && fields.entity_table.options) {
+            joinable[name] = {
+              title: field.title + ' (' + ts('First select %1', {1: fields.entity_table.title}) + ')',
+              entity: '',
+              disabled: true
+            };
           }
         });
-      })(getFieldData, joinable, '', 1, [entity]);
+      })(_.cloneDeep(getFieldData), joinable, '', 1, [entity]);
       if (!_.isEmpty(joinable)) {
         // Send joinTpl as a param so it can recursively call itself to render children
         $('#api-join').show().children('div').html(joinTpl({joins: joinable, tpl: joinTpl}));
@@ -866,7 +888,7 @@
     if ($(this).is(':checked')) {
       joins[name] = ent;
       $('input.api-param-name, #api-return-value').addClass('loading');
-      getMetadata(ent, 'get').done(function() {
+      getMetadata(ent, 'get').then(function() {
         renderJoinSelector();
         populateFields(fields, entity, action, '');
         $('input.api-param-name, #api-return-value').removeClass('loading');
@@ -878,6 +900,40 @@
       renderJoinSelector();
       populateFields(fields, entity, action, '');
     }
+  }
+
+  function handleAndOr() {
+    if (!_.includes(NO_JOINS, entity) && _.includes(['get', 'getsingle', 'getcount'], action)) {
+      var or = [];
+      $('tr.api-param-row').each(function() {
+        if ($(this).next().is('tr.api-param-row') && $('input.api-param-name', this).val()) {
+          $('.api-and-or', this).show();
+        } else {
+          $(this).removeClass('or').find('.api-and-or').hide();
+        }
+      });
+      $('tr.api-param-row.or').each(function() {
+        var val = $(this).next().find('input.api-param-name').val();
+        if (val) {
+          if ($(this).prev().is('.or')) {
+            or[or.length - 1].push(val);
+          } else {
+            or.push([$('input.api-param-name', this).val(), val]);
+          }
+        }
+      });
+      if (or.length) {
+        params.options = params.options || {};
+        params.options.or = or;
+      }
+    } else {
+      $('.api-and-or').hide();
+    }
+  }
+
+  function toggleAndOr() {
+    $(this).closest('tr').toggleClass('or');
+    buildParams();
   }
 
   $(document).ready(function() {
@@ -897,7 +953,7 @@
     });
 
     // Initialize widgets
-    $('#api-entity, #example-entity, #doc-entity').crmSelect2({
+    $('#api-entity, #doc-entity').crmSelect2({
       // Add strikethough class to selection to indicate deprecated apis
       formatSelection: function(option) {
         return $(option.element).hasClass('strikethrough') ? '<span class="strikethrough">' + option.text + '</span>' : option.text;
@@ -918,6 +974,7 @@
         checkBookKeepingEntity(entity, action);
       })
       .on('change keyup', 'input.api-input, #api-params select', buildParams)
+      .on('change', '.api-param-name, .api-param-value, .api-param-op', changeFKEntity)
       .on('submit', submit);
 
     $('#api-params')
@@ -937,15 +994,20 @@
         $(this).closest('tr').remove();
         buildParams();
       })
-      .on('change', 'select.api-chain-entity', getChainedAction);
+      .on('click', '.api-and-or > span', toggleAndOr)
+      .on('change', 'select.api-chain-entity', getChainedAction)
+      .on('sortupdate', buildParams)
+      .sortable({
+        handle: '.api-sort-handle',
+        items: '.api-chain-row, .api-param-row'
+      });
     $('#api-join').on('change', 'input', onSelectJoin);
-    $('#example-entity').on('change', getExamples);
-    $('#example-action').on('change', getExample);
     $('#doc-entity').on('change', getDocEntity);
     $('#doc-action').on('change', getDocAction);
     $('#api-params-add').on('click', function(e) {
       e.preventDefault();
       addField();
+      $('tr:last-child input.api-param-name', '#api-params').select2('open');
     });
     $('#api-option-add').on('click', function(e) {
       e.preventDefault();

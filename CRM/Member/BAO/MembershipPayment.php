@@ -1,46 +1,22 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
+
+use Civi\Api4\LineItem;
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
- * $Id$
- *
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 class CRM_Member_BAO_MembershipPayment extends CRM_Member_DAO_MembershipPayment {
-
-
-  /**
-   * Class constructor.
-   */
-  public function __construct() {
-    parent::__construct();
-  }
 
   /**
    * Add the membership Payments.
@@ -53,13 +29,13 @@ class CRM_Member_BAO_MembershipPayment extends CRM_Member_DAO_MembershipPayment 
    */
   public static function create($params) {
     $hook = empty($params['id']) ? 'create' : 'edit';
-    CRM_Utils_Hook::pre($hook, 'MembershipPayment', CRM_Utils_Array::value('id', $params), $params);
+    CRM_Utils_Hook::pre($hook, 'MembershipPayment', $params['id'] ?? NULL, $params);
     $dao = new CRM_Member_DAO_MembershipPayment();
     $dao->copyValues($params);
     // We check for membership_id in case we are being called too early in the process. This is
     // cludgey but is part of the deprecation process (ie. we are trying to do everything
     // from LineItem::create with a view to eventually removing this fn & the table.
-    if (!civicrm_api3('Membership', 'getcount', array('id' => $params['membership_id']))) {
+    if (!civicrm_api3('Membership', 'getcount', ['id' => $params['membership_id']])) {
       return $dao;
     }
 
@@ -73,11 +49,15 @@ class CRM_Member_BAO_MembershipPayment extends CRM_Member_DAO_MembershipPayment 
     // table. However, at this stage we have both - there is still quite a bit of refactoring to do to set the line_iten entity_id right the first time
     // however, we can assume at this stage that any contribution id will have only one line item with that membership type in the line item table
     // OR the caller will have taken responsibility for updating the line items themselves so we will update using SQL here
+    if (!empty($params['isSkipLineItem'])) {
+      // Caller has taken responsibility for updating the line items.
+      return $dao;
+    }
     if (!isset($params['membership_type_id'])) {
-      $membership_type_id = civicrm_api3('membership', 'getvalue', array(
+      $membership_type_id = civicrm_api3('membership', 'getvalue', [
         'id' => $dao->membership_id,
         'return' => 'membership_type_id',
-      ));
+      ]);
     }
     else {
       $membership_type_id = $params['membership_type_id'];
@@ -87,11 +67,11 @@ class CRM_Member_BAO_MembershipPayment extends CRM_Member_DAO_MembershipPayment 
       SET entity_table = 'civicrm_membership', entity_id = %1
       WHERE pv.membership_type_id = %2
       AND contribution_id = %3";
-    CRM_Core_DAO::executeQuery($sql, array(
-      1 => array($dao->membership_id, 'Integer'),
-      2 => array($membership_type_id, 'Integer'),
-      3 => array($dao->contribution_id, 'Integer'),
-    ));
+    CRM_Core_DAO::executeQuery($sql, [
+      1 => [$dao->membership_id, 'Integer'],
+      2 => [$membership_type_id, 'Integer'],
+      3 => [$dao->contribution_id, 'Integer'],
+    ]);
     return $dao;
   }
 
@@ -99,18 +79,61 @@ class CRM_Member_BAO_MembershipPayment extends CRM_Member_DAO_MembershipPayment 
    * Delete membership Payments.
    *
    * @param int $id
-   *
+   * @deprecated
    * @return bool
    */
   public static function del($id) {
-    $dao = new CRM_Member_DAO_MembershipPayment();
-    $dao->id = $id;
-    $result = FALSE;
-    if ($dao->find(TRUE)) {
-      $dao->delete();
-      $result = TRUE;
+    CRM_Core_Error::deprecatedFunctionWarning('deleteRecord');
+    return (bool) self::deleteRecord(['id' => $id]);
+  }
+
+  /**
+   * Log a deprecated warning that there is a contribution with MembershipPayment records and missing LineItems
+   *
+   * @param int $contributionID
+   *
+   * @return void
+   */
+  private static function deprecatedWarning(int $contributionID) {
+    CRM_Core_Error::deprecatedWarning('ContributionID: ' . $contributionID . ' has memberships with MembershipPayment records but missing LineItems. MembershipPayment records are deprecated.');
+  }
+
+  /**
+   * Given a Membership ID we should be able to get the latest Contribution ID from the LineItems
+   * But we might not have LineItems, in which case we try to get it from the MembershipPayment record
+   *   if that exists and log a deprecation warning
+   *
+   * @param int $membershipID
+   *
+   * @return ?int
+   * @throws \CRM_Core_Exception
+   * @throws \Civi\API\Exception\UnauthorizedException
+   * @internal
+   */
+  public static function getLatestContributionIDFromLineitemAndFallbackToMembershipPayment(int $membershipID) {
+    $latestMembershipLineItem = LineItem::get(FALSE)
+      ->addSelect('contribution_id')
+      ->addWhere('entity_table', '=', 'civicrm_membership')
+      ->addWhere('entity_id', '=', $membershipID)
+      ->addOrderBy('contribution_id.receive_date', 'DESC')
+      ->execute()
+      ->first();
+    if (!empty($latestMembershipLineItem['contribution_id'])) {
+      $latestContributionID = $latestMembershipLineItem['contribution_id'];
     }
-    return $result;
+    else {
+      $membershipPayments = civicrm_api3('MembershipPayment', 'get', [
+        'sequential' => 1,
+        'return' => ["contribution_id.receive_date", "contribution_id"],
+        'membership_id' => $membershipID,
+        'options' => ['sort' => "contribution_id.receive_date DESC"],
+      ])['values'];
+      if (!empty($membershipPayments[0]['contribution_id'])) {
+        $latestContributionID = $membershipPayments[0]['contribution_id'];
+        self::deprecatedWarning($latestContributionID);
+      }
+    }
+    return $latestContributionID ?? NULL;
   }
 
 }

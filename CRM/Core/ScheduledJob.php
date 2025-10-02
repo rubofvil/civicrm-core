@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -30,70 +14,166 @@
  * by every scheduled job (cron task) in CiviCRM.
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
- * $Id$
- *
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 class CRM_Core_ScheduledJob {
 
-  var $version = 3;
+  /**
+   * Job ID
+   *
+   * @var int
+   */
+  public $id;
 
-  var $name = NULL;
+  /**
+   * Which Domain is this scheduled job for
+   *
+   * @var int
+   */
+  public $domain_id;
 
-  var $apiParams = array();
+  /**
+   * Scheduled job run frequency.
+   *
+   * @var string
+   */
+  public $run_frequency;
 
-  var $remarks = array();
+  /**
+   * When was this cron entry last run
+   *
+   * @var string
+   */
+  public $last_run;
+
+  /**
+   * When is this cron entry scheduled to run
+   *
+   * @var string
+   */
+  public $scheduled_run_date;
+
+  /**
+   * Title of the job
+   *
+   * @var string
+   */
+  public $name;
+
+  /**
+   * Description of the job
+   *
+   * @var string
+   */
+  public $description;
+
+  /**
+   * Entity of the job api call
+   *
+   * @var string
+   */
+  public $api_entity;
+
+  /**
+   * Action of the job api call
+   *
+   * @var string
+   */
+  public $api_action;
+
+  /**
+   * List of parameters to the command.
+   *
+   * @var string
+   */
+  public $parameters;
+
+  /**
+   * Is this job active?
+   *
+   * @var bool
+   */
+  public $is_active;
+
+  /**
+   * Class string
+   *
+   * Set as a URL, when the jobs template is rendered,
+   * but not set in other contexts
+   *
+   * @var string|null
+   */
+  public $action = NULL;
+
+  /**
+   * Action
+   *
+   * @var string
+   * @todo This seems to only ever be set to an empty string and passed through to job.tpl,
+   *       where it is used a HTML `class`. Can this be removed?
+   */
+  public $class;
+
+  /**
+   * Result of parsing multi-line `$parameters` string into an array
+   *
+   * @var array
+   */
+  public $apiParams = [];
+
+  /**
+   * Container for error messages
+   *
+   * @var array
+   */
+  public $remarks = [];
 
   /**
    * @param array $params
    */
   public function __construct($params) {
     foreach ($params as $name => $param) {
-      $this->$name = $param;
+      if (property_exists($this, $name)) {
+        $this->$name = $param;
+      }
     }
 
-    // version is set to 3 by default - if different number
-    // defined in params, it's replaced later on, however,
-    // it's practically useles, since it seems none of api v2
-    // will work properly in cron job setup. It might become
-    // useful when/if api v4 starts to emerge and will need
-    // testing in the cron job setup. To permanenty require
-    // hardcoded api version, it's enough to move below line
-    // under following if block.
-    $this->apiParams = array('version' => $this->version);
-
-    if (!empty($this->parameters)) {
-      $lines = explode("\n", $this->parameters);
-
-      foreach ($lines as $line) {
-        $pair = explode("=", $line);
-        if ($pair === FALSE || count($pair) != 2 || trim($pair[0]) == '' || trim($pair[1]) == '') {
-          $this->remarks[] .= 'Malformed parameters!';
-          break;
-        }
-        $this->apiParams[trim($pair[0])] = trim($pair[1]);
-      }
+    try {
+      $this->apiParams = CRM_Core_BAO_Job::parseParameters($this->parameters);
+    }
+    catch (CRM_Core_Exception $e) {
+      $this->remarks[] = $e->getMessage();
     }
   }
 
   /**
-   * @param null $date
+   * Update the last_run date of this job
    */
-  public function saveLastRun($date = NULL) {
+  public function saveLastRun() {
     $dao = new CRM_Core_DAO_Job();
     $dao->id = $this->id;
-    $dao->last_run = ($date == NULL) ? CRM_Utils_Date::currentDBDate() : CRM_Utils_Date::currentDBDate($date);
+    $dao->last_run = CRM_Utils_Date::currentDBDate();
+    $dao->last_run_end = NULL;
     $dao->save();
   }
 
   /**
-   * @return void
+   * Update the last_run date of this job
+   */
+  public function saveLastRunEnd() {
+    $dao = new CRM_Core_DAO_Job();
+    $dao->id = $this->id;
+    $dao->last_run_end = CRM_Utils_Date::currentDBDate();
+    $dao->save();
+  }
+
+  /**
+   * Delete the scheduled_run_date from this job
    */
   public function clearScheduledRunDate() {
-    CRM_Core_DAO::executeQuery('UPDATE civicrm_job SET scheduled_run_date = NULL WHERE id = %1',
-      array(
-        '1' => array($this->id, 'Integer'),
-      ));
+    CRM_Core_DAO::executeQuery('UPDATE civicrm_job SET scheduled_run_date = NULL WHERE id = %1', [
+      '1' => [$this->id, 'Integer'],
+    ]);
   }
 
   /**
@@ -154,9 +234,6 @@ class CRM_Core_ScheduledJob {
     $nextTime = strtotime($offset, $lastTime);
 
     return ($now >= $nextTime);
-  }
-
-  public function __destruct() {
   }
 
 }

@@ -1,45 +1,31 @@
 <?php
 /*
-   +--------------------------------------------------------------------+
-   | CiviCRM version 4.7                                                |
-   +--------------------------------------------------------------------+
-   | Copyright CiviCRM LLC (c) 2004-2016                                |
-   +--------------------------------------------------------------------+
-   | This file is a part of CiviCRM.                                    |
-   |                                                                    |
-   | CiviCRM is free software; you can copy, modify, and distribute it  |
-   | under the terms of the GNU Affero General Public License           |
-   | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
-   |                                                                    |
-   | CiviCRM is distributed in the hope that it will be useful, but     |
-   | WITHOUT ANY WARRANTY; without even the implied warranty of         |
-   | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
-   | See the GNU Affero General Public License for more details.        |
-   |                                                                    |
-   | You should have received a copy of the GNU Affero General Public   |
-   | License and the CiviCRM Licensing Exception along                  |
-   | with this program; if not, contact CiviCRM LLC                     |
-   | at info[AT]civicrm[DOT]org. If you have questions about the        |
-   | GNU Affero General Public License or the licensing of CiviCRM,     |
-   | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
-   +--------------------------------------------------------------------+
+ +--------------------------------------------------------------------+
+ | Copyright CiviCRM LLC. All rights reserved.                        |
+ |                                                                    |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
+ +--------------------------------------------------------------------+
  */
 
 /**
  * This class handles all REST client requests.
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 class CRM_Utils_REST {
 
   /**
    * Number of seconds we should let a REST process idle
+   * @var int
    */
-  static $rest_timeout = 0;
+  public static $rest_timeout = 0;
 
   /**
    * Cache the actual UF Class
+   * @var string
    */
   public $ufClass;
 
@@ -62,13 +48,13 @@ class CRM_Utils_REST {
    * @param string $var
    *   The string to be echoed.
    *
-   * @return string
+   * @return array
    */
   public static function ping($var = NULL) {
     $session = CRM_Core_Session::singleton();
     $key = $session->get('key');
     // $session->set( 'key', $var );
-    return self::simple(array('message' => "PONG: $key"));
+    return self::simple(['message' => "PONG: $key"]);
   }
 
   /**
@@ -78,10 +64,10 @@ class CRM_Utils_REST {
    * @return array
    */
   public static function error($message = 'Unknown Error') {
-    $values = array(
+    $values = [
       'error_message' => $message,
       'is_error' => 1,
-    );
+    ];
     return $values;
   }
 
@@ -92,7 +78,7 @@ class CRM_Utils_REST {
    * @return array
    */
   public static function simple($params) {
-    $values = array('is_error' => 0);
+    $values = ['is_error' => 0];
     $values += $params;
     return $values;
   }
@@ -129,7 +115,7 @@ class CRM_Utils_REST {
       if (!$result) {
         $result = 0;
       }
-      $result = self::simple(array('result' => $result));
+      $result = self::simple(['result' => $result]);
     }
     elseif (is_array($result)) {
       if (CRM_Utils_Array::isHierarchical($result)) {
@@ -146,10 +132,10 @@ class CRM_Utils_REST {
     if (!empty($requestParams['json'])) {
       if (!empty($requestParams['prettyprint'])) {
         // Don't set content-type header for api explorer output
-        return self::jsonFormated(array_merge($result));
+        return json_encode(array_merge($result), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
       }
       CRM_Utils_System::setHttpHeader('Content-Type', 'application/json');
-      return json_encode(array_merge($result));
+      return json_encode(array_merge($result), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     }
 
     if (isset($result['count'])) {
@@ -182,113 +168,19 @@ class CRM_Utils_REST {
   }
 
   /**
-   * @param $data
-   *
-   * @deprecated - switch to native JSON_PRETTY_PRINT when we drop support for php 5.3
-   *
-   * @return string
-   */
-  public static function jsonFormated($data) {
-    // If php is 5.4+ we can use the native method
-    if (defined('JSON_PRETTY_PRINT')) {
-      return json_encode($data, JSON_PRETTY_PRINT + JSON_UNESCAPED_SLASHES + JSON_UNESCAPED_UNICODE);
-    }
-
-    // PHP 5.3 shim
-    $json = str_replace('\/', '/', json_encode($data));
-    $tabcount = 0;
-    $result = '';
-    $inquote = FALSE;
-    $inarray = FALSE;
-    $ignorenext = FALSE;
-
-    $tab = "\t";
-    $newline = "\n";
-
-    for ($i = 0; $i < strlen($json); $i++) {
-      $char = $json[$i];
-
-      if ($ignorenext) {
-        $result .= $char;
-        $ignorenext = FALSE;
-      }
-      else {
-        switch ($char) {
-          case '{':
-            if ($inquote) {
-              $result .= $char;
-            }
-            else {
-              $inarray = FALSE;
-              $tabcount++;
-              $result .= $char . $newline . str_repeat($tab, $tabcount);
-            }
-            break;
-
-          case '}':
-            if ($inquote) {
-              $result .= $char;
-            }
-            else {
-              $tabcount--;
-              $result = trim($result) . $newline . str_repeat($tab, $tabcount) . $char;
-            }
-            break;
-
-          case ',':
-            if ($inquote || $inarray) {
-              $result .= $char;
-            }
-            else {
-              $result .= $char . $newline . str_repeat($tab, $tabcount);
-            }
-            break;
-
-          case '"':
-            $inquote = !$inquote;
-            $result .= $char;
-            break;
-
-          case '\\':
-            if ($inquote) {
-              $ignorenext = TRUE;
-            }
-            $result .= $char;
-            break;
-
-          case '[':
-            $inarray = TRUE;
-            $result .= $char;
-            break;
-
-          case ']':
-            $inarray = FALSE;
-            $result .= $char;
-            break;
-
-          default:
-            $result .= $char;
-        }
-      }
-    }
-
-    return $result;
-  }
-
-  /**
    * @return array|int
    */
   public static function handle() {
     $requestParams = CRM_Utils_Request::exportValues();
 
     // Get the function name being called from the q parameter in the query string
-    $q = CRM_Utils_Array::value('q', $requestParams);
+    $q = $requestParams['q'] ?? NULL;
     // or for the rest interface, from fnName
-    $r = CRM_Utils_Array::value('fnName', $requestParams);
+    $r = $requestParams['fnName'] ?? NULL;
     if (!empty($r)) {
       $q = $r;
     }
-    $entity = CRM_Utils_Array::value('entity', $requestParams);
+    $entity = $requestParams['entity'] ?? NULL;
     if (empty($entity) && !empty($q)) {
       $args = explode('/', $q);
       // If the function isn't in the civicrm namespace, reject the request.
@@ -301,7 +193,6 @@ class CRM_Utils_REST {
       if ((count($args) != 3) && ($args[1] != 'ping')) {
         return self::error('Unknown function invocation.');
       }
-      $store = NULL;
 
       if ($args[1] == 'ping') {
         return self::ping();
@@ -309,18 +200,18 @@ class CRM_Utils_REST {
     }
     else {
       // or the api format (entity+action)
-      $args = array();
+      $args = [];
       $args[0] = 'civicrm';
-      $args[1] = CRM_Utils_Array::value('entity', $requestParams);
-      $args[2] = CRM_Utils_Array::value('action', $requestParams);
+      $args[1] = $requestParams['entity'] ?? NULL;
+      $args[2] = $requestParams['action'] ?? NULL;
     }
 
     // Everyone should be required to provide the server key, so the whole
     // interface can be disabled in more change to the configuration file.
     // first check for civicrm site key
     if (!CRM_Utils_System::authenticateKey(FALSE)) {
-      $docLink = CRM_Utils_System::docURL2("Managing Scheduled Jobs", TRUE, NULL, NULL, NULL, "wiki");
-      $key = CRM_Utils_Array::value('key', $requestParams);
+      $docLink = CRM_Utils_System::docURL2('sysadmin/setup/jobs', TRUE);
+      $key = $requestParams['key'] ?? NULL;
       if (empty($key)) {
         return self::error("FATAL: mandatory param 'key' missing. More info at: " . $docLink);
       }
@@ -330,7 +221,7 @@ class CRM_Utils_REST {
     // At this point we know we are not calling ping which does not require authentication.
     // Therefore we now need a valid server key and API key.
     // Check and see if a valid secret API key is provided.
-    $api_key = CRM_Utils_Request::retrieve('api_key', 'String', $store, FALSE, NULL, 'REQUEST');
+    $api_key = CRM_Utils_Request::retrieve('api_key', 'String');
     if (!$api_key || strtolower($api_key) == 'null') {
       return self::error("FATAL: mandatory param 'api_key' (user key) missing");
     }
@@ -370,39 +261,35 @@ class CRM_Utils_REST {
         return self::error('Unknown function invocation.');
       }
 
-      return call_user_func(array($params['className'], $params['fnName']), $params);
+      return call_user_func([$params['className'], $params['fnName']], $params);
     }
 
     if (!array_key_exists('version', $params)) {
       $params['version'] = 3;
     }
 
-    if ($params['version'] == 2) {
-      $result['is_error'] = 1;
-      $result['error_message'] = "FATAL: API v2 not accessible from ajax/REST";
-      $result['deprecated'] = "Please upgrade to API v3";
-      return $result;
-    }
-
     if ($_SERVER['REQUEST_METHOD'] == 'GET' &&
-       strtolower(substr($args[2], 0, 3)) != 'get' &&
-       strtolower($args[2] != 'check')) {
+      strtolower(substr($args[2], 0, 3)) != 'get' &&
+      strtolower($args[2] != 'check')) {
       // get only valid for non destructive methods
       require_once 'api/v3/utils.php';
       return civicrm_api3_create_error("SECURITY: All requests that modify the database must be http POST, not GET.",
-        array(
-          'IP' => $_SERVER['REMOTE_ADDR'],
+        [
+          'IP' => CRM_Utils_System::ipAddress(),
           'level' => 'security',
           'referer' => $_SERVER['HTTP_REFERER'],
           'reason' => 'Destructive HTTP GET',
-        )
+        ]
       );
     }
 
     // trap all fatal errors
-    $errorScope = CRM_Core_TemporaryErrorScope::create(array('CRM_Utils_REST', 'fatal'));
-    $result = civicrm_api($args[1], $args[2], $params);
-    unset($errorScope);
+    try {
+      $result = civicrm_api($args[1], $args[2], $params);
+    }
+    catch (Exception $e) {
+      return self::error($e->getMessage());
+    }
 
     if ($result === FALSE) {
       return self::error('Unknown error.');
@@ -415,21 +302,25 @@ class CRM_Utils_REST {
    */
   public static function &buildParamList() {
     $requestParams = CRM_Utils_Request::exportValues();
-    $params = array();
+    $params = [];
 
-    $skipVars = array(
+    $skipVars = [
       'q' => 1,
       'json' => 1,
       'key' => 1,
       'api_key' => 1,
       'entity' => 1,
       'action' => 1,
-    );
+    ];
 
     if (array_key_exists('json', $requestParams) && $requestParams['json'][0] == "{") {
       $params = json_decode($requestParams['json'], TRUE);
       if ($params === NULL) {
-        CRM_Utils_JSON::output(array('is_error' => 1, 'error_message', 'Unable to decode supplied JSON.'));
+        CRM_Utils_JSON::output([
+          'is_error' => 1,
+          0 => 'error_message',
+          1 => 'Unable to decode supplied JSON.',
+        ]);
       }
     }
     foreach ($requestParams as $n => $v) {
@@ -446,11 +337,13 @@ class CRM_Utils_REST {
   }
 
   /**
-   * @param $pearError
+   * Unused function from the dark ages before PHP Exceptions
+   * @deprecated
+   * @param PEAR_Error $pearError
    */
   public static function fatal($pearError) {
     CRM_Utils_System::setHttpHeader('Content-Type', 'text/xml');
-    $error = array();
+    $error = [];
     $error['code'] = $pearError->getCode();
     $error['error_message'] = $pearError->getMessage();
     $error['mode'] = $pearError->getMode();
@@ -471,7 +364,7 @@ class CRM_Utils_REST {
   public static function loadTemplate() {
     $request = CRM_Utils_Request::retrieve('q', 'String');
     if (FALSE !== strpos($request, '..')) {
-      die ("SECURITY FATAL: the url can't contain '..'. Please report the issue on the forum at civicrm.org");
+      die("SECURITY FATAL: the url can't contain '..'. Please report the issue on the forum at civicrm.org");
     }
 
     $request = explode('/', $request);
@@ -483,31 +376,27 @@ class CRM_Utils_REST {
     CRM_Utils_System::setTitle("$entity::$tplfile inline $tpl");
     if (!$smarty->template_exists($tpl)) {
       CRM_Utils_System::setHttpHeader("Status", "404 Not Found");
-      die ("Can't find the requested template file templates/$tpl");
+      die("Can't find the requested template file templates/$tpl");
     }
-    if (array_key_exists('id', $_GET)) {// special treatmenent, because it's often used
-      $smarty->assign('id', (int) $_GET['id']);// an id is always positive
+    // special treatmenent, because it's often used
+    if (array_key_exists('id', $_GET)) {
+      // an id is always positive
+      $smarty->assign('id', (int) $_GET['id']);
     }
     $pos = strpos(implode(array_keys($_GET)), '<');
 
     if ($pos !== FALSE) {
-      die ("SECURITY FATAL: one of the param names contains &lt;");
+      die("SECURITY FATAL: one of the param names contains &lt;");
     }
     $param = array_map('htmlentities', $_GET);
     unset($param['q']);
-    $smarty->assign_by_ref("request", $param);
+    $smarty->assign("request", $param);
 
-    if (!array_key_exists('HTTP_X_REQUESTED_WITH', $_SERVER) ||
-      $_SERVER['HTTP_X_REQUESTED_WITH'] != "XMLHttpRequest"
-    ) {
+    if (!self::isWebServiceRequest()) {
 
       $smarty->assign('tplFile', $tpl);
       $config = CRM_Core_Config::singleton();
       $content = $smarty->fetch('CRM/common/' . strtolower($config->userFramework) . '.tpl');
-
-      if (!defined('CIVICRM_UF_HEAD') && $region = CRM_Core_Region::instance('html-header', FALSE)) {
-        CRM_Utils_System::addHTMLHead($region->render(''));
-      }
       CRM_Utils_System::appendTPLFile($tpl, $content);
 
       return CRM_Utils_System::theme($content);
@@ -532,17 +421,14 @@ class CRM_Utils_REST {
 
     require_once 'api/v3/utils.php';
     $config = CRM_Core_Config::singleton();
-    if (!$config->debug && (!array_key_exists('HTTP_X_REQUESTED_WITH', $_SERVER) ||
-        $_SERVER['HTTP_X_REQUESTED_WITH'] != "XMLHttpRequest"
-      )
-    ) {
+    if (!$config->debug && !self::isWebServiceRequest()) {
       $error = civicrm_api3_create_error("SECURITY ALERT: Ajax requests can only be issued by javascript clients, eg. CRM.api3().",
-        array(
-          'IP' => $_SERVER['REMOTE_ADDR'],
+        [
+          'IP' => CRM_Utils_System::ipAddress(),
           'level' => 'security',
           'referer' => $_SERVER['HTTP_REFERER'],
           'reason' => 'CSRF suspected',
-        )
+        ]
       );
       CRM_Utils_JSON::output($error);
     }
@@ -555,26 +441,29 @@ class CRM_Utils_REST {
     if (!empty($requestParams['json'])) {
       $params = json_decode($requestParams['json'], TRUE);
     }
-    $entity = CRM_Utils_String::munge(CRM_Utils_Array::value('entity', $requestParams));
-    $action = CRM_Utils_String::munge(CRM_Utils_Array::value('action', $requestParams));
+    $entity = CRM_Utils_String::munge($requestParams['entity'] ?? '');
+    $action = CRM_Utils_String::munge($requestParams['action'] ?? '');
     if (!is_array($params)) {
-      CRM_Utils_JSON::output(array(
-          'is_error' => 1,
-          'error_message' => 'invalid json format: ?{"param_with_double_quote":"value"}',
-        ));
+      CRM_Utils_JSON::output([
+        'is_error' => 1,
+        'error_message' => 'invalid json format: ?{"param_with_double_quote":"value"}',
+      ]);
     }
 
     $params['check_permissions'] = TRUE;
-    $params['version'] = 3;
-    $_GET['json'] = $requestParams['json'] = 1; // $requestParams is local-only; this line seems pointless unless there's a side-effect influencing other functions
+    // $requestParams is local-only; this line seems pointless unless there's a side-effect influencing other functions
+    $_GET['json'] = $requestParams['json'] = 1;
     if (!$params['sequential']) {
       $params['sequential'] = 1;
     }
 
     // trap all fatal errors
-    $errorScope = CRM_Core_TemporaryErrorScope::create(array('CRM_Utils_REST', 'fatal'));
-    $result = civicrm_api($entity, $action, $params);
-    unset($errorScope);
+    try {
+      $result = civicrm_api3($entity, $action, $params);
+    }
+    catch (Exception $e) {
+      $result = self::error($e->getMessage());
+    }
 
     echo self::output($result);
 
@@ -593,40 +482,39 @@ class CRM_Utils_REST {
     // restrict calls to this etc
     // the request has to be sent by an ajax call. First line of protection against csrf
     $config = CRM_Core_Config::singleton();
-    if (!$config->debug &&
-      (!array_key_exists('HTTP_X_REQUESTED_WITH', $_SERVER) ||
-        $_SERVER['HTTP_X_REQUESTED_WITH'] != "XMLHttpRequest"
-      )
-    ) {
+    if (!$config->debug && !self::isWebServiceRequest()) {
       require_once 'api/v3/utils.php';
       $error = civicrm_api3_create_error("SECURITY ALERT: Ajax requests can only be issued by javascript clients, eg. CRM.api3().",
-        array(
-          'IP' => $_SERVER['REMOTE_ADDR'],
+        [
+          'IP' => CRM_Utils_System::ipAddress(),
           'level' => 'security',
           'referer' => $_SERVER['HTTP_REFERER'],
           'reason' => 'CSRF suspected',
-        )
+        ]
       );
       CRM_Utils_JSON::output($error);
     }
 
-    $q = CRM_Utils_Array::value('fnName', $requestParams);
+    $q = $requestParams['fnName'] ?? NULL;
     if (!$q) {
-      $entity = CRM_Utils_Array::value('entity', $requestParams);
-      $action = CRM_Utils_Array::value('action', $requestParams);
+      $entity = $requestParams['entity'] ?? NULL;
+      $action = $requestParams['action'] ?? NULL;
       if (!$entity || !$action) {
-        $err = array('error_message' => 'missing mandatory params "entity=" or "action="', 'is_error' => 1);
+        $err = [
+          'error_message' => 'missing mandatory params "entity=" or "action="',
+          'is_error' => 1,
+        ];
         echo self::output($err);
         CRM_Utils_System::civiExit();
       }
-      $args = array('civicrm', $entity, $action);
+      $args = ['civicrm', $entity, $action];
     }
     else {
       $args = explode('/', $q);
     }
 
     // get the class name, since all ajax functions pass className
-    $className = CRM_Utils_Array::value('className', $requestParams);
+    $className = $requestParams['className'] ?? NULL;
 
     // If the function isn't in the civicrm namespace, reject the request.
     if (($args[0] != 'civicrm' && count($args) != 3) && !$className) {
@@ -651,14 +539,14 @@ class CRM_Utils_REST {
    * @return array
    */
   public static function processMultiple() {
-    $output = array();
+    $output = [];
     foreach (json_decode($_REQUEST['json'], TRUE) as $key => $call) {
-      $args = array(
+      $args = [
         'civicrm',
         $call[0],
         $call[1],
-      );
-      $output[$key] = self::process($args, CRM_Utils_Array::value(2, $call, array()));
+      ];
+      $output[$key] = self::process($args, $call[2] ?? []);
     }
     return $output;
   }
@@ -669,15 +557,16 @@ class CRM_Utils_REST {
    */
   public function loadCMSBootstrap() {
     $requestParams = CRM_Utils_Request::exportValues();
-    $q = CRM_Utils_Array::value('q', $requestParams);
+    $q = $requestParams['q'] ?? '';
     $args = explode('/', $q);
 
     // Proceed with bootstrap for "?entity=X&action=Y"
     // Proceed with bootstrap for "?q=civicrm/X/Y" but not "?q=civicrm/ping"
     if (!empty($q)) {
       if (count($args) == 2 && $args[1] == 'ping') {
-        CRM_Utils_System::loadBootStrap(array(), FALSE, FALSE);
-        return NULL; // this is pretty wonky but maybe there's some reason I can't see
+        CRM_Utils_System::loadBootStrap([], FALSE, FALSE);
+        // this is pretty wonky but maybe there's some reason I can't see
+        return NULL;
       }
       if (count($args) != 3) {
         return self::error('ERROR: Malformed REST path');
@@ -689,10 +578,7 @@ class CRM_Utils_REST {
     }
 
     if (!CRM_Utils_System::authenticateKey(FALSE)) {
-      // FIXME: At time of writing, this doesn't actually do anything because
-      // authenticateKey abends, but that's a bad behavior which sends a
-      // malformed response.
-      CRM_Utils_System::loadBootStrap(array(), FALSE, FALSE);
+      CRM_Utils_System::loadBootStrap([], FALSE, FALSE);
       return self::error('Failed to authenticate key');
     }
 
@@ -701,7 +587,7 @@ class CRM_Utils_REST {
       $store = NULL;
       $api_key = CRM_Utils_Request::retrieve('api_key', 'String', $store, FALSE, NULL, 'REQUEST');
       if (empty($api_key)) {
-        CRM_Utils_System::loadBootStrap(array(), FALSE, FALSE);
+        CRM_Utils_System::loadBootStrap([], FALSE, FALSE);
         return self::error("FATAL: mandatory param 'api_key' (user key) missing");
       }
       $contact_id = CRM_Core_DAO::getFieldValue('CRM_Contact_DAO_Contact', $api_key, 'id', 'api_key');
@@ -711,19 +597,66 @@ class CRM_Utils_REST {
     }
 
     if ($uid && $contact_id) {
-      CRM_Utils_System::loadBootStrap(array('uid' => $uid), TRUE, FALSE);
+      CRM_Utils_System::loadBootStrap(['uid' => $uid], TRUE, FALSE);
       $session = CRM_Core_Session::singleton();
       $session->set('ufID', $uid);
       $session->set('userID', $contact_id);
       CRM_Core_DAO::executeQuery('SET @civicrm_user_id = %1',
-        array(1 => array($contact_id, 'Integer'))
+        [1 => [$contact_id, 'Integer']]
       );
       return NULL;
     }
     else {
-      CRM_Utils_System::loadBootStrap(array(), FALSE, FALSE);
+      CRM_Utils_System::loadBootStrap([], FALSE, FALSE);
       return self::error('ERROR: No CMS user associated with given api-key');
     }
+  }
+
+  /**
+   * Does this request appear to be a web-service request?
+   *
+   * It is important to distinguish regular browser-page-loads from web-service-requests. Regular
+   * page-loads can be CSRF vectors, and we don't web-services to run via CSRF.
+   *
+   * @return bool
+   *   TRUE if the current request appears to either XMLHttpRequest or non-browser-based.
+   *       Indicated by either (a) custom headers like `X-Request-With`/`X-Civi-Auth`
+   *       or (b) strong-secret-params that could theoretically appear in URL bar but which
+   *       cannot be meaningfully forged for CSRF purposes (like `?api_key=SECRET` or `?_authx=SECRET`).
+   *   FALSE if the current request looks like a standard browser request. This request may be generated by
+   *       <A HREF>, <IFRAME>, <IMG>, `Location:`, or similar CSRF vector.
+   */
+  public static function isWebServiceRequest(): bool {
+    if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+      return TRUE;
+    }
+
+    if (($_SERVER['HTTP_X_REQUESTED_WITH'] ?? NULL) === 'XMLHttpRequest') {
+      return TRUE;
+    }
+
+    // If authx is enabled, and if the user gives a credential, it will store metadata.
+    $authx = \CRM_Core_Session::singleton()->get('authx');
+    $allowFlows = [
+      // Some flows are resistant to CSRF. Allow these:
+
+      // <legacyrest> Current request has valid `?api_key=SECRET&key=SECRET` ==> Strong-secret params
+      'legacyrest',
+
+      // <param> Current request has valid `?_authx=SECRET` ==> Strong-secret param
+      'param',
+
+      // <xheader> Current request has valid `X-Civi-Auth:` ==> Custom header AND strong-secret param
+      'xheader',
+
+      // Other flows are not resistant to CSRF on their own (need combo w/`X-Requested-With:`).
+      // Ignore these:
+      // <login> Relies on a session `Cookie:` (which browsers re-send automatically).
+      // <auto> First request might be resistant, but all others use session `Cookie:`.
+      // <header> Browsers often retain list of credentials and re-send automatically.
+    ];
+
+    return (!empty($authx) && in_array($authx['flow'], $allowFlows));
   }
 
 }

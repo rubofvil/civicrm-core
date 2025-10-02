@@ -1,34 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- --------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -37,6 +21,13 @@
 class CRM_Campaign_Page_Vote extends CRM_Core_Page {
   private $_surveyId;
   private $_interviewerId;
+
+  /**
+   * Tab key => label
+   *
+   * @var array
+   */
+  private $tabs = [];
 
   /**
    * @return mixed
@@ -70,16 +61,16 @@ class CRM_Campaign_Page_Vote extends CRM_Core_Page {
   }
 
   public function browse() {
-    $this->_tabs = array(
+    $this->tabs = [
       'reserve' => ts('Reserve Respondents'),
       'interview' => ts('Interview Respondents'),
-    );
+    ];
 
     $this->_surveyId = CRM_Utils_Request::retrieve('sid', 'Positive', $this);
     $this->_interviewerId = CRM_Utils_Request::retrieve('cid', 'Positive', $this);
 
     $subPageType = CRM_Utils_Request::retrieve('type', 'String', $this);
-    if ($subPageType) {
+    if ($subPageType && array_key_exists($subPageType, $this->tabs)) {
       $session = CRM_Core_Session::singleton();
       $session->pushUserContext(CRM_Utils_System::url('civicrm/campaign/vote', "reset=1&subPage={$subPageType}"));
       //load the data in tabs.
@@ -93,11 +84,11 @@ class CRM_Campaign_Page_Vote extends CRM_Core_Page {
 
     CRM_Core_Resources::singleton()
       ->addScriptFile('civicrm', 'templates/CRM/common/TabHeader.js', 1, 'html-header')
-      ->addSetting(array(
-        'tabSettings' => array(
-          'active' => strtolower(CRM_Utils_Array::value('subPage', $_GET, 'reserve')),
-        ),
-      ));
+      ->addSetting([
+        'tabSettings' => [
+          'active' => strtolower($_GET['subPage'] ?? 'reserve'),
+        ],
+      ]);
   }
 
   /**
@@ -110,17 +101,16 @@ class CRM_Campaign_Page_Vote extends CRM_Core_Page {
   }
 
   public function buildTabs() {
-    $allTabs = array();
-    foreach ($this->_tabs as $name => $title) {
+    $allTabs = [];
+    foreach ($this->tabs as $name => $title) {
       // check for required permissions.
-      if (!CRM_Core_Permission::check(array(
-          array(
+      if (!CRM_Core_Permission::check([
+          [
             'manage campaign',
             'administer CiviCampaign',
             "{$name} campaign contacts",
-          ),
-        ))
-      ) {
+          ],
+      ])) {
         continue;
       }
 
@@ -131,15 +121,16 @@ class CRM_Campaign_Page_Vote extends CRM_Core_Page {
       if ($this->_interviewerId) {
         $urlParams .= "&cid={$this->_interviewerId}";
       }
-      $allTabs[$name] = array(
+      $allTabs[$name] = [
         'title' => $title,
         'valid' => TRUE,
         'active' => TRUE,
         'link' => CRM_Utils_System::url('civicrm/campaign/vote', $urlParams),
-      );
+      ];
     }
 
-    $this->assign('tabHeader', empty($allTabs) ? FALSE : $allTabs);
+    $tabs = empty($allTabs) ? [] : \CRM_Core_Smarty::setRequiredTabTemplateKeys($allTabs);
+    $this->assign('tabHeader', $tabs);
   }
 
 }

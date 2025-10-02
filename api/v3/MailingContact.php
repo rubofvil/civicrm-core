@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -59,6 +43,9 @@ function _civicrm_api3_mailing_contact_getresults($params, $count) {
   }
   $options  = _civicrm_api3_get_options_from_params($params, TRUE, 'contribution', 'get');
   $fnName = '_civicrm_api3_mailing_contact_get_' . strtolower($params['type']);
+  if (!function_exists($fnName)) {
+    throw new CRM_Core_Exception('Invalid mailing type: ' . $params['type']);
+  }
   return $fnName(
       $params['contact_id'],
       $options['offset'],
@@ -75,34 +62,35 @@ function _civicrm_api3_mailing_contact_getresults($params, $count) {
  *   Array of parameters determined by getfields.
  */
 function _civicrm_api3_mailing_contact_get_spec(&$params) {
-  $params['contact_id'] = array(
+  $params['contact_id'] = [
     'api.required' => 1,
     'title' => 'Contact ID',
     'type' => CRM_Utils_Type::T_INT,
-  );
+  ];
 
-  $params['type'] = array(
+  $params['type'] = [
     'api.default' => 'Delivered',
-    'title' => 'Type', // doesn't really explain the field - but not sure I understand it to explain it better
+    // doesn't really explain the field - but not sure I understand it to explain it better
+    'title' => 'Type',
     'type' => CRM_Utils_Type::T_STRING,
-    'options' => array(
+    'options' => [
       'Delivered' => 'Delivered',
       'Bounced' => 'Bounced',
-    ),
-  );
+    ],
+  ];
 }
 
 /**
  * Helper function for mailing contact queries.
  *
  * @param int $contactID
- * @param $offset
- * @param $limit
- * @param $selectFields
- * @param $fromClause
- * @param $whereClause
- * @param $sort
- * @param $getCount
+ * @param int $offset
+ * @param int $limit
+ * @param array|null $selectFields
+ * @param string|null $fromClause
+ * @param string|null $whereClause
+ * @param string|null $sort
+ * @param bool $getCount
  *
  * @return array
  */
@@ -131,20 +119,20 @@ AND        meq.contact_id = %1
 GROUP BY   m.id
 ";
 
-    $qParams = array(
-      1 => array($contactID, 'Integer'),
-    );
+    $qParams = [
+      1 => [$contactID, 'Integer'],
+    ];
     $dao = CRM_Core_DAO::executeQuery($sql, $qParams);
 
     $results = $dao->N;
   }
   else {
-    $defaultFields = array(
+    $defaultFields = [
       'm.id'       => 'mailing_id',
       'm.subject'  => 'subject',
       'c.id' => 'creator_id',
       'c.sort_name' => 'creator_name',
-    );
+    ];
 
     if ($selectFields) {
       $fields = array_merge($selectFields, $defaultFields);
@@ -153,16 +141,18 @@ GROUP BY   m.id
       $fields = $defaultFields;
     }
 
-    $select = array();
+    $select = [];
     foreach ($fields as $n => $l) {
       $select[] = "$n as $l";
     }
     $select = implode(', ', $select);
 
-    $orderBy = 'ORDER BY j.start_date DESC';
+    $orderBy = 'ORDER BY MIN(j.start_date) DESC';
     if ($sort) {
       $orderBy = "ORDER BY $sort";
     }
+
+    $groupBy = CRM_Contact_BAO_Query::getGroupByFromSelectColumns(array_keys($fields), "m.id");
 
     $sql = "
 SELECT     $select
@@ -174,7 +164,7 @@ INNER JOIN civicrm_mailing_event_queue meq ON meq.job_id = j.id
 WHERE      j.is_test = 0
 AND        meq.contact_id = %1
            $whereClause
-GROUP BY   m.id
+{$groupBy}
 {$orderBy}
 ";
 
@@ -184,14 +174,14 @@ LIMIT %2, %3
 ";
     }
 
-    $qParams = array(
-      1 => array($contactID, 'Integer'),
-      2 => array($offset, 'Integer'),
-      3 => array($limit, 'Integer'),
-    );
+    $qParams = [
+      1 => [$contactID, 'Integer'],
+      2 => [$offset, 'Integer'],
+      3 => [$limit, 'Integer'],
+    ];
     $dao = CRM_Core_DAO::executeQuery($sql, $qParams);
 
-    $results = array();
+    $results = [];
     while ($dao->fetch()) {
       foreach ($fields as $n => $l) {
         $results[$dao->mailing_id][$l] = $dao->$l;
@@ -206,10 +196,10 @@ LIMIT %2, %3
  * Get delivered mailing contacts.
  *
  * @param int $contactID
- * @param $offset
- * @param $limit
- * @param $sort
- * @param $getCount
+ * @param int $offset
+ * @param int $limit
+ * @param string|null $sort
+ * @param bool $getCount
  *
  * @return array
  */
@@ -220,7 +210,7 @@ function _civicrm_api3_mailing_contact_get_delivered(
   $sort,
   $getCount
 ) {
-  $selectFields = array('med.time_stamp' => 'start_date');
+  $selectFields = ['med.time_stamp' => 'start_date'];
 
   $fromClause = "
 INNER JOIN civicrm_mailing_event_delivered med ON med.event_queue_id = meq.id
@@ -247,10 +237,10 @@ AND        meb.id IS NULL
  * Get bounced mailing contact records.
  *
  * @param int $contactID
- * @param $offset
- * @param $limit
- * @param $sort
- * @param $getCount
+ * @param int $offset
+ * @param int $limit
+ * @param string|null $sort
+ * @param bool $getCount
  *
  * @return array
  */

@@ -1,34 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -56,7 +40,8 @@ class CRM_Campaign_Form_Petition_Signature extends CRM_Core_Form {
   /**
    * The contact type
    *
-   * @var string ("Individual"/"Household"/"Organization"). Never been tested for something else than Individual
+   * @var string
+   * ("Individual"/"Household"/"Organization"). Never been tested for something else than Individual
    */
   protected $_ctype = 'Individual';
 
@@ -89,7 +74,7 @@ class CRM_Campaign_Form_Petition_Signature extends CRM_Core_Form {
   public $_activityProfileFields;
 
   /**
-   * The id of the survey (petition) we are proceessing
+   * The id of the survey (petition) we are processing
    *
    * @var int
    */
@@ -132,6 +117,25 @@ class CRM_Campaign_Form_Petition_Signature extends CRM_Core_Form {
   protected $_image_URL;
 
   /**
+   * Prevent double clicks from creating duplicate or blank records.
+   *
+   * @var bool
+   */
+  public $submitOnce = TRUE;
+
+  protected array $forceEmailConfirmed = [];
+
+  /**
+   * @var CRM_Campaign_BAO_Petition
+   */
+  protected $bao;
+
+  /**
+   * @var array
+   */
+  protected $petition;
+
+  /**
    */
   public function __construct() {
     parent::__construct();
@@ -167,6 +171,27 @@ class CRM_Campaign_Form_Petition_Signature extends CRM_Core_Form {
     return $session->get('userID');
   }
 
+  /**
+   * Get the active UFGroups (profiles) on this form
+   * Many forms load one or more UFGroups (profiles).
+   * This provides a standard function to retrieve the IDs of those profiles from the form
+   * so that you can implement things such as "is is_captcha field set on any of the active profiles on this form?"
+   *
+   * NOT SUPPORTED FOR USE OUTSIDE CORE EXTENSIONS - Added for reCAPTCHA core extension.
+   *
+   * @return array
+   */
+  public function getUFGroupIDs() {
+    $ufGroupIDs = [];
+    if (!empty($this->_contactProfileId)) {
+      $ufGroupIDs[] = $this->_contactProfileId;
+    }
+    if (!empty($this->_activityProfileId)) {
+      $ufGroupIDs[] = $this->_activityProfileId;
+    }
+    return $ufGroupIDs;
+  }
+
   public function preProcess() {
     $this->bao = new CRM_Campaign_BAO_Petition();
     $this->_mode = self::MODE_CREATE;
@@ -176,18 +201,21 @@ class CRM_Campaign_Form_Petition_Signature extends CRM_Core_Form {
 
     //some sanity checks
     if (!$this->_surveyId) {
-      CRM_Core_Error::fatal('Petition id is not valid. (it needs a "sid" in the url).');
+      CRM_Core_Error::statusBounce(ts('Petition id is not valid. (it needs a "sid" in the url).'));
       return;
     }
     //check petition is valid and active
     $params['id'] = $this->_surveyId;
-    $this->petition = array();
+    $this->petition = [];
     CRM_Campaign_BAO_Survey::retrieve($params, $this->petition);
     if (empty($this->petition)) {
-      CRM_Core_Error::fatal('Petition doesn\'t exist.');
+      CRM_Core_Error::statusBounce(ts('Petition doesn\'t exist.'));
     }
     if ($this->petition['is_active'] == 0) {
-      CRM_Core_Error::fatal('Petition is no longer active.');
+      $this->assign('isActive', FALSE);
+    }
+    else {
+      $this->assign('isActive', TRUE);
     }
 
     //get userID from session
@@ -201,19 +229,19 @@ class CRM_Campaign_Form_Petition_Signature extends CRM_Core_Form {
 
     // add the custom contact and activity profile fields to the signature form
 
-    $ufJoinParams = array(
+    $ufJoinParams = [
       'entity_id' => $this->_surveyId,
       'entity_table' => 'civicrm_survey',
       'module' => 'CiviCampaign',
       'weight' => 2,
-    );
+    ];
 
     $this->_contactProfileId = CRM_Core_BAO_UFJoin::findUFGroupId($ufJoinParams);
     if ($this->_contactProfileId) {
       $this->_contactProfileFields = CRM_Core_BAO_UFGroup::getFields($this->_contactProfileId, FALSE, CRM_Core_Action::ADD);
     }
     if (!isset($this->_contactProfileFields['email-Primary'])) {
-      CRM_Core_Error::fatal('The contact profile needs to contain the primary email address field');
+      CRM_Core_Error::statusBounce(ts('The contact profile needs to contain the primary email address field'));
     }
 
     $ufJoinParams['weight'] = 1;
@@ -224,14 +252,14 @@ class CRM_Campaign_Form_Petition_Signature extends CRM_Core_Form {
     }
 
     $this->setDefaultValues();
-    CRM_Utils_System::setTitle($this->petition['title']);
+    $this->setTitle($this->petition['title']);
   }
 
   /**
    * Set default values for the form.
    */
   public function setDefaultValues() {
-    $this->_defaults = array();
+    $this->_defaults = [];
     if ($this->_contactId) {
       CRM_Core_BAO_UFGroup::setProfileDefaults($this->_contactId, $this->_contactProfileFields, $this->_defaults, TRUE);
       if ($this->_activityProfileId) {
@@ -296,14 +324,13 @@ class CRM_Campaign_Form_Petition_Signature extends CRM_Core_Form {
       $this->buildCustom($this->_activityProfileId, 'petitionActivityProfile');
     }
     // add buttons
-    $this->addButtons(array(
-        array(
-          'type' => 'upload',
-          'name' => ts('Sign the Petition'),
-          'isDefault' => TRUE,
-        ),
-      )
-    );
+    $this->addButtons([
+      [
+        'type' => 'upload',
+        'name' => ts('Sign the Petition'),
+        'isDefault' => TRUE,
+      ],
+    ]);
   }
 
   /**
@@ -318,7 +345,7 @@ class CRM_Campaign_Form_Petition_Signature extends CRM_Core_Form {
    * @return array|bool
    */
   public static function formRule($fields, $files, $errors) {
-    $errors = array();
+    $errors = [];
 
     return empty($errors) ? TRUE : $errors;
   }
@@ -330,13 +357,15 @@ class CRM_Campaign_Form_Petition_Signature extends CRM_Core_Form {
     $tag_name = Civi::settings()->get('tag_unconfirmed');
 
     if ($tag_name) {
-      // Check if contact 'email confirmed' tag exists, else create one
+      // Check if contact 'Unconfirmed' tag exists, else create one
       // This should be in the petition module initialise code to create a default tag for this
       $tag_params['name'] = $tag_name;
       $tag_params['version'] = 3;
       $tag = civicrm_api('tag', 'get', $tag_params);
       if ($tag['count'] == 0) {
         //create tag
+        $tag_params['label'] = ts('Unconfirmed');
+        $tag_params['color'] = '#ffdd00';
         $tag_params['description'] = $tag_name;
         $tag_params['is_reserved'] = 1;
         $tag_params['used_for'] = 'civicrm_contact';
@@ -347,16 +376,6 @@ class CRM_Campaign_Form_Petition_Signature extends CRM_Core_Form {
 
     // export the field values to be used for saving the profile form
     $params = $this->controller->exportValues($this->_name);
-
-    $session = CRM_Core_Session::singleton();
-    // format params
-    $params['last_modified_id'] = $session->get('userID');
-    $params['last_modified_date'] = date('YmdHis');
-
-    if ($this->_action & CRM_Core_Action::ADD) {
-      $params['created_id'] = $session->get('userID');
-      $params['created_date'] = date('YmdHis');
-    }
 
     if (isset($this->_surveyId)) {
       $params['sid'] = $this->_surveyId;
@@ -371,21 +390,11 @@ class CRM_Campaign_Form_Petition_Signature extends CRM_Core_Form {
       $ids[0] = $this->_contactId;
     }
     else {
-      // dupeCheck - check if contact record already exists
-      // code modified from api/v2/Contact.php-function civicrm_contact_check_params()
-      $params['contact_type'] = $this->_ctype;
-      //TODO - current dedupe finds soft deleted contacts - adding param is_deleted not working
-      // ignore soft deleted contacts
-      //$params['is_deleted'] = 0;
-      $dedupeParams = CRM_Dedupe_Finder::formatParams($params, $params['contact_type']);
-      $dedupeParams['check_permission'] = '';
-
-      //dupesByParams($params, $ctype, $level = 'Unsupervised', $except = array())
-      $ids = CRM_Dedupe_Finder::dupesByParams($dedupeParams, $params['contact_type']);
+      $ids = CRM_Contact_BAO_Contact::getDuplicateContacts($params, $this->_ctype, 'Unsupervised', [], FALSE);
     }
 
     $petition_params['id'] = $this->_surveyId;
-    $petition = array();
+    $petition = [];
     CRM_Campaign_BAO_Survey::retrieve($petition_params, $petition);
 
     switch (count($ids)) {
@@ -487,7 +496,7 @@ class CRM_Campaign_Form_Petition_Signature extends CRM_Core_Form {
     // array_values($this->_contactProfileFields)[0] but it's PHP 5.4+ only.
     $slice = array_slice($this->_contactProfileFields, 0, 1);
     $firstField = array_shift($slice);
-    $addToGroupID = isset($firstField['add_to_group_id']) ? $firstField['add_to_group_id'] : NULL;
+    $addToGroupID = $firstField['add_to_group_id'] ?? NULL;
     $this->_contactId = CRM_Contact_BAO_Contact::createProfileContact($params, $this->_contactProfileFields,
       $this->_contactId, $addToGroupID,
       $this->_contactProfileId, $this->_ctype,
@@ -497,14 +506,6 @@ class CRM_Campaign_Form_Petition_Signature extends CRM_Core_Form {
     // get additional custom activity profile field data
     // to save with new signature activity record
     $surveyInfo = $this->bao->getSurveyInfo($this->_surveyId);
-    $customActivityFields = CRM_Core_BAO_CustomField::getFields('Activity', FALSE, FALSE,
-      $surveyInfo['activity_type_id']
-    );
-    $customActivityFields = CRM_Utils_Array::crmArrayMerge($customActivityFields,
-      CRM_Core_BAO_CustomField::getFields('Activity', FALSE, FALSE,
-        NULL, NULL, TRUE
-      )
-    );
 
     $params['custom'] = CRM_Core_BAO_CustomField::postProcess($params,
       NULL,
@@ -513,7 +514,7 @@ class CRM_Campaign_Form_Petition_Signature extends CRM_Core_Form {
 
     // create the signature activity record
     $params['contactId'] = $this->_contactId;
-    $params['activity_campaign_id'] = CRM_Utils_Array::value('campaign_id', $this->petition);
+    $params['activity_campaign_id'] = $this->petition['campaign_id'] ?? NULL;
     $result = $this->bao->createSignature($params);
 
     // send thank you or email verification emails
@@ -570,9 +571,8 @@ class CRM_Campaign_Form_Petition_Signature extends CRM_Core_Form {
    *
    * @param int $id
    * @param string $name
-   * @param bool $viewOnly
    */
-  public function buildCustom($id, $name, $viewOnly = FALSE) {
+  public function buildCustom($id, $name) {
     if ($id) {
       $session = CRM_Core_Session::singleton();
       $this->assign("petition", $this->petition);
@@ -594,31 +594,11 @@ class CRM_Campaign_Form_Petition_Signature extends CRM_Core_Form {
       if ($fields) {
         $this->assign($name, $fields);
 
-        $addCaptcha = FALSE;
         foreach ($fields as $key => $field) {
-          if ($viewOnly &&
-            isset($field['data_type']) &&
-            $field['data_type'] == 'File' || ($viewOnly && $field['name'] == 'image_URL')
-          ) {
-            // ignore file upload fields
-            continue;
-          }
-
           // if state or country in the profile, create map
           list($prefixName, $index) = CRM_Utils_System::explode('-', $key, 2);
 
           CRM_Core_BAO_UFGroup::buildProfile($this, $field, CRM_Profile_Form::MODE_CREATE, $contactID, TRUE);
-          $this->_fields[$key] = $field;
-          // CRM-11316 Is ReCAPTCHA enabled for this profile AND is this an anonymous visitor
-          if ($field['add_captcha'] && !$this->_contactId) {
-            $addCaptcha = TRUE;
-          }
-        }
-
-        if ($addCaptcha && !$viewOnly) {
-          $captcha = CRM_Utils_ReCAPTCHA::singleton();
-          $captcha->add($this);
-          $this->assign("isCaptcha", TRUE);
         }
       }
     }

@@ -9,15 +9,15 @@
  * Note: If you need to work as a different user, try using `cv()` or
  * a web-service.
  */
-class CiviEndToEndTestCase extends PHPUnit_Framework_TestCase implements \Civi\Test\EndToEndInterface {
+class CiviEndToEndTestCase extends PHPUnit\Framework\TestCase implements \Civi\Test\EndToEndInterface {
 
-  public static function setUpBeforeClass() {
+  public static function setUpBeforeClass(): void {
     CRM_Core_Config::singleton(1, 1);
-    CRM_Utils_System::loadBootStrap(array(
+    CRM_Utils_System::loadBootStrap([
       'name' => $GLOBALS['_CV']['ADMIN_USER'],
       'pass' => $GLOBALS['_CV']['ADMIN_PASS'],
-    ));
-    CRM_Utils_System::synchronizeUsers();
+    ]);
+    CRM_Utils_System::synchronizeUsersIfAllowed();
 
     parent::setUpBeforeClass();
   }

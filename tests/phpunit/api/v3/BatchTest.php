@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -33,7 +17,6 @@
  */
 class api_v3_BatchTest extends CiviUnitTestCase {
 
-  protected $_params = array();
   protected $_entity = 'batch';
 
   /**
@@ -41,78 +24,104 @@ class api_v3_BatchTest extends CiviUnitTestCase {
    *
    * This method is called before a test is executed.
    */
-  protected function setUp() {
+  protected function setUp(): void {
     parent::setUp();
-    $this->useTransaction(TRUE);
+    $this->useTransaction();
   }
 
   /**
    * Test civicrm_batch_get - success expected.
+   *
+   * @dataProvider versionThreeAndFour
+   *
+   * @param int $version
    */
-  public function testGet() {
-    $params = array(
+  public function testGet(int $version): void {
+    $this->_apiversion = $version;
+    $params = [
       'id' => $this->batchCreate(),
-    );
-    $result = $this->callAPIAndDocument('batch', 'get', $params, __FUNCTION__, __FILE__);
+    ];
+    $result = $this->callAPISuccess('Batch', 'get', $params);
     $this->assertEquals($params['id'], $result['id']);
   }
 
   /**
    * Test civicrm_batch_create - success expected.
+   *
+   * @dataProvider versionThreeAndFour
+   *
+   * @param int $version
+   *
+   * @throws \CRM_Core_Exception
    */
-  public function testCreate() {
-    $params = array(
+  public function testCreate(int $version): void {
+    $this->_apiversion = $version;
+    $params = [
       'name' => 'New_Batch_03',
       'title' => 'New Batch 03',
       'description' => 'This is description for New Batch 03',
       'total' => '300.33',
       'item_count' => 3,
       'status_id' => 1,
-    );
+    ];
 
-    $result = $this->callAPIAndDocument('batch', 'create', $params, __FUNCTION__, __FILE__);
+    $result = $this->callAPISuccess('batch', 'create', $params);
     $this->assertNotNull($result['id']);
-    $this->getAndCheck($params, $result['id'], $this->_entity);
+    $this->getAndCheck($params, $result['id'], 'Batch');
   }
 
   /**
    * Test civicrm_batch_create with id.
+   *
+   * @dataProvider versionThreeAndFour
+   *
+   * @param int $version
+   *
+   * @throws \CRM_Core_Exception
    */
-  public function testUpdate() {
-    $params = array(
+  public function testUpdate(int $version): void {
+    $this->_apiversion = $version;
+    $params = [
       'name' => 'New_Batch_04',
       'title' => 'New Batch 04',
       'description' => 'This is description for New Batch 04',
       'total' => '400.44',
       'item_count' => 4,
       'id' => $this->batchCreate(),
-    );
+    ];
 
-    $result = $this->callAPIAndDocument('batch', 'create', $params, __FUNCTION__, __FILE__);
+    $result = $this->callAPISuccess('batch', 'create', $params);
     $this->assertNotNull($result['id']);
     $this->getAndCheck($params, $result['id'], $this->_entity);
   }
 
   /**
    * Test civicrm_batch_delete using the old $params['batch_id'] syntax.
+   *
+   * @throws \CRM_Core_Exception
    */
-  public function testBatchDeleteOldSyntax() {
+  public function testBatchDeleteOldSyntax(): void {
     $batchID = $this->batchCreate();
-    $params = array(
+    $params = [
       'batch_id' => $batchID,
-    );
-    $result = $this->callAPISuccess('batch', 'delete', $params);
+    ];
+    $this->callAPISuccess('Batch', 'delete', $params);
   }
 
   /**
    * Test civicrm_batch_delete using the new $params['id'] syntax.
+   *
+   * @dataProvider versionThreeAndFour
+   *
+   * @param int $version
    */
-  public function testBatchDeleteCorrectSyntax() {
+  public function testBatchDeleteCorrectSyntax(int $version): void {
+    $this->_apiversion = $version;
     $batchID = $this->batchCreate();
-    $params = array(
+    $params = [
       'id' => $batchID,
-    );
-    $result = $this->callAPIAndDocument('batch', 'delete', $params, __FUNCTION__, __FILE__);
+    ];
+    $this->callAPISuccess('Batch', 'delete', $params);
   }
 
 }

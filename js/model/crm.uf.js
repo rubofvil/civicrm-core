@@ -8,8 +8,8 @@
 
   var VISIBILITY = [
     {val: 'User and User Admin Only', label: ts('User and User Admin Only'), isInSelectorAllowed: false},
-    {val: 'Public Pages', label: ts('Expose Publicly'), isInSelectorAllowed: true},
-    {val: 'Public Pages and Listings', label: ts('Expose Publicly and for Listings'), isInSelectorAllowed: true}
+    {val: 'Public Pages', label: ts('Public Pages'), isInSelectorAllowed: true},
+    {val: 'Public Pages and Listings', label: ts('Public Pages and Listings'), isInSelectorAllowed: true}
   ];
 
   var LOCATION_TYPES = _.map(CRM.PseudoConstant.locationType, function(value, key) {
@@ -32,7 +32,7 @@
    * Add a help link to a form label
    */
   function addHelp(title, options) {
-    return title + ' <a href="#" onclick=\'CRM.help("' + title + '", ' + JSON.stringify(options) + '); return false;\' title="' + ts('%1 Help', {1: title}) + '" class="helpicon"></a>';
+    return title + ' <a href="#" onclick=\'CRM.help("' + title + '", ' + JSON.stringify(options) + '); return false;\' title="' + ts('%1 Help', {1: title}) + '" aria-label="' + ts('%1 Help', {1: title}) + '" class="helpicon"></a>';
   }
 
   function watchChanges() {
@@ -110,7 +110,7 @@
       case 'Case':
         return 'case_1';
       default:
-        if (!$.isEmptyObject(CRM.contactSubTypes) && ($.inArray(field_type,CRM.contactSubTypes) > -1)) {
+        if (CRM.contactSubTypes.length && ($.inArray(field_type,CRM.contactSubTypes) > -1)) {
           return 'contact_1';
         }
         else {
@@ -358,12 +358,15 @@
      *
      */
     markDuplicates: function() {
-      var ufFieldModelsByKey = this.groupBy(function(ufFieldModel) {
+      const ufFieldModelsByKey = this.groupBy(function(ufFieldModel) {
         return ufFieldModel.getSignature();
       });
       this.each(function(ufFieldModel){
-        var is_duplicate = ufFieldModelsByKey[ufFieldModel.getSignature()].length > 1;
-        if (is_duplicate != ufFieldModel.get('is_duplicate')) {
+        const length = ufFieldModelsByKey[ufFieldModel.getSignature()].length > 1;
+        // Allow multiple free html fields, but note this would only work on an English install, and only if the field label hasn't been changed.
+        const label = ufFieldModelsByKey[ufFieldModel.getSignature()][0].attributes.label !== 'Free HTML';
+        const is_duplicate = length && label;
+        if (is_duplicate !== ufFieldModel.get('is_duplicate')) {
           ufFieldModel.set('is_duplicate', is_duplicate);
         }
       });
@@ -376,7 +379,7 @@
   CRM.UF.UFEntityModel = CRM.Backbone.Model.extend({
     schema: {
       'id': {
-        // title: ts(''),
+        // title: '',
         type: 'Number'
       },
       'entity_name': {
@@ -477,23 +480,30 @@
     },
     schema: {
       'id': {
-        // title: ts(''),
+        // title: '',
         type: 'Number'
       },
       'name': {
-        // title: ts(''),
+        // title: '',
         type: 'Text'
       },
       'title': {
         title: ts('Profile Name'),
-        help: ts(''),
+        help: '',
         type: 'Text',
         editorAttrs: {maxlength: 64},
         validators: ['required']
       },
+      'frontend_title': {
+        title: ts('Public Title'),
+        help: '',
+        type: 'Text',
+        editorAttrs: {maxlength: 64},
+        validators: []
+      },
       'group_type': {
         // For a description of group_type, see CRM_Core_BAO_UFGroup::updateGroupTypes
-        // title: ts(''),
+        // title: '',
         type: 'Text'
       },
       'add_captcha': {
@@ -503,21 +513,31 @@
         options: YESNO
       },
       'add_to_group_id': {
-        title: ts('Add new contacts to a Group?'),
-        help: ts('Select a group if you are using this profile for adding new contacts, AND you want the new contacts to be automatically assigned to a group.'),
+        title: ts('Add contacts to a group?'),
+        help: ts('Select a group if you want contacts to be automatically added to that group when the profile is submitted.'),
         type: 'Number'
       },
-      'cancel_URL': {
+      'cancel_url': {
         title: ts('Cancel Redirect URL'),
         help: ts('If you are using this profile as a contact signup or edit form, and want to redirect the user to a static URL if they click the Cancel button - enter the complete URL here. If this field is left blank, the built-in Profile form will be redisplayed.'),
         type: 'Text'
       },
+      'cancel_button_text': {
+        title: ts('Cancel Button Text'),
+        help: ts('Text to display on the cancel button when used in create or edit mode'),
+        type: 'Text'
+      },
+      'submit_button_text': {
+        title: ts('Submit Button Text'),
+        help: ts('Text to display on the submit button when used in create or edit mode'),
+        type: 'Text'
+      },
       'created_date': {
-        //title: ts(''),
+        //title: '',
         type: 'Text'// FIXME
       },
       'created_id': {
-        //title: ts(''),
+        //title: '',
         type: 'Number'
       },
       'help_post': {
@@ -562,7 +582,7 @@
         options: YESNO // FIXME
       },
       'is_reserved': {
-        // title: ts(''),
+        // title: '',
         type: 'Select',
         options: YESNO
       },
@@ -588,7 +608,7 @@
         help: ts('If you want member(s) of your organization to receive a notification email whenever this Profile form is used to enter or update contact information, enter one or more email addresses here. Multiple email addresses should be separated by a comma (e.g. jane@example.org, paula@example.org). The first email address listed will be used as the FROM address in the notifications.'),
         type: 'TextArea'
       },
-      'post_URL': {
+      'post_url': {
         title: ts('Redirect URL'),
         help: ts("If you are using this profile as a contact signup or edit form, and want to redirect the user to a static URL after they've submitted the form, you can also use contact tokens in URL - enter the complete URL here. If this field is left blank, the built-in Profile form will be redisplayed with a generic status message - 'Your contact information has been saved.'"),
         type: 'Text'
@@ -625,7 +645,6 @@
         });
         paletteFieldCollection.sync = function(method, model, options) {
           if (!options) options = {};
-          // console.log(method, model, options);
           switch (method) {
             case 'read':
               var success = options.success;
@@ -670,8 +689,17 @@
           return _.omit(ufFieldModel.toStrictJSON(), ['id', 'uf_group_id']);
         })
       );
-      var copyLabel = ' ' + ts('(Copy)');
-      copy.set('title', copy.get('title').slice(0, 64 - copyLabel.length) + copyLabel);
+      var new_id = 1;
+      CRM.api3('UFGroup', 'getsingle', {
+        "return": ["id"],
+        "options": {"limit": 1, "sort": "id DESC"}
+      }).done(function(result) {
+        new_id = Number(result.id) + 1;
+        var copyLabel = ' ' + ts('(Copy)');
+        var nameSuffix = '_' + new_id;
+        copy.set('title', copy.get('title').slice(0, 64 - copyLabel.length) + copyLabel);
+        copy.set('name', copy.get('name').slice(0, 64 - nameSuffix.length) + nameSuffix);
+      });
       return copy;
     },
     getModelClass: function(entity_name) {

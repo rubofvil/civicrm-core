@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -30,9 +14,12 @@
  * system.
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 class CRM_Extension_System {
+
+  public const DEFAULT_MAX_DEPTH = 3;
+
   private static $singleton;
 
   private $cache = NULL;
@@ -42,6 +29,7 @@ class CRM_Extension_System {
   private $manager = NULL;
   private $browser = NULL;
   private $downloader = NULL;
+  private $mixinLoader = NULL;
 
   /**
    * @var CRM_Extension_ClassLoader
@@ -51,7 +39,7 @@ class CRM_Extension_System {
   /**
    * The URL of the remote extensions repository.
    *
-   * @var string|FALSE
+   * @var string|false
    */
   private $_repoUrl = NULL;
 
@@ -89,26 +77,25 @@ class CRM_Extension_System {
   }
 
   /**
+   * Class constructor.
+   *
    * @param array $parameters
    *   List of configuration values required by the extension system.
    *   Missing values will be guessed based on $config.
    */
-  public function __construct($parameters = array()) {
+  public function __construct($parameters = []) {
     $config = CRM_Core_Config::singleton();
-    $parameters['extensionsDir'] = CRM_Utils_Array::value('extensionsDir', $parameters, $config->extensionsDir);
-    $parameters['extensionsURL'] = CRM_Utils_Array::value('extensionsURL', $parameters, $config->extensionsURL);
-    $parameters['resourceBase'] = CRM_Utils_Array::value('resourceBase', $parameters, $config->resourceBase);
-    $parameters['userFrameworkBaseURL'] = CRM_Utils_Array::value('userFrameworkBaseURL', $parameters, $config->userFrameworkBaseURL);
-    if (!array_key_exists('civicrm_root', $parameters)) {
-      $parameters['civicrm_root'] = $GLOBALS['civicrm_root'];
-    }
-    if (!array_key_exists('cmsRootPath', $parameters)) {
-      $parameters['cmsRootPath'] = $config->userSystem->cmsRootPath();
-    }
-    if (!array_key_exists('domain_id', $parameters)) {
-      $parameters['domain_id'] = CRM_Core_Config::domainID();
-    }
-    ksort($parameters); // guaranteed ordering - useful for md5(serialize($parameters))
+    $parameters['maxDepth'] ??= \Civi::settings()->get('ext_max_depth');
+    $parameters['extensionsDir'] ??= $config->extensionsDir;
+    $parameters['extensionsURL'] ??= $config->extensionsURL;
+    $parameters['resourceBase'] ??= $config->resourceBase;
+    $parameters['uploadDir'] ??= $config->uploadDir;
+    $parameters['userFrameworkBaseURL'] ??= $config->userFrameworkBaseURL;
+    $parameters['civicrm_root'] ??= $GLOBALS['civicrm_root'];
+    $parameters['cmsRootPath'] ??= $config->userSystem->cmsRootPath();
+    $parameters['domain_id'] ??= CRM_Core_Config::domainID();
+    // guaranteed ordering - useful for md5(serialize($parameters))
+    ksort($parameters);
 
     $this->parameters = $parameters;
   }
@@ -120,18 +107,24 @@ class CRM_Extension_System {
    */
   public function getFullContainer() {
     if ($this->fullContainer === NULL) {
-      $containers = array();
+      $containers = [];
 
       if ($this->getDefaultContainer()) {
         $containers['default'] = $this->getDefaultContainer();
       }
 
-      $containers['civiroot'] = new CRM_Extension_Container_Basic(
-        $this->parameters['civicrm_root'],
-        $this->parameters['resourceBase'],
-        $this->getCache(),
-        'civiroot'
-      );
+      $civiSubDirs = defined('CIVICRM_TEST')
+        ? ['ext', 'tools', 'tests']
+        : ['ext', 'tools'];
+      foreach ($civiSubDirs as $civiSubDir) {
+        $containers["civicrm_$civiSubDir"] = new CRM_Extension_Container_Basic(
+          CRM_Utils_File::addTrailingSlash($this->parameters['civicrm_root']) . $civiSubDir,
+          CRM_Utils_File::addTrailingSlash($this->parameters['resourceBase'], '/') . $civiSubDir,
+          $this->getCache(),
+          "civicrm_$civiSubDir",
+          $this->parameters['maxDepth']
+        );
+      }
 
       // TODO: CRM_Extension_Container_Basic( /sites/all/modules )
       // TODO: CRM_Extension_Container_Basic( /sites/$domain/modules
@@ -144,10 +137,17 @@ class CRM_Extension_System {
         if (is_dir($vendorPath)) {
           $containers['cmsvendor'] = new CRM_Extension_Container_Basic(
             $vendorPath,
-            $this->parameters['userFrameworkBaseURL'] . DIRECTORY_SEPARATOR . 'vendor',
+            CRM_Utils_File::addTrailingSlash($this->parameters['userFrameworkBaseURL'], '/') . 'vendor',
             $this->getCache(),
-            'cmsvendor'
+            'cmsvendor',
+            $this->parameters['maxDepth']
           );
+        }
+      }
+
+      if (!defined('CIVICRM_TEST')) {
+        foreach ($containers as $container) {
+          $container->addFilter([__CLASS__, 'isNotTestExtension']);
         }
       }
 
@@ -204,12 +204,12 @@ class CRM_Extension_System {
    */
   public function getManager() {
     if ($this->manager === NULL) {
-      $typeManagers = array(
+      $typeManagers = [
         'payment' => new CRM_Extension_Manager_Payment($this->getMapper()),
         'report' => new CRM_Extension_Manager_Report(),
         'search' => new CRM_Extension_Manager_Search(),
         'module' => new CRM_Extension_Manager_Module($this->getMapper()),
-      );
+      ];
       $this->manager = new CRM_Extension_Manager($this->getFullContainer(), $this->getDefaultContainer(), $this->getMapper(), $typeManagers);
     }
     return $this->manager;
@@ -222,11 +222,7 @@ class CRM_Extension_System {
    */
   public function getBrowser() {
     if ($this->browser === NULL) {
-      $cacheDir = NULL;
-      if ($this->getDefaultContainer()) {
-        $cacheDir = $this->getDefaultContainer()->getBaseDir() . DIRECTORY_SEPARATOR . 'cache';
-      }
-      $this->browser = new CRM_Extension_Browser($this->getRepositoryUrl(), '', $cacheDir);
+      $this->browser = new CRM_Extension_Browser($this->getRepositoryUrl(), '');
     }
     return $this->browser;
   }
@@ -242,24 +238,41 @@ class CRM_Extension_System {
       $this->downloader = new CRM_Extension_Downloader(
         $this->getManager(),
         $basedir,
-        CRM_Utils_File::tempdir() // WAS: $config->extensionsDir . DIRECTORY_SEPARATOR . 'tmp';
+        // WAS: $config->extensionsDir . DIRECTORY_SEPARATOR . 'tmp';
+        CRM_Utils_File::tempdir()
       );
     }
     return $this->downloader;
   }
 
   /**
+   * @return CRM_Extension_MixinLoader;
+   */
+  public function getMixinLoader() {
+    if ($this->mixinLoader === NULL) {
+      $this->mixinLoader = new CRM_Extension_MixinLoader();
+    }
+    return $this->mixinLoader;
+  }
+
+  /**
+   * Get the cache object.
+   *
    * @return CRM_Utils_Cache_Interface
+   * @throws \CRM_Core_Exception
    */
   public function getCache() {
     if ($this->cache === NULL) {
-      $cacheGroup = md5(serialize(array('ext', $this->parameters)));
+      $cacheGroup = 'ext_' . CRM_Utils_String::base64UrlEncode(md5(serialize($this->parameters), TRUE));
       // Extension system starts before container. Manage our own cache.
-      $this->cache = CRM_Utils_Cache::create(array(
+      $this->cache = CRM_Utils_Cache::create([
         'name' => $cacheGroup,
-        'type' => array('*memory*', 'SqlGroup', 'ArrayCache'),
+        'scope' => 'version',
+        'service' => 'extension_system',
+        'type' => ['*memory*', 'SqlGroup', 'ArrayCache'],
         'prefetch' => TRUE,
-      ));
+        'withArray' => 'fast',
+      ]);
     }
     return $this->cache;
   }
@@ -283,6 +296,22 @@ class CRM_Extension_System {
       }
     }
     return $this->_repoUrl;
+  }
+
+  /**
+   * Returns a list keyed by extension key
+   *
+   * @return array
+   */
+  public static function getCompatibilityInfo() {
+    if (!isset(Civi::$statics[__CLASS__]['compatibility'])) {
+      Civi::$statics[__CLASS__]['compatibility'] = json_decode(file_get_contents(Civi::paths()->getPath('[civicrm.root]/extension-compatibility.json')), TRUE);
+    }
+    return Civi::$statics[__CLASS__]['compatibility'];
+  }
+
+  public static function isNotTestExtension(CRM_Extension_Info $info) {
+    return (bool) !preg_match('/^test\./', $info->key);
   }
 
   /**
@@ -310,7 +339,8 @@ class CRM_Extension_System {
 
     switch ($extensionRow['status']) {
       case CRM_Extension_Manager::STATUS_UNINSTALLED:
-        $extensionRow['statusLabel'] = ''; // ts('Uninstalled');
+        // ts('Uninstalled');
+        $extensionRow['statusLabel'] = '';
         break;
 
       case CRM_Extension_Manager::STATUS_DISABLED:
@@ -318,7 +348,8 @@ class CRM_Extension_System {
         break;
 
       case CRM_Extension_Manager::STATUS_INSTALLED:
-        $extensionRow['statusLabel'] = ts('Enabled'); // ts('Installed');
+        // ts('Installed');
+        $extensionRow['statusLabel'] = ts('Enabled');
         break;
 
       case CRM_Extension_Manager::STATUS_DISABLED_MISSING:
@@ -326,11 +357,18 @@ class CRM_Extension_System {
         break;
 
       case CRM_Extension_Manager::STATUS_INSTALLED_MISSING:
-        $extensionRow['statusLabel'] = ts('Enabled (Missing)'); // ts('Installed');
+        // ts('Installed');
+        $extensionRow['statusLabel'] = ts('Enabled (Missing)');
         break;
 
       default:
         $extensionRow['statusLabel'] = '(' . $extensionRow['status'] . ')';
+    }
+    if ($manager->isIncompatible($obj->key)) {
+      $extensionRow['statusLabel'] = ts('Obsolete') . ($extensionRow['statusLabel'] ? (' - ' . $extensionRow['statusLabel']) : '');
+    }
+    elseif (in_array('mgmt:required', $obj->tags)) {
+      $extensionRow['statusLabel'] = ts('Required');
     }
     return $extensionRow;
   }

@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -70,7 +54,7 @@ class SettingsBag {
    * The result of combining default values, mandatory
    * values, and user values.
    *
-   * @var array|NULL
+   * @var array|null
    *   Array(string $settingName => mixed $value).
    */
   protected $combined;
@@ -83,13 +67,13 @@ class SettingsBag {
   /**
    * @param int $domainId
    *   The domain for which we want settings.
-   * @param int|NULL $contactId
+   * @param int|null $contactId
    *   The contact for which we want settings. Use NULL for domain settings.
    */
   public function __construct($domainId, $contactId) {
     $this->domainId = $domainId;
     $this->contactId = $contactId;
-    $this->values = array();
+    $this->values = [];
     $this->combined = NULL;
   }
 
@@ -128,29 +112,16 @@ class SettingsBag {
     // Note: Don't use DAO child classes. They require fields() which require
     // translations -- which are keyed off settings!
 
-    $this->values = array();
+    $this->values = [];
     $this->combined = NULL;
-
-    // Ordinarily, we just load values from `civicrm_setting`. But upgrades require care.
-    // In v4.0 and earlier, all values were stored in `civicrm_domain.config_backend`.
-    // In v4.1-v4.6, values were split between `civicrm_domain` and `civicrm_setting`.
-    // In v4.7+, all values are stored in `civicrm_setting`.
-    // Whenever a value is available in civicrm_setting, it will take precedence.
 
     $isUpgradeMode = \CRM_Core_Config::isUpgradeMode();
 
-    if ($isUpgradeMode && empty($this->contactId) && \CRM_Core_DAO::checkFieldExists('civicrm_domain', 'config_backend', FALSE)) {
-      $config_backend = \CRM_Core_DAO::singleValueQuery('SELECT config_backend FROM civicrm_domain WHERE id = %1',
-        array(1 => array($this->domainId, 'Positive')));
-      $oldSettings = \CRM_Upgrade_Incremental_php_FourSeven::convertBackendToSettings($this->domainId, $config_backend);
-      \CRM_Utils_Array::extend($this->values, $oldSettings);
-    }
-
-    // Normal case. Aside: Short-circuit prevents unnecessary query.
+    // Only query table if it exists.
     if (!$isUpgradeMode || \CRM_Core_DAO::checkTableExists('civicrm_setting')) {
       $dao = \CRM_Core_DAO::executeQuery($this->createQuery()->toSQL());
       while ($dao->fetch()) {
-        $this->values[$dao->name] = ($dao->value !== NULL) ? unserialize($dao->value) : NULL;
+        $this->values[$dao->name] = ($dao->value !== NULL) ? \CRM_Utils_String::unserialize($dao->value) : NULL;
       }
     }
 
@@ -180,7 +151,11 @@ class SettingsBag {
   public function all() {
     if ($this->combined === NULL) {
       $this->combined = $this->combine(
-        array($this->defaults, $this->values, $this->mandatory)
+        [$this->defaults, $this->values, $this->mandatory]
+      );
+      // computeVirtual() depends on completion of preceding pass.
+      $this->combined = $this->combine(
+        [$this->combined, $this->computeVirtual()]
       );
     }
     return $this->combined;
@@ -194,7 +169,7 @@ class SettingsBag {
    */
   public function get($key) {
     $all = $this->all();
-    return isset($all[$key]) ? $all[$key] : NULL;
+    return $all[$key] ?? NULL;
   }
 
   /**
@@ -205,7 +180,7 @@ class SettingsBag {
    * @return mixed|NULL
    */
   public function getDefault($key) {
-    return isset($this->defaults[$key]) ? $this->defaults[$key] : NULL;
+    return $this->defaults[$key] ?? NULL;
   }
 
   /**
@@ -217,7 +192,7 @@ class SettingsBag {
    * @return mixed|NULL
    */
   public function getExplicit($key) {
-    return (isset($this->values[$key]) ? $this->values[$key] : NULL);
+    return ($this->values[$key] ?? NULL);
   }
 
   /**
@@ -228,7 +203,21 @@ class SettingsBag {
    * @return mixed|NULL
    */
   public function getMandatory($key) {
-    return isset($this->mandatory[$key]) ? $this->mandatory[$key] : NULL;
+    return $this->mandatory[$key] ?? NULL;
+  }
+
+  /**
+   * Alias of hasExplicit retained for backwards compatibility
+   *
+   * @deprecated
+   *
+   * @param string $key
+   *   The simple name of the setting.
+   * @return bool
+   */
+  public function hasExplict($key) {
+    \CRM_Core_Error::deprecatedFunctionWarning('hasExplicit (spelt correctly)');
+    return $this->hasExplicit($key);
   }
 
   /**
@@ -241,7 +230,7 @@ class SettingsBag {
    *   The simple name of the setting.
    * @return bool
    */
-  public function hasExplict($key) {
+  public function hasExplicit($key) {
     // NULL means no designated value.
     return isset($this->values[$key]);
   }
@@ -269,10 +258,106 @@ class SettingsBag {
    * @return SettingsBag
    */
   public function set($key, $value) {
+    if ($this->updateVirtual($key, $value)) {
+      return $this;
+    }
     $this->setDb($key, $value);
-    $this->values[$key] = $value;
-    $this->combined = NULL;
     return $this;
+  }
+
+  /**
+   * Get a list of all explicitly assigned values.
+   *
+   * @return array
+   */
+  public function exportValues(): array {
+    return $this->values;
+  }
+
+  /**
+   * Replace the list of all explicitly assigned values.
+   *
+   * @param array $newValues
+   *   Full list of all settings.
+   * @return void
+   */
+  public function importValues(array $newValues): void {
+    $currentValues = $this->exportValues();
+
+    foreach ($this->getVirtualKeys() as $key) {
+      unset($newValues[$key], $currentValues[$key]);
+    }
+
+    $revertKeys = array_diff(array_keys($currentValues), array_keys($newValues));
+    foreach ($revertKeys as $key) {
+      $this->revert($key);
+    }
+
+    foreach ($newValues as $key => $value) {
+      $this->set($key, $value);
+    }
+  }
+
+  private function getVirtualKeys(): array {
+    return ['contribution_invoice_settings'];
+  }
+
+  /**
+   * Update a virtualized/deprecated setting.
+   *
+   * Temporary handling for phasing out contribution_invoice_settings.
+   *
+   * Until we have transitioned we need to handle setting & retrieving
+   * contribution_invoice_settings.
+   *
+   * Once removed from core we will add deprecation notices & then remove this.
+   *
+   * https://lab.civicrm.org/dev/core/issues/1558
+   *
+   * @param string $key
+   * @param array $value
+   * @return bool
+   *   TRUE if $key is a virtualized setting. FALSE if it is a normal setting.
+   */
+  public function updateVirtual($key, $value) {
+    if ($key === 'contribution_invoice_settings') {
+      \CRM_Core_Error::deprecatedWarning('Invoicing settings should be directly accessed - eg Civi::setting()->set("invoicing")');
+      foreach (SettingsBag::getContributionInvoiceSettingKeys() as $possibleKeyName => $settingName) {
+        $keyValue = $value[$possibleKeyName] ?? '';
+        if ($possibleKeyName === 'invoicing' && is_array($keyValue)) {
+          $keyValue = $keyValue['invoicing'];
+        }
+        $this->set($settingName, $keyValue);
+      }
+      return TRUE;
+    }
+    return FALSE;
+  }
+
+  /**
+   * Determine the values of any virtual/computed settings.
+   *
+   * @return array
+   */
+  public function computeVirtual() {
+    $contributionSettings = [];
+    foreach (SettingsBag::getContributionInvoiceSettingKeys() as $keyName => $settingName) {
+      switch ($keyName) {
+        case 'invoicing':
+          $contributionSettings[$keyName] = $this->get($settingName) ? [$keyName => 1] : 0;
+          break;
+
+        default:
+          $contributionSettings[$keyName] = $this->get($settingName);
+          break;
+      }
+    }
+    return array_merge(
+        ['contribution_invoice_settings' => $contributionSettings],
+        $this->interpolateDsnSettings('civicrm'),
+        // TODO: provide equivalent component settings for CIVICRM_UF_DSN
+        // $this->interpolateDsnSettings('civicrm_uf')
+    );
   }
 
   /**
@@ -281,16 +366,16 @@ class SettingsBag {
   protected function createQuery() {
     $select = \CRM_Utils_SQL_Select::from('civicrm_setting')
       ->select('id, name, value, domain_id, contact_id, is_domain, component_id, created_date, created_id')
-      ->where('domain_id = #id', array(
+      ->where('(domain_id IS NULL OR domain_id = #id)', [
         'id' => $this->domainId,
-      ));
+      ]);
     if ($this->contactId === NULL) {
-      $select->where('is_domain = 1');
+      $select->where('contact_id IS NULL');
     }
     else {
-      $select->where('contact_id = #id', array(
+      $select->where('contact_id = #id', [
         'id' => $this->contactId,
-      ));
+      ]);
       $select->where('is_domain = 0');
     }
     return $select;
@@ -306,7 +391,7 @@ class SettingsBag {
    * @return array
    */
   protected function combine($arrays) {
-    $combined = array();
+    $combined = [];
     foreach ($arrays as $array) {
       foreach ($array as $k => $v) {
         if ($v !== NULL) {
@@ -326,13 +411,8 @@ class SettingsBag {
    *   The new value of the setting.
    */
   protected function setDb($name, $value) {
-    if (\CRM_Core_BAO_Setting::isUpgradeFromPreFourOneAlpha1()) {
-      // civicrm_setting table is not going to be present.
-      return;
-    }
-
-    $fields = array();
-    $fieldsToSet = \CRM_Core_BAO_Setting::validateSettingsInput(array($name => $value), $fields);
+    $fields = [];
+    $fieldsToSet = \CRM_Core_BAO_Setting::validateSettingsInput([$name => $value], $fields);
     //We haven't traditionally validated inputs to setItem, so this breaks things.
     //foreach ($fieldsToSet as $settingField => &$settingValue) {
     //  self::validateSetting($settingValue, $fields['values'][$settingField]);
@@ -340,23 +420,43 @@ class SettingsBag {
 
     $metadata = $fields['values'][$name];
 
+    // this should probably be higher in the Setting api layer as well
+    if ($metadata['is_constant'] ?? FALSE) {
+      $error = "{$metadata['title']} is a system constant. It can only be set in civicrm.settings.php";
+
+      if ($metadata['is_env_loadable'] ?? FALSE) {
+        $fqn = $metadata['global_name'] ?? '(ENV VAR NAME MISSING)';
+        $error .= " or using the environment variable {$fqn}";
+      }
+      $error .= ".";
+      throw new \CRM_Core_Exception($error);
+    }
+
     $dao = new \CRM_Core_DAO_Setting();
     $dao->name = $name;
-    $dao->domain_id = $this->domainId;
+    $dao->is_domain = 0;
+    // Contact-specific settings
     if ($this->contactId) {
       $dao->contact_id = $this->contactId;
-      $dao->is_domain = 0;
+      $dao->domain_id = $this->domainId;
     }
-    else {
+    // Domain-specific settings. For legacy support this is assumed to be TRUE if not set
+    elseif ($metadata['is_domain'] ?? TRUE) {
       $dao->is_domain = 1;
+      $dao->domain_id = $this->domainId;
     }
     $dao->find(TRUE);
+    $oldValue = \CRM_Utils_String::unserialize($dao->value);
 
+    // Call 'on_change' listeners. It would be nice to only fire when there's
+    // a genuine change in the data. However, PHP developers have mixed
+    // expectations about whether 0, '0', '', NULL, and FALSE represent the same
+    // value, so there's no universal way to determine if a change is genuine.
     if (isset($metadata['on_change'])) {
       foreach ($metadata['on_change'] as $callback) {
         call_user_func(
           \Civi\Core\Resolver::singleton()->get($callback),
-          unserialize($dao->value),
+          $oldValue,
           $value,
           $metadata,
           $this->domainId
@@ -364,7 +464,7 @@ class SettingsBag {
       }
     }
 
-    if (\CRM_Utils_System::isNull($value)) {
+    if (!is_array($value) && \CRM_Utils_System::isNull($value)) {
       $dao->value = 'null';
     }
     else {
@@ -374,7 +474,7 @@ class SettingsBag {
     if (!isset(\Civi::$statics[__CLASS__]['upgradeMode'])) {
       \Civi::$statics[__CLASS__]['upgradeMode'] = \CRM_Core_Config::isUpgradeMode();
     }
-    if (\Civi::$statics[__CLASS__]['upgradeMode'] && \CRM_Core_DAO::checkFieldExists('civicrm_setting', 'group_name')) {
+    if (\Civi::$statics[__CLASS__]['upgradeMode'] && \CRM_Core_BAO_SchemaHandler::checkIfFieldExists('civicrm_setting', 'group_name')) {
       $dao->group_name = 'placeholder';
     }
 
@@ -393,7 +493,139 @@ class SettingsBag {
       // to save the field `group_name`, which is required in older schema.
       \CRM_Core_DAO::executeQuery(\CRM_Utils_SQL_Insert::dao($dao)->toSQL());
     }
-    $dao->free();
+
+    $this->values[$name] = $value;
+    $this->combined = NULL;
+
+    // Call 'post_change' listeners after the value has been saved.
+    // Unlike 'on_change', this will only fire if the oldValue and newValue are not equivalent (using == comparison)
+    if ($value != $oldValue && !empty($metadata['post_change'])) {
+      foreach ($metadata['post_change'] as $callback) {
+        call_user_func(
+          \Civi\Core\Resolver::singleton()->get($callback),
+          $oldValue,
+          $value,
+          $metadata,
+          $this->domainId
+        );
+      }
+    }
+  }
+
+  /**
+   * @return array
+   */
+  public static function getContributionInvoiceSettingKeys(): array {
+    $convertedKeys = [
+      'credit_notes_prefix' => 'credit_notes_prefix',
+      'invoice_prefix' => 'invoice_prefix',
+      'due_date' => 'invoice_due_date',
+      'due_date_period' => 'invoice_due_date_period',
+      'notes' => 'invoice_notes',
+      'is_email_pdf'  => 'invoice_is_email_pdf',
+      'tax_term' => 'tax_term',
+      'tax_display_settings' => 'tax_display_settings',
+      'invoicing' => 'invoicing',
+    ];
+    return $convertedKeys;
+  }
+
+  /**
+   * Compute a missing DSN from its component parts or vice versa
+   *
+   * Note: defaults for civicrm_db_XXX will be used
+   *
+   * @param string $prefix
+   *   The prefix of the DB setting group - ex: 'civicrm' or 'civicrm_uf'
+   *
+   * @return array
+   *   Ex 1:
+   *
+   *   $prefix = 'civicrm'
+   *   civicrm_db_dsn is NOT already set
+   *   civicrm_db_user set to 'james'
+   *   civicrm_db_password set to 'i<3#browns'
+   *
+   *    returns [
+   *     'civicrm_db_dsn' => 'mysql://james:i%3C3%23browns@localhost:3306/civicrm',
+   *   ]
+   *
+   *   Ex 2:
+   *
+   *   $prefix = 'civicrm_uf', civicrm_uf_db_dsn is set to 'mysql://my_user!:pass#word@host.name/db_name'
+   *
+   *    returns [
+   *     'civicrm_uf_db_user' => 'my_user!',
+   *     'civicrm_uf_db_password' => 'pass#word',
+   *     'civicrm_uf_db_host' => 'host.name',
+   *     'civicrm_uf_db_database' => 'db_name',
+   *   ]
+   */
+  protected function interpolateDsnSettings(string $prefix): array {
+    $computed = [];
+
+    $dsn = $this->get($prefix . '_db_dsn');
+
+    if ($dsn) {
+      // if dsn is set explicitly, use this as the source of truth.
+      // set the component parts in case anyone wants to read them individually
+      $urlComponents = \DB::parseDSN($dsn);
+
+      if (!$urlComponents) {
+        // couldn't parse the dsn so we dont set the components
+        // (it could be a socket rather than a url)
+        return [];
+      }
+
+      $componentKeyMap = [
+        'hostspec' => 'host',
+        'database' => 'name',
+        'username' => 'user',
+        'password' => 'password',
+        'port' => 'port',
+      ];
+
+      foreach ($componentKeyMap as $theirKey => $ourKey) {
+        $settingName = $prefix . '_db_' . $ourKey;
+        $value = $urlComponents[$theirKey] ?? NULL;
+
+        if ($value) {
+          $computed[$settingName] = $value;
+        }
+      }
+
+      // for db name we need to parse the path
+      $settingName = $prefix . '_db_name';
+
+      $urlPath = $urlComponents['path'] ?? '';
+      $dbName = trim($urlPath, '/');
+      if ($dbName) {
+        $computed[$settingName] = $dbName;
+      }
+      return $computed;
+    }
+
+    $componentValues = [];
+
+    foreach (['host', 'name', 'user', 'password', 'port'] as $componentKey) {
+      $value = $this->get($prefix . '_db_' . $componentKey);
+      if (!$value) {
+        // if missing a required key to compose the dsn, give up trying to interpolate
+        // (we have defaults for all keys but password, so this is likely to be unset password
+        // (but could be one of the other components has been explicitly nulled))
+        return [];
+      }
+      $componentValues[$componentKey] = urlencode($value);
+    }
+
+    $dsn = "mysql://{$componentValues['user']}:{$componentValues['password']}@{$componentValues['host']}:{$componentValues['port']}/{$componentValues['name']}?new_link=true";
+    $ssl = $this->get($prefix . '_db_ssl');
+    if ($ssl) {
+      $dsn .= '&' . $ssl;
+    }
+    $computed[$prefix . '_db_dsn'] = $dsn;
+
+    return $computed;
   }
 
 }

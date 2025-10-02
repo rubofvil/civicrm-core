@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -42,26 +26,22 @@
 /**
  * Class HelloTest
  */
-class HelloTest extends PHPUnit_Framework_TestCase {
-  // contains the object handle of the string class
-  var $abc;
-
+class HelloTest extends PHPUnit\Framework\TestCase {
   /**
-   * @param string|null $name
+   * contains the object handle of the string class
+   * @var string
    */
-  public function __construct($name = NULL) {
-    parent::__construct($name);
-  }
+  public $abc;
 
   /**
    * Called before the test functions will be executed.
    * this function is defined in PHPUnit_TestCase and overwritten
    * here
    */
-  public function setUp() {
+  public function setUp(): void {
     // create a new instance of String with the
     // string 'abc'
-    $this->abc = "hello";
+    $this->abc = 'hello';
   }
 
   /**
@@ -69,7 +49,7 @@ class HelloTest extends PHPUnit_Framework_TestCase {
    * this function is defined in PHPUnit_TestCase and overwritten
    * here.
    */
-  public function tearDown() {
+  public function tearDown(): void {
     // delete your instance
     unset($this->abc);
   }
@@ -77,10 +57,9 @@ class HelloTest extends PHPUnit_Framework_TestCase {
   /**
    * test the toString function.
    */
-  public function testHello() {
+  public function testHello(): void {
     $result = $this->abc;
-    $expected = 'hello';
-    $this->assertEquals($result, $expected);
+    $this->assertEquals('hello', $result);
   }
 
 }

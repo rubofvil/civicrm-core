@@ -1,44 +1,28 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 
-  <div id="report-tab-col-groups" class="civireport-criteria">
+  <div id="report-tab-col-groups" role="tabpanel" class="civireport-criteria">
     {foreach from=$colGroups item=grpFields key=dnc}
-      {assign  var="count" value="0"}
+      {assign  var="count" value=0}
       {* Wrap custom field sets in collapsed accordion pane. *}
-      {if $grpFields.use_accordian_for_field_selection}
-        <div class="crm-accordion-wrapper crm-accordion collapsed">
-        <div class="crm-accordion-header">
+      {if !empty($grpFields.use_accordian_for_field_selection)}
+        <details class="crm-accordion-bold crm-accordion">
+        <summary>
           {$grpFields.group_title}
-        </div><!-- /.crm-accordion-header -->
+        </summary>
         <div class="crm-accordion-body">
       {/if}
       <table class="criteria-group">
         <tr class="crm-report crm-report-criteria-field crm-report-criteria-field-{$dnc}">
           {foreach from=$grpFields.fields item=title key=field}
-          {assign var="count" value=`$count+1`}
+          {assign var="count" value=$count+1}
           <td width="25%">{$form.fields.$field.html}</td>
           {if $count is div by 4}
         </tr><tr class="crm-report crm-report-criteria-field crm-report-criteria-field_{$dnc}">
@@ -49,9 +33,9 @@
           {/if}
         </tr>
       </table>
-      {if $grpFields.use_accordian_for_field_selection}
-        </div><!-- /.crm-accordion-body -->
-        </div><!-- /.crm-accordion-wrapper -->
+      {if !empty($grpFields.use_accordian_for_field_selection)}
+        </div>
+        </details>
       {/if}
     {/foreach}
   </div>

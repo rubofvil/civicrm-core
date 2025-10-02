@@ -11,44 +11,37 @@ abstract class CRM_Utils_System_Base {
    * The correct method is to have functions on the UF classes for all UF specific
    * functions and leave the codebase oblivious to the type of CMS
    *
-   * @deprecated
    * @var bool
+   * @deprecated
    *   TRUE, if the CMS is Drupal.
    */
-  var $is_drupal = FALSE;
+  public $is_drupal = FALSE;
 
   /**
    * Deprecated property to check if this is a joomla install. The correct method is to have functions on the UF classes for all UF specific
    * functions and leave the codebase oblivious to the type of CMS
    *
-   * @deprecated
    * @var bool
+   * @deprecated
    *   TRUE, if the CMS is Joomla!.
    */
-  var $is_joomla = FALSE;
+  public $is_joomla = FALSE;
 
   /**
    * deprecated property to check if this is a wordpress install. The correct method is to have functions on the UF classes for all UF specific
    * functions and leave the codebase oblivious to the type of CMS
    *
-   * @deprecated
    * @var bool
+   * @deprecated
    *   TRUE, if the CMS is WordPress.
    */
-  var $is_wordpress = FALSE;
-
-  /**
-   * Does this CMS / UF support a CMS specific logging mechanism?
-   * @todo - we should think about offering up logging mechanisms in a way that is also extensible by extensions
-   * @var bool
-   */
-  var $supports_UF_Logging = FALSE;
+  public $is_wordpress = FALSE;
 
   /**
    * @var bool
    *   TRUE, if the CMS allows CMS forms to be extended by hooks.
    */
-  var $supports_form_extensions = FALSE;
+  public $supports_form_extensions = FALSE;
 
   public function initialize() {
     if (\CRM_Utils_System::isSSL()) {
@@ -57,15 +50,55 @@ abstract class CRM_Utils_System_Base {
   }
 
   /**
-   * Append an additional breadcrumb tag to the existing breadcrumb.
+   * Determine if the UF/CMS has been loaded already.
    *
-   * @param array $breadCrumbs
+   * This is generally TRUE. If using the "extern" boot protocol, then this may initially be false (until loadBootStrap runs).
+   *
+   * @internal
+   * @return bool
+   */
+  abstract public function isLoaded(): bool;
+
+  abstract public function loadBootStrap($params = [], $loadUser = TRUE, $throwError = TRUE, $realPath = NULL);
+
+  /**
+   * Returns the Smarty template path to the main template that renders the content.
+   *
+   * In CMS contexts, this goes inside their theme, but Standalone needs to render the full HTML page.
+   *
+   * @var int|string $print
+   *   Should match a CRM_Core_Smarty::PRINT_* constant,
+   *   or equal 0 if not in print mode.
+   */
+  public static function getContentTemplate($print = 0): string {
+    // I fear some callers of this function may still pass FALSE
+    // let's make sure any falsey value is exactly 0
+    $print = $print ?: 0;
+
+    return match($print) {
+      // Not a print context (despite what the template is called)
+      0 => 'CRM/common/CMSPrint.tpl',
+
+      CRM_Core_Smarty::PRINT_PAGE => 'CRM/common/print.tpl',
+
+      'xls', 'doc' => 'CRM/Contact/Form/Task/Excel.tpl',
+
+      // Ex: CRM_Core_Smarty::PRINT_JSON
+      default => 'CRM/common/snippet.tpl',
+    };
+  }
+
+  /**
+   * Append additional breadcrumbs to the existing breadcrumb trail.
+   *
+   * @param array $breadCrumbs array of arrays
+   * sub-arrays should each have 'title' and 'url' keys
    */
   public function appendBreadCrumb($breadCrumbs) {
   }
 
   /**
-   * Reset an additional breadcrumb tag to the existing breadcrumb.
+   * Reset the breadcrumb trail
    */
   public function resetBreadCrumb() {
   }
@@ -77,6 +110,7 @@ abstract class CRM_Utils_System_Base {
    *   The new string to be appended.
    */
   public function addHTMLHead($head) {
+    \CRM_Core_Error::deprecatedFunctionWarning("addHTMLHead is deprecated in " . self::class);
   }
 
   /**
@@ -96,14 +130,12 @@ abstract class CRM_Utils_System_Base {
    *   The url to post the form.
    */
   public function postURL($action) {
-    $config = CRM_Core_Config::singleton();
     if (!empty($action)) {
       return $action;
     }
 
-    return $this->url(CRM_Utils_Array::value($config->userFrameworkURLVar, $_GET),
-      NULL, TRUE, NULL, FALSE
-    );
+    $current_path = CRM_Utils_System::currentPath();
+    return (string) Civi::url('current://' . $current_path, 'a');
   }
 
   /**
@@ -125,7 +157,77 @@ abstract class CRM_Utils_System_Base {
    *
    * @return string
    */
-  public function url(
+  abstract public function url(
+    $path = NULL,
+    $query = NULL,
+    $absolute = FALSE,
+    $fragment = NULL,
+    $frontend = FALSE,
+    $forceBackend = FALSE
+  );
+
+  /**
+   * Compose the URL for a page/route.
+   *
+   * @internal
+   * @see \Civi\Core\Url::__toString
+   * @param string $scheme
+   *   Ex: 'frontend', 'backend', 'service'
+   * @param string $path
+   *   Ex: 'civicrm/event/info'
+   * @param string|null $query
+   *   Ex: 'id=100&msg=Hello+world'
+   * @return string|null
+   *   Absolute URL, or NULL if scheme is unsupported.
+   *   Ex: 'https://subdomain.example.com/index.php?q=civicrm/event/info&id=100&msg=Hello+world'
+   */
+  public function getRouteUrl(string $scheme, string $path, ?string $query): ?string {
+    switch ($scheme) {
+      case 'frontend':
+        return $this->url($path, $query, TRUE, NULL, TRUE, FALSE);
+
+      case 'service':
+        // The original `url()` didn't have an analog for "service://". But "frontend" is probably the closer bet?
+        // Or maybe getNotifyUrl() makes sense?
+        return $this->url($path, $query, TRUE, NULL, TRUE, FALSE);
+
+      case 'backend':
+        return $this->url($path, $query, TRUE, NULL, FALSE, TRUE);
+
+      // If the UF defines other major UI/URL conventions, then you might hypothetically handle
+      // additional schemes.
+
+      default:
+        return NULL;
+    }
+  }
+
+  /**
+   * Return the Notification URL for Payments.
+   *
+   * The default is to pass the params through to `url()`. However the WordPress
+   * CMS class overrides this method because Notification URLs must always target
+   * the Base Page to avoid IPN failures when Forms are embedded in pages that
+   * require authentication.
+   *
+   * @param string $path
+   *   The path being linked to, such as "civicrm/add".
+   * @param string $query
+   *   A query string to append to the link.
+   * @param bool $absolute
+   *   Whether to force the output to be an absolute link (beginning with http).
+   *   Useful for links that will be displayed outside the site, such as in an RSS feed.
+   * @param string $fragment
+   *   A fragment identifier (named anchor) to append to the link.
+   * @param bool $frontend
+   *   This link should be to the CMS front end (applies to WP & Joomla).
+   * @param bool $forceBackend
+   *   This link should be to the CMS back end (applies to WP & Joomla).
+   *
+   * @return string
+   *   The Notification URL.
+   */
+  public function getNotifyUrl(
     $path = NULL,
     $query = NULL,
     $absolute = FALSE,
@@ -133,7 +235,18 @@ abstract class CRM_Utils_System_Base {
     $frontend = FALSE,
     $forceBackend = FALSE
   ) {
-    return NULL;
+    return $this->url($path, $query, $absolute, $fragment, $frontend, $forceBackend);
+  }
+
+  /**
+   * Path of the current page e.g. 'civicrm/contact/view'
+   *
+   * @return string|null
+   *   the current menu path
+   */
+  public static function currentPath() {
+    $config = CRM_Core_Config::singleton();
+    return isset($_GET[$config->userFrameworkURLVar]) ? trim($_GET[$config->userFrameworkURLVar], '/') : NULL;
   }
 
   /**
@@ -150,6 +263,7 @@ abstract class CRM_Utils_System_Base {
    *
    * @return array|bool
    *   [contactID, ufID, unique string] else false if no auth
+   * @throws \CRM_Core_Exception.
    */
   public function authenticate($name, $password, $loadCMSBootstrap = FALSE, $realPath = NULL) {
     return FALSE;
@@ -167,28 +281,39 @@ abstract class CRM_Utils_System_Base {
   /**
    * Load user into session.
    *
-   * @param obj $user
+   * @param string $username
    *
    * @return bool
    */
-  public function loadUser($user) {
+  public function loadUser($username) {
     return TRUE;
   }
 
   /**
    * Immediately stop script execution and display a 401 "Access Denied" page.
+   * @throws \CRM_Core_Exception
    */
   public function permissionDenied() {
-    CRM_Core_Error::fatal(ts('You do not have permission to access this page.'));
+    throw new CRM_Core_Exception(ts('You do not have permission to access this page.'));
   }
 
   /**
-   * Immediately stop script execution, log out the user and redirect to the home page.
+   * Logout the current user session
    *
-   * @deprecated
-   *   This function should be removed in favor of linking to the CMS's logout page
+   * Alias for _authx_uf()->logoutSession
    */
   public function logout() {
+    _authx_uf()->logoutSession();
+  }
+
+  /**
+   * Url to redirect users to after logging out, in the context of an HTTP session
+   *
+   * @see CRM_Core_Page_Logout
+   * @return string
+   */
+  public function postLogoutUrl(): string {
+    return '/';
   }
 
   /**
@@ -210,74 +335,42 @@ abstract class CRM_Utils_System_Base {
   }
 
   /**
+   * @see https://lab.civicrm.org/dev/core/-/issues/5803
+   *
    * If we are using a theming system, invoke theme, else just print the content.
    *
    * @param string $content
    *   The content that will be themed.
    * @param bool $print
-   *   Are we displaying to the screen or bypassing theming?.
    * @param bool $maintenance
-   *   For maintenance mode.
+   *   DEPRECATED - use renderMaintenanceMessage instead,
    *
    * @throws Exception
    * @return string|null
    *   NULL, If $print is FALSE, and some other criteria match up.
    *   The themed string, otherwise.
    *
+   * @todo Remove maintenance param
    * @todo The return value is inconsistent.
    * @todo Better to always return, and never print.
    */
   public function theme(&$content, $print = FALSE, $maintenance = FALSE) {
-    $ret = FALSE;
+    if ($maintenance) {
+      \CRM_Core_Error::deprecatedWarning('Calling CRM_Utils_System::theme with $maintenance is deprecated - use renderMaintenanceMessage instead');
+      $content = $this->renderMaintenanceMessage($content);
+    }
+    print $content;
+    return NULL;
+  }
 
-    // TODO: Split up; this was copied verbatim from CiviCRM 4.0's multi-UF theming function
-    // but the parts should be copied into cleaner subclass implementations
-    $config = CRM_Core_Config::singleton();
-    if (
-      $config->userSystem->is_drupal &&
-      function_exists('theme') &&
-      !$print
-    ) {
-      if ($maintenance) {
-        drupal_set_breadcrumb('');
-        drupal_maintenance_theme();
-        if ($region = CRM_Core_Region::instance('html-header', FALSE)) {
-          CRM_Utils_System::addHTMLHead($region->render(''));
-        }
-        print theme('maintenance_page', array('content' => $content));
-        exit();
-      }
-      // TODO: Figure out why D7 returns but everyone else prints
-      $ret = TRUE;
-    }
-    $out = $content;
-
-    $config = &CRM_Core_Config::singleton();
-    if (
-      !$print &&
-      $config->userFramework == 'WordPress'
-    ) {
-      if (!function_exists('is_admin')) {
-        throw new \Exception('Function "is_admin()" is missing, even though WordPress is the user framework.');
-      }
-      if (!defined('ABSPATH')) {
-        throw new \Exception('Constant "ABSPATH" is not defined, even though WordPress is the user framework.');
-      }
-      if (is_admin()) {
-        require_once ABSPATH . 'wp-admin/admin-header.php';
-      }
-      else {
-        // FIXME: we need to figure out to replace civicrm content on the frontend pages
-      }
-    }
-
-    if ($ret) {
-      return $out;
-    }
-    else {
-      print $out;
-      return NULL;
-    }
+  /**
+   * Wrap content in maintenance template
+   *
+   * @param string $content
+   * @return string
+   */
+  public function renderMaintenanceMessage(string $content): string {
+    return $content;
   }
 
   /**
@@ -287,6 +380,11 @@ abstract class CRM_Utils_System_Base {
     return 'left';
   }
 
+  /**
+   * Get the absolute path to the site's base url.
+   *
+   * @return bool|mixed|string
+   */
   public function getAbsoluteBaseURL() {
     if (!defined('CIVICRM_UF_BASEURL')) {
       return FALSE;
@@ -304,6 +402,11 @@ abstract class CRM_Utils_System_Base {
     return $url;
   }
 
+  /**
+   * Get the relative path to the sites base url.
+   *
+   * @return string|false
+   */
   public function getRelativeBaseURL() {
     $absoluteBaseURL = $this->getAbsoluteBaseURL();
     if ($absoluteBaseURL === FALSE) {
@@ -355,13 +458,14 @@ abstract class CRM_Utils_System_Base {
    * Create a user in the CMS.
    *
    * @param array $params
-   * @param string $mail
-   *   Email id for cms user.
+   * @param string $mailParam
+   *   Name of the $param which contains the email address.
+   *   Because. Right. OK. That's what it is.
    *
    * @return int|bool
    *   uid if user exists, false otherwise
    */
-  public function createUser(&$params, $mail) {
+  public function createUser(&$params, $mailParam) {
     return FALSE;
   }
 
@@ -386,15 +490,57 @@ abstract class CRM_Utils_System_Base {
   }
 
   /**
+   * Check if user registration is permitted.
+   *
+   * @return bool
+   */
+  public function isUserRegistrationPermitted() {
+    return FALSE;
+  }
+
+  /**
+   * Check if user can create passwords or is initially assigned a system-generated one.
+   *
+   * @return bool
+   */
+  public function isPasswordUserGenerated() {
+    return FALSE;
+  }
+
+  /**
+   * Verify password
+   *
+   * @param array $params
+   *   Array of name, mail and password values.
+   * @param array $errors
+   *   Array of errors.
+   */
+  public function verifyPassword($params, &$errors) {
+  }
+
+  /**
+   * Is a front end page being accessed.
+   *
+   * Generally this would be a contribution form or other public page as opposed to a backoffice page (like contact edit).
+   *
+   * @todo Drupal uses the is_public setting - clarify & rationalise. See https://github.com/civicrm/civicrm-drupal/pull/546/files
+   *
+   * @return bool
+   */
+  public function isFrontEndPage() {
+    return CRM_Core_Config::singleton()->userFrameworkFrontend;
+  }
+
+  /**
    * Get user login URL for hosting CMS (method declared in each CMS system class)
    *
    * @param string $destination
-   *   If present, add destination to querystring (works for Drupal only).
+   *   If present, add destination to querystring (works for Drupal and WordPress only).
    *
    * @return string
    *   loginURL for the current CMS
    */
-  public abstract function getLoginURL($destination = '');
+  abstract public function getLoginURL($destination = '');
 
   /**
    * Get the login destination string.
@@ -423,6 +569,13 @@ abstract class CRM_Utils_System_Base {
     throw new CRM_Core_Exception("Not implemented: {$className}->getUfId");
   }
 
+  /**
+   * Set the localisation from the user framework.
+   *
+   * @param string $civicrm_language
+   *
+   * @return bool
+   */
   public function setUFLocale($civicrm_language) {
     return TRUE;
   }
@@ -546,7 +699,7 @@ abstract class CRM_Utils_System_Base {
   public function getDefaultSiteSettings($dir) {
     $config = CRM_Core_Config::singleton();
     $url = $config->userFrameworkBaseURL;
-    return array($url, NULL, NULL);
+    return [$url, NULL, NULL];
   }
 
   /**
@@ -576,15 +729,6 @@ abstract class CRM_Utils_System_Base {
       $tempURL = str_replace("/administrator/", "/", $baseURL);
       $filesURL = $tempURL . "media/civicrm/";
     }
-    elseif ($this->is_drupal) {
-      $siteName = $config->userSystem->parseDrupalSiteName($civicrm_root);
-      if ($siteName) {
-        $filesURL = $baseURL . "sites/$siteName/files/civicrm/";
-      }
-      else {
-        $filesURL = $baseURL . "sites/default/files/civicrm/";
-      }
-    }
     elseif ($config->userFramework == 'UnitTests') {
       $filesURL = $baseURL . "sites/default/files/civicrm/";
     }
@@ -592,71 +736,20 @@ abstract class CRM_Utils_System_Base {
       throw new CRM_Core_Exception("Failed to locate default file storage ($config->userFramework)");
     }
 
-    return array(
+    return [
       'url' => $filesURL,
       'path' => CRM_Utils_File::baseFilePath(),
-    );
+    ];
   }
 
   /**
    * Determine the location of the CiviCRM source tree.
    *
-   * FIXME:
-   *  1. This was pulled out from a bigger function. It should be split
-   *     into even smaller pieces and marked abstract.
-   *  2. This would be easier to compute by a calling a CMS API, but
-   *     for whatever reason we take the hard way.
-   *
    * @return array
    *   - url: string. ex: "http://example.com/sites/all/modules/civicrm"
    *   - path: string. ex: "/var/www/sites/all/modules/civicrm"
    */
-  public function getCiviSourceStorage() {
-    global $civicrm_root;
-    $config = CRM_Core_Config::singleton();
-
-    // Don't use $config->userFrameworkBaseURL; it has garbage on it.
-    // More generally, w shouldn't be using $config here.
-    if (!defined('CIVICRM_UF_BASEURL')) {
-      throw new RuntimeException('Undefined constant: CIVICRM_UF_BASEURL');
-    }
-    $baseURL = CRM_Utils_File::addTrailingSlash(CIVICRM_UF_BASEURL, '/');
-    if (CRM_Utils_System::isSSL()) {
-      $baseURL = str_replace('http://', 'https://', $baseURL);
-    }
-
-    if ($config->userFramework == 'Joomla') {
-      $userFrameworkResourceURL = $baseURL . "components/com_civicrm/civicrm/";
-    }
-    elseif ($config->userFramework == 'WordPress') {
-      $userFrameworkResourceURL = CIVICRM_PLUGIN_URL . "civicrm/";
-    }
-    elseif ($this->is_drupal) {
-      // Drupal setting
-      // check and see if we are installed in sites/all (for D5 and above)
-      // we dont use checkURL since drupal generates an error page and throws
-      // the system for a loop on lobo's macosx box
-      // or in modules
-      $cmsPath = $config->userSystem->cmsRootPath();
-      $userFrameworkResourceURL = $baseURL . str_replace("$cmsPath/", '',
-          str_replace('\\', '/', $civicrm_root)
-        );
-
-      $siteName = $config->userSystem->parseDrupalSiteName($civicrm_root);
-      if ($siteName) {
-        $civicrmDirName = trim(basename($civicrm_root));
-        $userFrameworkResourceURL = $baseURL . "sites/$siteName/modules/$civicrmDirName/";
-      }
-    }
-    else {
-      $userFrameworkResourceURL = NULL;
-    }
-
-    return array(
-      'url' => CRM_Utils_File::addTrailingSlash($userFrameworkResourceURL),
-      'path' => CRM_Utils_File::addTrailingSlash($civicrm_root),
-    );
-  }
+  abstract public function getCiviSourceStorage():array;
 
   /**
    * Perform any post login activities required by the CMS.
@@ -668,58 +761,62 @@ abstract class CRM_Utils_System_Base {
    *
    * FIXME: Document values accepted/required by $params
    */
-  public function userLoginFinalize($params = array()) {
+  public function userLoginFinalize($params = []) {
   }
 
   /**
-   * Set timezone in mysql so that timestamp fields show the correct time.
+   * Set MySQL timezone so that timestamp fields show the correct time.
+   *
+   * @param ?string $timeZone
+   *    Timezone string - if none provided will be fetched from system
    */
-  public function setMySQLTimeZone() {
-    $timeZoneOffset = $this->getTimeZoneOffset();
+  public function setMySQLTimeZone(?string $timeZone = NULL) {
+    $timeZone = $timeZone ?? $this->getTimeZoneString();
+    $timeZoneOffset = \CRM_Utils_Time::getTimeZoneOffsetFromString($timeZone);
     if ($timeZoneOffset) {
       $sql = "SET time_zone = '$timeZoneOffset'";
-      CRM_Core_DAO::executequery($sql);
+      CRM_Core_DAO::executeQuery($sql);
     }
   }
 
-
   /**
-   * Get timezone from CMS.
+   * Set PHP timezone
    *
-   * @return string|false|null
+   * @param ?string $timeZone
+   *    Timezone string - default value will be fetched
+   *    using getTimeZoneString if not provided or falsey
    */
-  public function getTimeZoneOffset() {
-    $timezone = $this->getTimeZoneString();
-    if ($timezone) {
-      if ($timezone == 'UTC' || $timezone == 'Etc/UTC') {
-        // CRM-17072 Let's short-circuit all the zero handling & return it here!
-        return '+00:00';
-      }
-      $tzObj = new DateTimeZone($timezone);
-      $dateTime = new DateTime("now", $tzObj);
-      $tz = $tzObj->getOffset($dateTime);
-
-      if (empty($tz)) {
-        return FALSE;
-      }
-
-      $timeZoneOffset = sprintf("%02d:%02d", $tz / 3600, abs(($tz / 60) % 60));
-
-      if ($timeZoneOffset > 0) {
-        $timeZoneOffset = '+' . $timeZoneOffset;
-      }
-      return $timeZoneOffset;
-    }
-    return NULL;
+  public function setPhpTimeZone(?string $timeZone = NULL) {
+    $timeZone = $timeZone ?: $this->getTimeZoneString();
+    date_default_timezone_set($timeZone);
   }
 
   /**
-   * Get timezone as a string.
+   * Set system timezone (both PHP + MySQL)
+   */
+  public function setTimeZone(?string $timeZone = NULL) {
+    $timeZone = $timeZone ?? $this->getTimeZoneString();
+
+    $this->setPhpTimeZone($timeZone);
+    $this->setMySQLTimeZone($timeZone);
+  }
+
+  /**
+   * Get timezone from CMS as a string.
    * @return string
    *   Timezone string e.g. 'America/Los_Angeles'
    */
   public function getTimeZoneString() {
     return date_default_timezone_get();
+  }
+
+  /**
+   * Get timezone offset from CMS
+   *
+   * @return string|false|null
+   */
+  public function getTimeZoneOffset() {
+    return \CRM_Utils_Time::getTimeZoneOffsetFromString($this->getTimeZoneString());
   }
 
   /**
@@ -758,14 +855,14 @@ abstract class CRM_Utils_System_Base {
    *   - name (ie the system user name.
    */
   public function getUser($contactID) {
-    $ufMatch = civicrm_api3('UFMatch', 'getsingle', array(
+    $ufMatch = civicrm_api3('UFMatch', 'getsingle', [
       'contact_id' => $contactID,
       'domain_id' => CRM_Core_Config::domainID(),
-    ));
-    return array(
+    ]);
+    return [
       'id' => $ufMatch['uf_id'],
       'name' => $ufMatch['uf_name'],
-    );
+    ];
   }
 
   /**
@@ -838,7 +935,7 @@ abstract class CRM_Utils_System_Base {
    *   [CRM_Core_Module]
    */
   public function getModules() {
-    return array();
+    return [];
   }
 
   /**
@@ -875,16 +972,25 @@ abstract class CRM_Utils_System_Base {
    * Log error to CMS.
    *
    * @param string $message
+   * @param string|NULL $priority
    */
-  public function logger($message) {
+  public function logger($message, $priority = NULL) {
   }
 
   /**
    * Append to coreResourcesList.
    *
-   * @param array $list
+   * @param \Civi\Core\Event\GenericHookEvent $e
    */
-  public function appendCoreResources(&$list) {
+  public function appendCoreResources(\Civi\Core\Event\GenericHookEvent $e) {
+  }
+
+  /**
+   * Modify dynamic assets.
+   *
+   * @param \Civi\Core\Event\GenericHookEvent $e
+   */
+  public function alterAssetUrl(\Civi\Core\Event\GenericHookEvent $e) {
   }
 
   /**
@@ -903,7 +1009,332 @@ abstract class CRM_Utils_System_Base {
    */
   public function synchronizeUsers() {
     throw new Exception('CMS user creation not supported for this framework');
-    return array();
+    return [];
+  }
+
+  /**
+   * Whether to allow access to CMS user sync action
+   * @return bool
+   */
+  public function allowSynchronizeUsers() {
+    return TRUE;
+  }
+
+  /**
+   * Run CMS user sync if allowed, otherwise just returns empty array
+   * @return array
+   */
+  public function synchronizeUsersIfAllowed() {
+    if ($this->allowSynchronizeUsers()) {
+      return $this->synchronizeUsers();
+    }
+    else {
+      return [];
+    }
+  }
+
+  /**
+   * Send an HTTP Response base on PSR HTTP RespnseInterface response.
+   *
+   * @param \Psr\Http\Message\ResponseInterface $response
+   */
+  public function sendResponse(\Psr\Http\Message\ResponseInterface $response) {
+    http_response_code($response->getStatusCode());
+    foreach ($response->getHeaders() as $name => $values) {
+      CRM_Utils_System::setHttpHeader($name, implode(', ', (array) $values));
+    }
+    echo $response->getBody();
+    CRM_Utils_System::civiExit(0, ['response' => $response]);
+  }
+
+  /**
+   * Start a new session.
+   */
+  public function sessionStart() {
+    session_start();
+  }
+
+  /**
+   * This exists because of https://www.drupal.org/node/3006306 where
+   * they changed so that they don't start sessions for anonymous, but we
+   * want that.
+   */
+  public function getSessionId() {
+    return session_id();
+  }
+
+  /**
+   * Get role names
+   *
+   * @return array|null
+   */
+  public function getRoleNames() {
+    return NULL;
+  }
+
+  /**
+   * Determine if the Views module exists.
+   *
+   * @return bool
+   */
+  public function viewsExists() {
+    return FALSE;
+  }
+
+  /**
+   * Perform any necessary actions prior to redirecting via POST.
+   */
+  public function prePostRedirect() {
+  }
+
+  /**
+   * Return the CMS-specific url for its permissions page
+   * @return array
+   */
+  public function getCMSPermissionsUrlParams() {
+    return [];
+  }
+
+  /**
+   * Get the CRM database as a 'prefix'.
+   *
+   * This returns a string that can be prepended to a query to include a CRM table.
+   *
+   * However, this string should contain backticks, or not, in accordance with the
+   * CMS's drupal views expectations, if any.
+   *
+   * @deprecated
+   */
+  public function getCRMDatabasePrefix(): string {
+    $crmDatabase = DB::parseDSN(CRM_Core_Config::singleton()->dsn)['database'];
+    $cmsDatabase = DB::parseDSN(CRM_Core_Config::singleton()->userFrameworkDSN)['database'];
+    if ($crmDatabase === $cmsDatabase) {
+      return '';
+    }
+    return "`$crmDatabase`.";
+  }
+
+  /**
+   * Get the CMS database name.
+   *
+   * This returns an empty string if the CRM/CMS database is shared.
+   * Otherwise it returns the name of the CMS database.
+   *
+   * @return string
+   */
+  public function getCMSDatabaseName(): string {
+    $crmDatabase = DB::parseDSN(CRM_Core_Config::singleton()->dsn)['database'];
+    $cmsDatabase = DB::parseDSN(CRM_Core_Config::singleton()->userFrameworkDSN)['database'];
+    if ($crmDatabase === $cmsDatabase) {
+      return '';
+    }
+    return $cmsDatabase;
+  }
+
+  /**
+   * Get the CRM database name.
+   *
+   * This returns an empty string if the CRM/CMS database is shared.
+   * Otherwise it returns the name of the CRM database.
+   *
+   * @return string
+   */
+  public function getCRMDatabaseName(): string {
+    $crmDatabase = DB::parseDSN(CRM_Core_Config::singleton()->dsn)['database'];
+    $cmsDatabase = DB::parseDSN(CRM_Core_Config::singleton()->userFrameworkDSN)['database'];
+    if ($crmDatabase === $cmsDatabase) {
+      return '';
+    }
+    return $crmDatabase;
+  }
+
+  /**
+   * Invalidates the cache of dynamic routes and forces a rebuild.
+   */
+  public function invalidateRouteCache() {
+  }
+
+  /**
+   * Should the admin be able to set the password when creating a user
+   * or does the CMS want it a different way.
+   */
+  public function showPasswordFieldWhenAdminCreatesUser() {
+    return TRUE;
+  }
+
+  /**
+   * Return the CMS-specific UF Group Types for profiles.
+   * @return array
+   */
+  public function getUfGroupTypes() {
+    return [];
+  }
+
+  /**
+   * Should the current execution exit after a fatal error?
+   * This is the appropriate functionality in most cases.
+   *
+   * @internal
+   * @return bool
+   */
+  public function shouldExitAfterFatal() {
+    return TRUE;
+  }
+
+  public function checkCleanurls() {
+    return [];
+  }
+
+  /**
+   * Suppress profile form errors
+   *
+   * @return bool
+   */
+  public function suppressProfileFormErrors():bool {
+    return FALSE;
+  }
+
+  /**
+   * Get email field name from form values
+   *
+   * @param CRM_Core_Form $form
+   * @param array $fields
+   *
+   * @return string
+   */
+  public function getEmailFieldName(CRM_Core_Form $form, array $fields):string {
+    return 'email';
+  }
+
+  /**
+   * Check if username and email exists in the CMS.
+   *
+   * @param array $params
+   *   Array of name and mail values.
+   * @param array $errors
+   *   Array of errors.
+   * @param string $emailName
+   *   Field label for the 'email'.
+   */
+  public function checkUserNameEmailExists(&$params, &$errors, $emailName = 'email') {
+  }
+
+  /**
+   * Has CMS users table
+   *
+   * @return bool
+   */
+  public function hasUsersTable():bool {
+    return FALSE;
+  }
+
+  /**
+   * CiviCRM Table prefixes
+   *   To display for CMS integration.
+   *
+   * @return string
+   */
+  public function viewsIntegration():string {
+    return '';
+  }
+
+  /**
+   * Can set base page for CiviCRM
+   *   By default, CiviCRM will generate front-facing pages
+   *   using the home page. This allows a different template
+   *   for CiviCRM pages.
+   * @return bool
+   */
+  public function canSetBasePage():bool {
+    return FALSE;
+  }
+
+  /**
+   * Get the client's IP address.
+   *
+   * @return string
+   *   IP address
+   */
+  public function ipAddress():?string {
+    return $_SERVER['REMOTE_ADDR'] ?? NULL;
+  }
+
+  /**
+   * Check if mailing workflow is enabled
+   *
+   * @return bool
+   */
+  public function mailingWorkflowIsEnabled():bool {
+    return FALSE;
+  }
+
+  /**
+   * Get Contact details from User
+   *   The contact parameters here will be used to create a Contact
+   *   record to match the user record.
+   *
+   * @param array $uf_match
+   *   Array of user object, unique ID.
+   * @return array
+   *   Array of contact parameters.
+   */
+  public function getContactDetailsFromUser($uf_match):array {
+    $contactParameters = [];
+    $contactParameters['email'] = $uf_match['user']->email;
+
+    return $contactParameters;
+  }
+
+  /**
+   * Modify standalone profile
+   *
+   * @param string $profile
+   * @param array $params
+   *
+   * @return string
+   */
+  public function modifyStandaloneProfile($profile, $params):string {
+    // Not sure how to circumvent our own navigation system to generate the
+    // right form url.
+    $urlReplaceWith = 'civicrm/profile/create&amp;gid=' . $params['gid'] . '&amp;reset=1';
+    $profile = str_replace('civicrm/admin/uf/group', $urlReplaceWith, $profile);
+
+    return $profile;
+  }
+
+  /**
+   * Hook for further system boot once the main CiviCRM
+   * Container is up (only used in Standalone currently)
+   */
+  public function postContainerBoot(): void {
+  }
+
+  /**
+   * Does this CMS / UF support a CMS specific logging mechanism?
+   * @todo - we should think about offering up logging mechanisms in a way that is also extensible by extensions
+   * @todo - it would be nice to provide UF specific meta for the userFrameworkLogging setting
+   *
+   * @return bool
+   */
+  public function supportsUfLogging(): bool {
+    return FALSE;
+  }
+
+  /**
+   * Does the userSystem think we are in maintenance mode?
+   *
+   * @return bool
+   */
+  public function isMaintenanceMode(): bool {
+    // if not implemented at CMS level, we assume FALSE
+    return FALSE;
+  }
+
+  /**
+   * Handle any caught Exceptions.
+   */
+  public function handleUnhandledException(\Throwable $e) {
+    CRM_Core_Error::handleUnhandledException($e);
   }
 
 }

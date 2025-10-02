@@ -1,26 +1,10 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 {crmRegion name="contribute-form-contributionpage-premium-main"}
@@ -29,21 +13,18 @@
   {ts}Then select and review the premiums that you want to offer on this contribution page.{/ts}
 </div>
 <div id="id_Premiums" class="crm-block crm-form-block crm-contribution-contributionpage-premium-form-block">
-  <div class="crm-submit-buttons">{include file="CRM/common/formButtons.tpl" location="top"}</div>
   <table class="form-layout-compressed">
     <tr class="crm-contribution-contributionpage-premium-form-block-premiums_active">
       <td class="label">{$form.premiums_active.label}</td>
-      <td class="html-adjust">{$form.premiums_active.html}<br/>
-        <span class="description">{ts}Is the Premiums section enabled for this Online Contributions page?{/ts}</span>
-      </td>
+      <td class="html-adjust">{$form.premiums_active.html}</td>
     </tr>
   </table>
 
   <div id="premiumSettings">
-    <div class="crm-accordion-wrapper crm-premium-settings-accordion collapsed">
-      <div class="crm-accordion-header">
+    <details class="crm-accordion-bold crm-premium-settings-accordion">
+      <summary>
         {ts}Premiums Settings{/ts}
-      </div>
+      </summary>
       <div class="crm-accordion-body">
         <table class="form-layout-compressed">
           <tr class="crm-contribution-contributionpage-premium-form-block-premiums_intro_title">
@@ -68,7 +49,7 @@
             </td>
             <td class="html-adjust">{$form.premiums_intro_text.html}<br/>
             <span class="description">
-              {ts}Enter content for the introductory message. This will be displayed below the Premiums section title. You may include HTML formatting tags. You can also include images, as long as they are already uploaded to a server - reference them using complete URLs.{/ts}
+              {ts}Enter content for the introductory message. This will be displayed below the Premiums section title. You may include HTML formatting tags. You can also include images, as long as they are already uploaded to a server&mdash;reference them using complete URLs.{/ts}
             </span>
             </td>
           </tr>
@@ -122,9 +103,7 @@
           </tr>
         </table>
       </div>
-      <!-- /.crm-accordion-body -->
-    </div>
-    <!-- /.crm-accordion-wrapper -->
+    </details>
 
     {* include premium product templates *}
     {include file="CRM/Contribute/Page/Premium.tpl"}
@@ -162,5 +141,5 @@
   {/literal}
 </script>
 {/crmRegion}
-{crmRegion name="contribute-form-contributionpage-premium-post}
+{crmRegion name="contribute-form-contributionpage-premium-post"}
 {/crmRegion}

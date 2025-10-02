@@ -1,30 +1,15 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 {literal}
 <script type="text/javascript">
+{/literal}{if !$isBackOffice}{literal}
   /**
    * Show or hide payment options.
    *
@@ -44,6 +29,8 @@
       payment_processor.hide();
       payment_information.hide();
       billing_block.hide();
+      // Ensure that jquery validation doesn't block submission when we don't need to fill in the billing details section
+      cj('#billing-payment-block select.crm-select2').addClass('crm-no-validate');
       // also unset selected payment methods
       cj('input[name="payment_processor_id"]').removeProp('checked');
     }
@@ -52,6 +39,9 @@
       payment_processor.show();
       payment_information.show();
       billing_block.show();
+      cj('#billing-payment-block select.crm-select2').removeClass('crm-no-validate');
+      // also set selected payment methods
+      cj('input[name="payment_processor_id"][checked=checked]').prop('checked', true);
     }
   }
 
@@ -62,8 +52,7 @@
    */
   function skipPaymentMethod() {
     var isHide = false;
-    var isMultiple = '{/literal}{$event.is_multiple_registrations}{literal}';
-    var alwaysShowFlag = (isMultiple && cj("#additional_participants").val());
+    var alwaysShowFlag = (cj("#additional_participants").val());
     var alwaysHideFlag = (cj("#bypass_payment").val() == 1);
     var total_amount_tmp =  cj('#pricevalue').data('raw-total');
     // Hide billing questions if this is free
@@ -79,33 +68,32 @@
     showHidePayment(isHide);
   }
   skipPaymentMethod();
+{/literal}{/if}{literal}
 
   CRM.$(function($) {
     function buildPaymentBlock(type) {
       var $form = $('#billing-payment-block').closest('form');
       {/literal}
-      {if $contributionPageID}
-        {capture assign='contributionPageID'}id={$contributionPageID}&{/capture}
-      {else}
-        {capture assign='pageID'}{/capture}
-      {/if}
-      {if $custom_pre_id}
-        {capture assign='preProfileID'}pre_profile_id={$custom_pre_id}&{/capture}
+      {if !$isBackOffice && $custom_pre_id}
+        {capture assign='preProfileID'}&pre_profile_id={$custom_pre_id}{/capture}
       {else}
         {capture assign='preProfileID'}{/capture}
       {/if}
-      {if $urlPathVar}
-        {capture assign='urlPathVar'}{$urlPathVar}&{/capture}
-      {else}
-        {capture assign='urlPathVar'}{/capture}
-      {/if}
-      {if $billing_profile_id}
-        {capture assign='profilePathVar'}billing_profile_id={$billing_profile_id}&{/capture}
+      {* Billing profile ID is only ever set on front end forms, to force entering address for pay later. *}
+      {if !$isBackOffice && $billing_profile_id}
+        {capture assign='profilePathVar'}&billing_profile_id={$billing_profile_id}{/capture}
       {else}
         {capture assign='profilePathVar'}{/capture}
       {/if}
 
-      var dataUrl = "{crmURL p='civicrm/payment/form' h=0 q="currency=`$currency`&`$urlPathVar``$profilePathVar``$contributionPageID``$preProfileID`processor_id="}" + type;
+      {capture assign='isBackOfficePathVar'}&is_back_office={$isBackOffice}{/capture}
+
+      var payment_instrument_id = $('#payment_instrument_id').val();
+
+      var currency = '{$currency}';
+      currency = currency == '' ? $('#currency').val() : currency;
+
+      var dataUrl = "{crmURL p='civicrm/payment/form' h=0 q="formName=`$form.formName``$isBackOfficePathVar``$profilePathVar``$preProfileID`"}";
       {literal}
       if (typeof(CRM.vars) != "undefined") {
         if (typeof(CRM.vars.coreForm) != "undefined") {
@@ -118,16 +106,28 @@
           }
         }
       }
+      dataUrl = dataUrl + "&processor_id=" + type + "&payment_instrument_id=" + payment_instrument_id + "&currency=" + currency;
 
       // Processors like pp-express will hide the form submit buttons, so re-show them when switching
       $('.crm-submit-buttons', $form).show().find('input').prop('disabled', true);
       CRM.loadPage(dataUrl, {target: '#billing-payment-block'});
     }
 
-    $('.crm-group.payment_options-group').show();
-    $('[name=payment_processor_id]').on('change.paymentBlock', function() {
-        buildPaymentBlock($(this).val());
+    $('[name=payment_processor_id], #currency').on('change.paymentBlock', function() {
+      var payment_processor_id = $('[name=payment_processor_id]:checked').val() == undefined ? $('[name=payment_processor_id]').val() : $('[name=payment_processor_id]:checked').val();
+      if (payment_processor_id != undefined) {
+        buildPaymentBlock(payment_processor_id);
+      }
     });
+
+    $('#payment_instrument_id').on('change.paymentBlock', function() {
+      buildPaymentBlock(0);
+    });
+
+    if ($('#payment_instrument_id').val()) {
+      buildPaymentBlock(0);
+    }
+
     $('#billing-payment-block').on('crmLoad', function() {
       $('.crm-submit-buttons input').prop('disabled', false);
     })

@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -58,7 +42,42 @@ function _civicrm_api3_job_create_spec(&$params) {
  * @return array
  */
 function civicrm_api3_job_create($params) {
-  return _civicrm_api3_basic_create(_civicrm_api3_get_BAO(__FUNCTION__), $params);
+  return _civicrm_api3_basic_create(_civicrm_api3_get_BAO(__FUNCTION__), $params, 'Job');
+}
+
+/**
+ * Adjust metadata for clone spec action.
+ *
+ * @param array $spec
+ */
+function _civicrm_api3_job_clone_spec(&$spec) {
+  $spec['id']['title'] = 'Job ID to clone';
+  $spec['id']['type'] = CRM_Utils_Type::T_INT;
+  $spec['id']['api.required'] = 1;
+  $spec['is_active']['title'] = 'Job is Active?';
+  $spec['is_active']['type'] = CRM_Utils_Type::T_BOOLEAN;
+  $spec['is_active']['api.required'] = 0;
+}
+
+/**
+ * Clone Job.
+ *
+ * @param array $params
+ *
+ * @return array
+ * @throws \CRM_Core_Exception
+ */
+function civicrm_api3_job_clone($params) {
+  if (empty($params['id'])) {
+    throw new CRM_Core_Exception("Mandatory key(s) missing from params array: id field is required");
+  }
+  $id = $params['id'];
+  unset($params['id']);
+  $params['last_run'] = 'null';
+  $params['last_run_end'] = 'null';
+  $params['scheduled_run_date'] = 'null';
+  $newJobDAO = CRM_Core_BAO_Job::copy($id, $params);
+  return civicrm_api3('Job', 'get', ['id' => $newJobDAO->id]);
 }
 
 /**
@@ -79,7 +98,7 @@ function civicrm_api3_job_get($params) {
  * @param array $params
  */
 function civicrm_api3_job_delete($params) {
-  _civicrm_api3_basic_delete(_civicrm_api3_get_BAO(__FUNCTION__), $params);
+  return _civicrm_api3_basic_delete(_civicrm_api3_get_BAO(__FUNCTION__), $params);
 }
 
 /**
@@ -94,6 +113,12 @@ function civicrm_api3_job_delete($params) {
  *   API Result Array
  */
 function civicrm_api3_job_execute($params) {
+  if (\CRM_Utils_System::isMaintenanceMode() && !$params['run_in_maintenance_mode']) {
+    // skip execution
+    return civicrm_api3_create_success(0, $params, 'Job', NULL, $dao, [
+      'skipped' => 'maintenance_mode',
+    ]);
+  }
 
   $facility = new CRM_Core_JobManager();
   $facility->execute(FALSE);
@@ -109,6 +134,11 @@ function civicrm_api3_job_execute($params) {
  *   Array of parameters determined by getfields.
  */
 function _civicrm_api3_job_execute_spec(&$params) {
+  $params['run_in_maintenance_mode'] = [
+    'title' => ts('Run jobs even if system is in maintenance mode'),
+    'type' => CRM_Utils_Type::T_BOOLEAN,
+    'api.default' => FALSE,
+  ];
 }
 
 /**
@@ -121,6 +151,8 @@ function _civicrm_api3_job_execute_spec(&$params) {
  *   API Result Array
  */
 function civicrm_api3_job_geocode($params) {
+  // We are in api v3, so version has already done it's job.
+  unset($params['version']);
   $gc = new CRM_Utils_Address_BatchUpdate($params);
 
   $result = $gc->run();
@@ -139,38 +171,38 @@ function civicrm_api3_job_geocode($params) {
  * @param array $params
  */
 function _civicrm_api3_job_geocode_spec(&$params) {
-  $params['start'] = array(
+  $params['start'] = [
     'title' => 'Starting Contact ID',
     'type' => CRM_Utils_Type::T_INT,
-  );
-  $params['end'] = array(
+  ];
+  $params['end'] = [
     'title' => 'Ending Contact ID',
     'type' => CRM_Utils_Type::T_INT,
-  );
-  $params['geocoding'] = array(
+  ];
+  $params['geocoding'] = [
     'title' => 'Geocode address?',
     'type' => CRM_Utils_Type::T_BOOLEAN,
-  );
-  $params['parse'] = array(
+  ];
+  $params['parse'] = [
     'title' => 'Parse street address?',
     'type' => CRM_Utils_Type::T_BOOLEAN,
-  );
-  $params['throttle'] = array(
+  ];
+  $params['throttle'] = [
     'title' => 'Throttle?',
     'description' => 'If enabled, geo-codes at a slow rate',
     'type' => CRM_Utils_Type::T_BOOLEAN,
-  );
+  ];
 }
 
 /**
- * Send the scheduled reminders for all contacts (either for activities or events).
+ * Send the scheduled reminders as configured.
  *
  * @param array $params
- *   (reference ) input parameters.
- *                        now - the time to use, in YmdHis format
- *                            - makes testing a bit simpler since we can simulate past/future time
+ *  - now - the time to use, in YmdHis format
+ *  - makes testing a bit simpler since we can simulate past/future time
  *
  * @return array
+ * @throws \CRM_Core_Exception
  */
 function civicrm_api3_job_send_reminder($params) {
   //note that $params['rowCount' can be overridden by one of the preferred syntaxes ($options['limit'] = x
@@ -180,19 +212,14 @@ function civicrm_api3_job_send_reminder($params) {
   $params['rowCount'] = 0;
   $lock = Civi::lockManager()->acquire('worker.core.ActionSchedule');
   if (!$lock->isAcquired()) {
-    return civicrm_api3_create_error('Could not acquire lock, another ActionSchedule process is running');
+    throw new CRM_Core_Exception('Could not acquire lock, another ActionSchedule process is running');
   }
 
-  $result = CRM_Core_BAO_ActionSchedule::processQueue(CRM_Utils_Array::value('now', $params), $params);
+  CRM_Core_BAO_ActionSchedule::processQueue($params['now'] ?? NULL, $params);
   $lock->release();
-
-  if ($result['is_error'] == 0) {
-    return civicrm_api3_create_success();
-  }
-  else {
-    return civicrm_api3_create_error($result['messages']);
-  }
+  return civicrm_api3_create_success(1, $params, 'ActionSchedule', 'send_reminder');
 }
+
 /**
  * Adjust metadata for "send_reminder" action.
  *
@@ -204,11 +231,12 @@ function civicrm_api3_job_send_reminder($params) {
 function _civicrm_api3_job_send_reminder(&$params) {
   //@todo this function will now take all fields in action_schedule as params
   // as it is calling the api fn to set the filters - update getfields to reflect
-  $params['id'] = array(
+  $params['id'] = [
     'type' => CRM_Utils_Type::T_INT,
     'title' => 'Action Schedule ID',
-  );
+  ];
 }
+
 /**
  * Execute a specific report instance and send the output via email.
  *
@@ -271,16 +299,16 @@ function civicrm_api3_job_update_greeting($params) {
  *   Array of parameters determined by getfields.
  */
 function _civicrm_api3_job_update_greeting_spec(&$params) {
-  $params['ct'] = array(
+  $params['ct'] = [
     'api.required' => 1,
     'title' => 'Contact Type',
     'type' => CRM_Utils_Type::T_STRING,
-  );
-  $params['gt'] = array(
+  ];
+  $params['gt'] = [
     'api.required' => 1,
     'title' => 'Greeting Type',
     'type' => CRM_Utils_Type::T_STRING,
-  );
+  ];
 }
 
 /**
@@ -289,19 +317,14 @@ function _civicrm_api3_job_update_greeting_spec(&$params) {
  * @param array $params
  *
  * @return array
+ *
+ * @throws \CRM_Core_Exception
  */
-function civicrm_api3_job_process_pledge($params) {
-  // *** Uncomment the next line if you want automated reminders to be sent
-  // $params['send_reminders'] = true;
-  $result = CRM_Pledge_BAO_Pledge::updatePledgeStatus($params);
-
-  if ($result['is_error'] == 0) {
-    // experiment: detailed execution log is a result here
-    return civicrm_api3_create_success($result['messages']);
+function civicrm_api3_job_process_pledge(array $params): array {
+  if (!CRM_Core_Component::isEnabled('CiviPledge')) {
+    throw new CRM_Core_Exception(ts('%1 is not enabled'), [1 => ['CiviPledge']]);
   }
-  else {
-    return civicrm_api3_create_error($result['error_message']);
-  }
+  return civicrm_api3_create_success(implode("\n\r", CRM_Pledge_BAO_Pledge::updatePledgeStatus($params)));
 }
 
 /**
@@ -314,13 +337,20 @@ function civicrm_api3_job_process_pledge($params) {
 function civicrm_api3_job_process_mailing($params) {
   $mailsProcessedOrig = CRM_Mailing_BAO_MailingJob::$mailsProcessed;
 
+  try {
+    CRM_Core_BAO_Setting::isAPIJobAllowedToRun($params);
+  }
+  catch (Exception $e) {
+    return civicrm_api3_create_error($e->getMessage());
+  }
+
   if (!CRM_Mailing_BAO_Mailing::processQueue()) {
     return civicrm_api3_create_error('Process Queue failed');
   }
   else {
-    $values = array(
+    $values = [
       'processed' => CRM_Mailing_BAO_MailingJob::$mailsProcessed - $mailsProcessedOrig,
-    );
+    ];
     return civicrm_api3_create_success($values, $params, 'Job', 'process_mailing');
   }
 }
@@ -339,9 +369,9 @@ function civicrm_api3_job_process_sms($params) {
     return civicrm_api3_create_error('Process Queue failed');
   }
   else {
-    $values = array(
+    $values = [
       'processed' => CRM_Mailing_BAO_MailingJob::$mailsProcessed - $mailsProcessedOrig,
-    );
+    ];
     return civicrm_api3_create_success($values, $params, 'Job', 'process_sms');
   }
 }
@@ -358,15 +388,23 @@ function civicrm_api3_job_fetch_bounces($params) {
   if (!$lock->isAcquired()) {
     return civicrm_api3_create_error('Could not acquire lock, another EmailProcessor process is running');
   }
-  if (!CRM_Utils_Mail_EmailProcessor::processBounces()) {
-    $lock->release();
-    return civicrm_api3_create_error('Process Bounces failed');
-  }
+  CRM_Utils_Mail_EmailProcessor::processBounces($params['is_create_activities']);
   $lock->release();
 
-  // FIXME: processBounces doesn't return true/false on success/failure
-  $values = array();
-  return civicrm_api3_create_success($values, $params, 'Job', 'fetch_bounces');
+  return civicrm_api3_create_success(1, $params, 'Job', 'fetch_bounces');
+}
+
+/**
+ * Metadata for bounce function.
+ *
+ * @param array $params
+ */
+function _civicrm_api3_job_fetch_bounces_spec(&$params) {
+  $params['is_create_activities'] = [
+    'api.default' => 0,
+    'type' => CRM_Utils_Type::T_BOOLEAN,
+    'title' => ts('Create activities for replies?'),
+  ];
 }
 
 /**
@@ -384,13 +422,13 @@ function civicrm_api3_job_fetch_activities($params) {
 
   try {
     CRM_Utils_Mail_EmailProcessor::processActivities();
-    $values = array();
+    $values = [];
     $lock->release();
     return civicrm_api3_create_success($values, $params, 'Job', 'fetch_activities');
   }
   catch (Exception $e) {
     $lock->release();
-    return civicrm_api3_create_error('Process Activities failed');
+    return civicrm_api3_create_error($e->getMessage());
   }
 }
 
@@ -414,7 +452,6 @@ function civicrm_api3_job_process_participant($params) {
   }
 }
 
-
 /**
  * This api checks and updates the status of all membership records for a given domain.
  *
@@ -435,7 +472,14 @@ function civicrm_api3_job_process_membership($params) {
     return civicrm_api3_create_error('Could not acquire lock, another Membership Processing process is running');
   }
 
-  $result = CRM_Member_BAO_Membership::updateAllMembershipStatus();
+  // We need to pass this through as a simple array of membership status IDs as values.
+  if (!empty($params['exclude_membership_status_ids'])) {
+    is_array($params['exclude_membership_status_ids']) ?: $params['exclude_membership_status_ids'] = [$params['exclude_membership_status_ids']];
+  }
+  if (!empty($params['exclude_membership_status_ids']['IN'])) {
+    $params['exclude_membership_status_ids'] = $params['exclude_membership_status_ids']['IN'];
+  }
+  $result = CRM_Member_BAO_Membership::updateAllMembershipStatus($params);
   $lock->release();
 
   if ($result['is_error'] == 0) {
@@ -444,6 +488,25 @@ function civicrm_api3_job_process_membership($params) {
   else {
     return civicrm_api3_create_error($result['messages']);
   }
+}
+
+function _civicrm_api3_job_process_membership_spec(&$params) {
+  $params['exclude_test_memberships']['api.default'] = TRUE;
+  $params['exclude_test_memberships']['title'] = 'Exclude test memberships';
+  $params['exclude_test_memberships']['description'] = 'Exclude test memberships from calculations (default = TRUE)';
+  $params['exclude_test_memberships']['type'] = CRM_Utils_Type::T_BOOLEAN;
+  $params['only_active_membership_types']['api.default'] = TRUE;
+  $params['only_active_membership_types']['title'] = 'Exclude disabled membership types';
+  $params['only_active_membership_types']['description'] = 'Exclude disabled membership types from calculations (default = TRUE)';
+  $params['only_active_membership_types']['type'] = CRM_Utils_Type::T_BOOLEAN;
+  $params['exclude_membership_status_ids']['title'] = 'Exclude membership status IDs from calculations';
+  $params['exclude_membership_status_ids']['description'] = 'Default: Exclude Pending, Cancelled, Expired. Deceased will always be excluded';
+  $params['exclude_membership_status_ids']['type'] = CRM_Utils_Type::T_INT;
+  $params['exclude_membership_status_ids']['pseudoconstant'] = [
+    'table' => 'civicrm_membership_status',
+    'keyColumn' => 'id',
+    'labelColumn' => 'label',
+  ];
 }
 
 /**
@@ -474,24 +537,22 @@ function civicrm_api3_job_process_respondent($params) {
  *
  * @return array
  *   API Result Array
- * @throws \CiviCRM_API3_Exception
+ * @throws \CRM_Core_Exception
  */
 function civicrm_api3_job_process_batch_merge($params) {
-  $rule_group_id = CRM_Utils_Array::value('rule_group_id', $params);
+  $rule_group_id = $params['rule_group_id'] ?? NULL;
   if (!$rule_group_id) {
-    $rule_group_id = civicrm_api3('RuleGroup', 'getvalue', array(
+    $rule_group_id = civicrm_api3('RuleGroup', 'getvalue', [
       'contact_type' => 'Individual',
       'used' => 'Unsupervised',
       'return' => 'id',
-      'options' => array('limit' => 1),
-    ));
+      'options' => ['limit' => 1],
+    ]);
   }
-  $gid = CRM_Utils_Array::value('gid', $params);
+  $gid = $params['gid'] ?? NULL;
+  $mode = $params['mode'] ?? 'safe';
 
-  $mode = CRM_Utils_Array::value('mode', $params, 'safe');
-  $autoFlip = CRM_Utils_Array::value('auto_flip', $params, TRUE);
-
-  $result = CRM_Dedupe_Merger::batchMerge($rule_group_id, $gid, $mode, $autoFlip, 1, 2, CRM_Utils_Array::value('criteria', $params, array()), CRM_Utils_Array::value('check_permissions', $params));
+  $result = CRM_Dedupe_Merger::batchMerge($rule_group_id, $gid, $mode, 1, 2, $params['criteria'] ?? [], $params['check_permissions'] ?? FALSE, NULL, $params['search_limit']);
 
   return civicrm_api3_create_success($result, $params);
 }
@@ -499,28 +560,34 @@ function civicrm_api3_job_process_batch_merge($params) {
 /**
  * Metadata for batch merge function.
  *
- * @param $params
+ * @param array $params
  */
 function _civicrm_api3_job_process_batch_merge_spec(&$params) {
-  $params['rule_group_id'] = array(
+  $params['rule_group_id'] = [
     'title' => 'Dedupe rule group id, defaults to Contact Unsupervised rule',
     'type' => CRM_Utils_Type::T_INT,
-    'api.aliases' => array('rgid'),
-  );
-  $params['gid'] = array(
+    'api.aliases' => ['rgid'],
+  ];
+  $params['gid'] = [
     'title' => 'group id',
     'type' => CRM_Utils_Type::T_INT,
-  );
-  $params['mode'] = array(
+  ];
+  $params['mode'] = [
     'title' => 'Mode',
     'description' => 'helps decide how to behave when there are conflicts. A \'safe\' value skips the merge if there are no conflicts. Does a force merge otherwise.',
     'type' => CRM_Utils_Type::T_STRING,
-  );
-  $params['auto_flip'] = array(
+  ];
+  $params['auto_flip'] = [
     'title' => 'Auto Flip',
     'description' => 'let the api decide which contact to retain and which to delete?',
     'type' => CRM_Utils_Type::T_BOOLEAN,
-  );
+  ];
+  $params['search_limit'] = [
+    'title' => ts('Number of contacts to look for matches for.'),
+    'type' => CRM_Utils_Type::T_INT,
+    'api.default' => (int) Civi::settings()->get('dedupe_default_limit'),
+  ];
+
 }
 
 /**
@@ -540,9 +607,9 @@ function civicrm_api3_job_run_payment_cron($params) {
     'PaymentCron',
     array_merge(
       $params,
-      array(
+      [
         'caller' => 'api',
-      )
+      ]
     )
   );
 
@@ -551,9 +618,9 @@ function civicrm_api3_job_run_payment_cron($params) {
     'PaymentCron',
     array_merge(
       $params,
-      array(
+      [
         'mode' => 'test',
-      )
+      ]
     )
   );
 }
@@ -565,19 +632,21 @@ function civicrm_api3_job_run_payment_cron($params) {
  *
  * @param array $params
  *   Sends in various config parameters to decide what needs to be cleaned.
+ * @return array
  */
 function civicrm_api3_job_cleanup($params) {
-  $session   = CRM_Utils_Array::value('session', $params, TRUE);
-  $tempTable = CRM_Utils_Array::value('tempTables', $params, TRUE);
-  $jobLog    = CRM_Utils_Array::value('jobLog', $params, TRUE);
-  $prevNext  = CRM_Utils_Array::value('prevNext', $params, TRUE);
-  $dbCache   = CRM_Utils_Array::value('dbCache', $params, FALSE);
-  $memCache  = CRM_Utils_Array::value('memCache', $params, FALSE);
-  $tplCache  = CRM_Utils_Array::value('tplCache', $params, FALSE);
-  $wordRplc  = CRM_Utils_Array::value('wordRplc', $params, FALSE);
+  $session = $params['session'] ?? TRUE;
+  $tempTable = $params['tempTables'] ?? TRUE;
+  $jobLog = $params['jobLog'] ?? TRUE;
+  $expired = $params['expiredDbCache'] ?? TRUE;
+  $prevNext = $params['prevNext'] ?? TRUE;
+  $dbCache = $params['dbCache'] ?? FALSE;
+  $memCache = $params['memCache'] ?? FALSE;
+  $tplCache = $params['tplCache'] ?? FALSE;
+  $wordRplc = $params['wordRplc'] ?? FALSE;
 
-  if ($session || $tempTable || $prevNext) {
-    CRM_Core_BAO_Cache::cleanup($session, $tempTable, $prevNext);
+  if ($session || $tempTable || $prevNext || $expired) {
+    CRM_Core_BAO_Cache::cleanup($session, $tempTable, $prevNext, $expired);
   }
 
   if ($jobLog) {
@@ -590,16 +659,18 @@ function civicrm_api3_job_cleanup($params) {
   }
 
   if ($dbCache) {
-    CRM_Core_Config::clearDBCache();
+    Civi::rebuild(['tables' => TRUE])->execute();
   }
 
   if ($memCache) {
-    CRM_Utils_System::flushCache();
+    Civi::rebuild(['system' => TRUE])->execute();
   }
 
   if ($wordRplc) {
     CRM_Core_BAO_WordReplacement::rebuild();
   }
+
+  return civicrm_api3_create_success();
 }
 
 /**
@@ -608,12 +679,12 @@ function civicrm_api3_job_cleanup($params) {
  * @param array $params
  *
  * @return array
- * @throws \API_Exception
+ * @throws \CRM_Core_Exception
  */
 function civicrm_api3_job_disable_expired_relationships($params) {
   $result = CRM_Contact_BAO_Relationship::disableExpiredRelationships();
   if (!$result) {
-    throw new API_Exception('Failed to disable all expired relationships.');
+    throw new CRM_Core_Exception('Failed to disable all expired relationships.');
   }
   return civicrm_api3_create_success(1, $params, 'Job', 'disable_expired_relationships');
 }
@@ -629,15 +700,15 @@ function civicrm_api3_job_disable_expired_relationships($params) {
  * @param array $params
  *
  * @return array
- * @throws \API_Exception
+ * @throws \CRM_Core_Exception
  */
 function civicrm_api3_job_group_rebuild($params) {
   $lock = Civi::lockManager()->acquire('worker.core.GroupRebuild');
   if (!$lock->isAcquired()) {
-    throw new API_Exception('Could not acquire lock, another GroupRebuild process is running');
+    throw new CRM_Core_Exception('Could not acquire lock, another GroupRebuild process is running');
   }
 
-  $limit = CRM_Utils_Array::value('limit', $params, 0);
+  $limit = $params['limit'] ?? 0;
 
   CRM_Contact_BAO_GroupContactCache::loadAll(NULL, $limit);
   $lock->release();
@@ -648,18 +719,38 @@ function civicrm_api3_job_group_rebuild($params) {
 /**
  * Flush smart groups caches.
  *
- * This job purges aged smart group cache data (based on the timeout value). Sites can decide whether they want this
- * job and / or the group cache rebuild job to run. In some cases performance is better when old caches are cleared out
- * prior to any attempt to rebuild them. Also, many sites are very happy to have caches built on demand, provided the
- * user is not having to wait for deadlocks to clear when invalidating them.
+ * This job purges aged smart group cache data (based on the timeout value).
+ * Sites can decide whether they want this job and / or the group cache rebuild
+ * job to run. In some cases performance is better when old caches are cleared
+ * out prior to any attempt to rebuild them. Also, many sites are very happy to
+ * have caches built on demand, provided the user is not having to wait for
+ * deadlocks to clear when invalidating them.
  *
  * @param array $params
  *
  * @return array
- * @throws \API_Exception
+ * @throws \CRM_Core_Exception
  */
-function civicrm_api3_job_group_cache_flush($params) {
+function civicrm_api3_job_group_cache_flush(array $params): array {
   CRM_Contact_BAO_GroupContactCache::deterministicCacheFlush();
+  return civicrm_api3_create_success();
+}
+
+/**
+ * Flush acl caches.
+ *
+ * This job flushes the acl cache. For many sites it is better to do
+ * this by cron (or not at all if acls are not used) than whenever
+ * a contact is edited.
+ *
+ * @param array $params
+ *
+ * @return array
+ *
+ * @throws \CRM_Core_Exception
+ */
+function civicrm_api3_job_acl_cache_flush(array $params): array {
+  CRM_ACL_BAO_Cache::resetCache();
   return civicrm_api3_create_success();
 }
 

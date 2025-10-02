@@ -1,38 +1,24 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
+use Civi\Api4\JobLog;
+
 /**
- * Page for displaying list of jobs.
+ * Page for displaying log of jobs.
  */
 class CRM_Admin_Page_JobLog extends CRM_Core_Page_Basic {
 
@@ -41,7 +27,7 @@ class CRM_Admin_Page_JobLog extends CRM_Core_Page_Basic {
    *
    * @var array
    */
-  static $_links = NULL;
+  public static $_links;
 
   /**
    * Get BAO Name.
@@ -49,7 +35,7 @@ class CRM_Admin_Page_JobLog extends CRM_Core_Page_Basic {
    * @return string
    *   Classname of BAO.
    */
-  public function getBAOName() {
+  public function getBAOName(): string {
     return 'CRM_Core_BAO_Job';
   }
 
@@ -59,7 +45,7 @@ class CRM_Admin_Page_JobLog extends CRM_Core_Page_Basic {
    * @return array
    *   (reference) of action links
    */
-  public function &links() {
+  public function &links(): array {
     return self::$_links;
   }
 
@@ -70,58 +56,48 @@ class CRM_Admin_Page_JobLog extends CRM_Core_Page_Basic {
    * type of action and executes that action.
    * Finally it calls the parent's run method.
    */
-  public function run() {
-    // set title and breadcrumb
+  public function run(): void {
     CRM_Utils_System::setTitle(ts('Settings - Scheduled Jobs Log'));
-    $breadCrumb = array(
-      array(
-        'title' => ts('Administration'),
+    CRM_Utils_System::appendBreadCrumb([
+      [
+        'title' => ts('Administer'),
         'url' => CRM_Utils_System::url('civicrm/admin',
           'reset=1'
         ),
-      ),
-    );
-    CRM_Utils_System::appendBreadCrumb($breadCrumb);
-    return parent::run();
+      ],
+    ]);
+    parent::run();
   }
 
   /**
    * Browse all jobs.
    *
-   * @param null $action
+   * @throws \CRM_Core_Exception
    */
-  public function browse($action = NULL) {
+  public function browse(): void {
+    $jid = CRM_Utils_Request::retrieve('jid', 'Positive');
 
-    $jid = CRM_Utils_Request::retrieve('jid', 'Positive', $this);
-
-    $sj = new CRM_Core_JobManager();
-
-    $jobName = NULL;
     if ($jid) {
       $jobName = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_Job', $jid);
+      $this->assign('jobName', $jobName);
+      $jobRunUrl = CRM_Utils_System::url('civicrm/admin/job/edit', 'action=view&reset=1&context=joblog&id=' . $jid);
+      $this->assign('jobRunUrl', $jobRunUrl);
+    }
+    else {
+      $this->assign('jobName', FALSE);
+      $this->assign('jobRunUrl', FALSE);
     }
 
-    $this->assign('jobName', $jobName);
-
-    $dao = new CRM_Core_DAO_JobLog();
-    $dao->orderBy('id desc');
-
-    // limit to last 1000 records
-    $dao->limit(1000);
+    $jobLogsQuery = JobLog::get()
+      ->addOrderBy('id', 'DESC')
+      ->setLimit(1000);
 
     if ($jid) {
-      $dao->job_id = $jid;
+      $jobLogsQuery->addWhere('job_id', '=', $jid);
     }
-    $dao->find();
 
-    $rows = array();
-    while ($dao->fetch()) {
-      unset($row);
-      CRM_Core_DAO::storeValues($dao, $row);
-      $rows[$dao->id] = $row;
-    }
+    $rows = $jobLogsQuery->execute()->getArrayCopy();
     $this->assign('rows', $rows);
-
     $this->assign('jobId', $jid);
   }
 
@@ -131,7 +107,7 @@ class CRM_Admin_Page_JobLog extends CRM_Core_Page_Basic {
    * @return string
    *   Classname of edit form.
    */
-  public function editForm() {
+  public function editForm(): string {
     return 'CRM_Admin_Form_Job';
   }
 
@@ -141,7 +117,7 @@ class CRM_Admin_Page_JobLog extends CRM_Core_Page_Basic {
    * @return string
    *   name of this page.
    */
-  public function editName() {
+  public function editName(): string {
     return 'Scheduled Jobs';
   }
 
@@ -153,7 +129,7 @@ class CRM_Admin_Page_JobLog extends CRM_Core_Page_Basic {
    * @return string
    *   user context.
    */
-  public function userContext($mode = NULL) {
+  public function userContext($mode = NULL): string {
     return 'civicrm/admin/job';
   }
 

@@ -1,28 +1,12 @@
 <?php
 /*
-  +--------------------------------------------------------------------+
-  | CiviCRM version 4.7                                                |
-  +--------------------------------------------------------------------+
-  | Copyright CiviCRM LLC (c) 2004-2016                                |
-  +--------------------------------------------------------------------+
-  | This file is a part of CiviCRM.                                    |
-  |                                                                    |
-  | CiviCRM is free software; you can copy, modify, and distribute it  |
-  | under the terms of the GNU Affero General Public License           |
-  | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
-  |                                                                    |
-  | CiviCRM is distributed in the hope that it will be useful, but     |
-  | WITHOUT ANY WARRANTY; without even the implied warranty of         |
-  | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
-  | See the GNU Affero General Public License for more details.        |
-  |                                                                    |
-  | You should have received a copy of the GNU Affero General Public   |
-  | License and the CiviCRM Licensing Exception along                  |
-  | with this program; if not, contact CiviCRM LLC                     |
-  | at info[AT]civicrm[DOT]org. If you have questions about the        |
-  | GNU Affero General Public License or the licensing of CiviCRM,     |
-  | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
-  +--------------------------------------------------------------------+
+ +--------------------------------------------------------------------+
+ | Copyright CiviCRM LLC. All rights reserved.                        |
+ |                                                                    |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
+ +--------------------------------------------------------------------+
  */
 
 /**
@@ -30,13 +14,15 @@
  */
 class CRM_Utils_Weight {
   /**
-   * @var array, list of GET fields which must be validated
+   * List of GET fields which must be validated
    *
    * To reduce the size of this patch, we only sign the exploitable fields
    * which make up "$baseURL" in addOrder() (eg 'filter' or 'dao').
    * Less-exploitable fields (eg 'dir') are left unsigned.
+   * 'id','src','dst','dir'
+   * @var array
    */
-  static $SIGNABLE_FIELDS = array('reset', 'dao', 'idName', 'url', 'filter'); // 'id','src','dst','dir'
+  public static $SIGNABLE_FIELDS = ['reset', 'dao', 'idName', 'url', 'filter'];
 
   /**
    * Correct duplicate weight entries by putting them (duplicate weights) in sequence.
@@ -119,31 +105,28 @@ class CRM_Utils_Weight {
   }
 
   /**
-   * Updates the weight fields of other rows according to the new and old weight passed in.
-   * And returns the new weight be used. If old-weight not present, Creates a gap for a new row to be inserted
-   * at the specified new weight
+   * Makes space for a moved or inserted row by updating the weight of other rows as needed.
    *
    * @param string $daoName
-   *   Full name of the DAO.
-   * @param int $oldWeight
+   *   Full name of the DAO class.
+   * @param int|null $oldWeight
+   *   Previous weight if the row was moved within the same parent-grouping
+   *   Null if the item is new or being moved from a different grouping.
    * @param int $newWeight
+   *   The desired weight of the moved/inserted row
    * @param array $fieldValues
-   *   Field => value to be used in the WHERE.
+   *   Defines the group, e.g. [parent_id => 8, domain_id => 1]
    * @param string $weightField
-   *   Field which contains the weight value,.
-   *   defaults to 'weight'
+   *   Field which contains the weight value, defaults to 'weight'
    *
    * @return int
+   *   Adjusted new weight
    */
   public static function updateOtherWeights($daoName, $oldWeight, $newWeight, $fieldValues = NULL, $weightField = 'weight') {
-    $oldWeight = (int ) $oldWeight;
-    $newWeight = (int ) $newWeight;
+    $newWeight = (int) $newWeight;
 
     // max weight is the highest current weight
-    $maxWeight = CRM_Utils_Weight::getMax($daoName, $fieldValues, $weightField);
-    if (!$maxWeight) {
-      $maxWeight = 1;
-    }
+    $maxWeight = self::getMax($daoName, $fieldValues, $weightField) ?: 1;
 
     if ($newWeight > $maxWeight) {
       // calculate new weight, CRM-4133
@@ -155,7 +138,7 @@ class CRM_Utils_Weight {
       }
       $newWeight = $maxWeight;
 
-      if (!$oldWeight) {
+      if (!isset($oldWeight)) {
         return $newWeight + 1;
       }
     }
@@ -168,14 +151,21 @@ class CRM_Utils_Weight {
       return $newWeight;
     }
 
+    // Check for an existing record with this weight
+    $existing = self::query('SELECT', $daoName, $fieldValues, "id", "$weightField = $newWeight");
+    // Nothing to do if no existing record has this weight
+    if (empty($existing->N)) {
+      return $newWeight;
+    }
+
     // if oldWeight not present, indicates new weight is to be added. So create a gap for a new row to be inserted.
-    if (!$oldWeight) {
+    if (!isset($oldWeight)) {
       $additionalWhere = "$weightField >= $newWeight";
       $update = "$weightField = ($weightField + 1)";
       CRM_Utils_Weight::query('UPDATE', $daoName, $fieldValues, $update, $additionalWhere);
-      return $newWeight;
     }
     else {
+      $oldWeight = (int) $oldWeight;
       if ($newWeight > $oldWeight) {
         $additionalWhere = "$weightField > $oldWeight AND $weightField <= $newWeight";
         $update = "$weightField = ($weightField - 1)";
@@ -185,8 +175,8 @@ class CRM_Utils_Weight {
         $update = "$weightField = ($weightField + 1)";
       }
       CRM_Utils_Weight::query('UPDATE', $daoName, $fieldValues, $update, $additionalWhere);
-      return $newWeight;
     }
+    return $newWeight;
   }
 
   /**
@@ -205,7 +195,7 @@ class CRM_Utils_Weight {
     $selectField = "id AS fieldID, $weightField AS weight";
     $field = CRM_Utils_Weight::query('SELECT', $daoName, $fieldValues, $selectField);
     $sameWeightCount = 0;
-    $weights = array();
+    $weights = [];
     while ($field->fetch()) {
       if (in_array($field->weight, $weights)) {
         $sameWeightCount++;
@@ -244,6 +234,11 @@ class CRM_Utils_Weight {
    * @return int
    */
   public static function getMax($daoName, $fieldValues = NULL, $weightField = 'weight') {
+    if (empty($weightField)) {
+      Civi::log()->warning('Missing weight field name for ' . $daoName);
+      return 0;
+    }
+
     $selectField = "MAX(ROUND($weightField)) AS max_weight";
     $weightDAO = CRM_Utils_Weight::query('SELECT', $daoName, $fieldValues, $selectField);
     $weightDAO->fetch();
@@ -276,17 +271,18 @@ class CRM_Utils_Weight {
    *
    * @param string $queryType
    *   SELECT, UPDATE, DELETE.
-   * @param string $daoName
+   * @param CRM_Core_DAO|string $daoName
    *   Full name of the DAO.
    * @param array $fieldValues
    *   Field => value to be used in the WHERE.
    * @param string $queryData
    *   Data to be used, dependent on the query type.
-   * @param null $additionalWhere
-   * @param string $orderBy
+   * @param string|null $additionalWhere
+   *   Optional WHERE field.
+   * @param string|null $orderBy
    *   Optional ORDER BY field.
-   *
-   * @param null $groupBy
+   * @param string|null $groupBy
+   *   Optional GROU{} BY field.
    *
    * @return CRM_Core_DAO
    *   objet that holds the results of the query
@@ -294,36 +290,37 @@ class CRM_Utils_Weight {
   public static function &query(
     $queryType,
     $daoName,
-    $fieldValues = NULL,
+    $fieldValues,
     $queryData,
     $additionalWhere = NULL,
     $orderBy = NULL,
     $groupBy = NULL
   ) {
-
-    require_once str_replace('_', DIRECTORY_SEPARATOR, $daoName) . ".php";
-
-    $dao = new $daoName();
-    $table = $dao->getTablename();
-    $fields = &$dao->fields();
+    $table = $daoName::getTablename();
+    $fields = $daoName::getSupportedFields();
     $fieldlist = array_keys($fields);
 
-    $whereConditions = array();
+    $whereConditions = [];
     if ($additionalWhere) {
       $whereConditions[] = $additionalWhere;
     }
-    $params = array();
+    $params = [];
     $fieldNum = 0;
     if (is_array($fieldValues)) {
       foreach ($fieldValues as $fieldName => $value) {
         if (!in_array($fieldName, $fieldlist)) {
           // invalid field specified.  abort.
-          return FALSE;
+          throw new CRM_Core_Exception("Invalid field '$fieldName' for $daoName");
         }
-        $fieldNum++;
-        $whereConditions[] = "$fieldName = %$fieldNum";
-        $fieldType = $fields[$fieldName]['type'];
-        $params[$fieldNum] = array($value, CRM_Utils_Type::typeToString($fieldType));
+        if (CRM_Utils_System::isNull($value)) {
+          $whereConditions[] = "$fieldName IS NULL";
+        }
+        else {
+          $fieldNum++;
+          $whereConditions[] = "$fieldName = %$fieldNum";
+          $fieldType = $fields[$fieldName]['type'];
+          $params[$fieldNum] = [$value, CRM_Utils_Type::typeToString($fieldType)];
+        }
       }
     }
     $where = implode(' AND ', $whereConditions);
@@ -354,7 +351,7 @@ class CRM_Utils_Weight {
         break;
 
       default:
-        return FALSE;
+        throw new CRM_Core_Exception("Invalid query operation for $daoName");
     }
 
     $resultDAO = CRM_Core_DAO::executeQuery($query, $params);
@@ -362,11 +359,11 @@ class CRM_Utils_Weight {
   }
 
   /**
-   * @param $rows
+   * @param array $rows
    * @param string $daoName
    * @param string $idName
-   * @param $returnURL
-   * @param null $filter
+   * @param string $returnURL
+   * @param string|null $filter
    */
   public static function addOrder(&$rows, $daoName, $idName, $returnURL, $filter = NULL) {
     if (empty($rows)) {
@@ -386,13 +383,13 @@ class CRM_Utils_Weight {
     $config = CRM_Core_Config::singleton();
     $imageURL = $config->userFrameworkResourceURL . 'i/arrow';
 
-    $queryParams = array(
+    $queryParams = [
       'reset' => 1,
       'dao' => $daoName,
       'idName' => $idName,
       'url' => $returnURL,
       'filter' => $filter,
-    );
+    ];
 
     $signer = new CRM_Utils_Signer(CRM_Core_Key::privateKey(), self::$SIGNABLE_FIELDS);
     $queryParams['_sgn'] = $signer->sign($queryParams);
@@ -403,7 +400,7 @@ class CRM_Utils_Weight {
       $prevID = $ids[$i - 1];
       $nextID = $ids[$i + 1];
 
-      $links = array();
+      $links = [];
       $url = "{$baseURL}&amp;src=$id";
 
       if ($prevID != 0) {
@@ -414,8 +411,8 @@ class CRM_Utils_Weight {
         $links[] = "<a class=\"crm-weight-arrow\" href=\"{$url}&amp;dst={$prevID}&amp;dir=swap\"><img src=\"{$imageURL}/up.gif\" title=\"$alt\" alt=\"$alt\" class=\"order-icon\"></a>";
       }
       else {
-        $links[] = "<img src=\"{$imageURL}/spacer.gif\" class=\"order-icon\">";
-        $links[] = "<img src=\"{$imageURL}/spacer.gif\" class=\"order-icon\">";
+        $links[] = "<span class=\"order-icon\"></span>";
+        $links[] = "<span class=\"order-icon\"></span>";
       }
 
       if ($nextID != 0) {
@@ -426,31 +423,35 @@ class CRM_Utils_Weight {
         $links[] = "<a class=\"crm-weight-arrow\" href=\"{$url}&amp;dst={$lastID}&amp;dir=last\"><img src=\"{$imageURL}/last.gif\" title=\"$alt\" alt=\"$alt\" class=\"order-icon\"></a>";
       }
       else {
-        $links[] = "<img src=\"{$imageURL}/spacer.gif\" class=\"order-icon\">";
-        $links[] = "<img src=\"{$imageURL}/spacer.gif\" class=\"order-icon\">";
+        $links[] = "<span class=\"order-icon\"></span>";
+        $links[] = "<span class=\"order-icon\"></span>";
       }
       $rows[$id]['weight'] = implode('&nbsp;', $links);
     }
   }
 
+  /**
+   *
+   * @throws CRM_Core_Exception
+   */
   public static function fixOrder() {
-    $signature = CRM_Utils_Request::retrieve('_sgn', 'String', CRM_Core_DAO::$_nullObject);
+    $signature = CRM_Utils_Request::retrieve('_sgn', 'String');
     $signer = new CRM_Utils_Signer(CRM_Core_Key::privateKey(), self::$SIGNABLE_FIELDS);
 
     // Validate $_GET values b/c subsequent code reads $_GET (via CRM_Utils_Request::retrieve)
     if (!$signer->validate($signature, $_GET)) {
-      CRM_Core_Error::fatal('Request signature is invalid');
+      throw new CRM_Core_Exception('Request signature is invalid');
     }
 
     // Note: Ensure this list matches self::$SIGNABLE_FIELDS
-    $daoName = CRM_Utils_Request::retrieve('dao', 'String', CRM_Core_DAO::$_nullObject);
-    $id = CRM_Utils_Request::retrieve('id', 'Integer', CRM_Core_DAO::$_nullObject);
-    $idName = CRM_Utils_Request::retrieve('idName', 'String', CRM_Core_DAO::$_nullObject);
-    $url = CRM_Utils_Request::retrieve('url', 'String', CRM_Core_DAO::$_nullObject);
-    $filter = CRM_Utils_Request::retrieve('filter', 'String', CRM_Core_DAO::$_nullObject);
-    $src = CRM_Utils_Request::retrieve('src', 'Integer', CRM_Core_DAO::$_nullObject);
-    $dst = CRM_Utils_Request::retrieve('dst', 'Integer', CRM_Core_DAO::$_nullObject);
-    $dir = CRM_Utils_Request::retrieve('dir', 'String', CRM_Core_DAO::$_nullObject);
+    $daoName = CRM_Utils_Request::retrieve('dao', 'String');
+    $id = CRM_Utils_Request::retrieve('id', 'Integer');
+    $idName = CRM_Utils_Request::retrieve('idName', 'String');
+    $url = CRM_Utils_Request::retrieve('url', 'String');
+    $filter = CRM_Utils_Request::retrieve('filter', 'String');
+    $src = CRM_Utils_Request::retrieve('src', 'Integer');
+    $dst = CRM_Utils_Request::retrieve('dst', 'Integer');
+    $dir = CRM_Utils_Request::retrieve('dir', 'String');
     $object = new $daoName();
     $srcWeight = CRM_Core_DAO::getFieldValue($daoName, $src, 'weight', $idName);
     $dstWeight = CRM_Core_DAO::getFieldValue($daoName, $dst, 'weight', $idName);
@@ -461,17 +462,17 @@ class CRM_Utils_Weight {
     $tableName = $object->tableName();
 
     $query = "UPDATE $tableName SET weight = %1 WHERE $idName = %2";
-    $params = array(
-      1 => array($dstWeight, 'Integer'),
-      2 => array($src, 'Integer'),
-    );
+    $params = [
+      1 => [$dstWeight, 'Integer'],
+      2 => [$src, 'Integer'],
+    ];
     CRM_Core_DAO::executeQuery($query, $params);
 
     if ($dir == 'swap') {
-      $params = array(
-        1 => array($srcWeight, 'Integer'),
-        2 => array($dst, 'Integer'),
-      );
+      $params = [
+        1 => [$srcWeight, 'Integer'],
+        2 => [$dst, 'Integer'],
+      ];
       CRM_Core_DAO::executeQuery($query, $params);
     }
     elseif ($dir == 'first') {
@@ -480,10 +481,10 @@ class CRM_Utils_Weight {
       if ($filter) {
         $query .= " AND $filter";
       }
-      $params = array(
-        1 => array($src, 'Integer'),
-        2 => array($srcWeight, 'Integer'),
-      );
+      $params = [
+        1 => [$src, 'Integer'],
+        2 => [$srcWeight, 'Integer'],
+      ];
       CRM_Core_DAO::executeQuery($query, $params);
     }
     elseif ($dir == 'last') {
@@ -492,27 +493,31 @@ class CRM_Utils_Weight {
       if ($filter) {
         $query .= " AND $filter";
       }
-      $params = array(
-        1 => array($src, 'Integer'),
-        2 => array($srcWeight, 'Integer'),
-      );
+      $params = [
+        1 => [$src, 'Integer'],
+        2 => [$srcWeight, 'Integer'],
+      ];
       CRM_Core_DAO::executeQuery($query, $params);
     }
+
+    // This function is on its way out because the civicrm_admin_ui extension is replacing legacy screens that use it,
+    // but some sortable items like Custom Fields get cached in metadata so let's clear that now:
+    Civi::cache('metadata')->clear();
 
     self::fixOrderOutput($url);
   }
 
   /**
-   * @param $url
+   * @param string $url
    */
   public static function fixOrderOutput($url) {
     if (empty($_GET['snippet']) || $_GET['snippet'] !== 'json') {
       CRM_Utils_System::redirect($url);
     }
 
-    CRM_Core_Page_AJAX::returnJsonResponse(array(
+    CRM_Core_Page_AJAX::returnJsonResponse([
       'userContext' => $url,
-    ));
+    ]);
   }
 
 }

@@ -1,36 +1,32 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 class CRM_Admin_Form_ParticipantStatusType extends CRM_Admin_Form {
+
+  /**
+   * @var bool
+   */
+  public $submitOnce = TRUE;
+
+  /**
+   * Used to make sure a malicious POST does not change is_reserved
+   *
+   * @var bool
+   */
+  protected $_isReserved = FALSE;
 
   /**
    * Explicitly declare the entity api name.
@@ -59,14 +55,14 @@ class CRM_Admin_Form_ParticipantStatusType extends CRM_Admin_Form {
 
     $this->add('text', 'label', ts('Label'), $attributes['label'], TRUE);
 
-    $this->addSelect('class', array('required' => TRUE));
+    $this->addSelect('class', ['required' => TRUE]);
 
     $this->add('checkbox', 'is_active', ts('Active?'));
     $this->add('checkbox', 'is_counted', ts('Counted?'));
 
-    $this->add('text', 'weight', ts('Order'), $attributes['weight'], TRUE);
+    $this->add('number', 'weight', ts('Order'), $attributes['weight'], TRUE);
 
-    $this->addSelect('visibility_id', array('label' => ts('Visibility'), 'required' => TRUE));
+    $this->addSelect('visibility_id', ['label' => ts('Visibility'), 'required' => TRUE]);
 
     $this->assign('id', $this->_id);
   }
@@ -81,9 +77,9 @@ class CRM_Admin_Form_ParticipantStatusType extends CRM_Admin_Form {
     if (empty($defaults['weight'])) {
       $defaults['weight'] = CRM_Utils_Weight::getDefaultWeight('CRM_Event_DAO_ParticipantStatusType');
     }
-    $this->_isReserved = CRM_Utils_Array::value('is_reserved', $defaults);
+    $this->_isReserved = $defaults['is_reserved'] ?? FALSE;
     if ($this->_isReserved) {
-      $this->freeze(array('name', 'class', 'is_active'));
+      $this->freeze(['name', 'class', 'is_active']);
     }
     return $defaults;
   }
@@ -101,15 +97,15 @@ class CRM_Admin_Form_ParticipantStatusType extends CRM_Admin_Form {
 
     $formValues = $this->controller->exportValues($this->_name);
 
-    $params = array(
-      'name' => CRM_Utils_Array::value('name', $formValues),
-      'label' => CRM_Utils_Array::value('label', $formValues),
-      'class' => CRM_Utils_Array::value('class', $formValues),
-      'is_active' => CRM_Utils_Array::value('is_active', $formValues, FALSE),
-      'is_counted' => CRM_Utils_Array::value('is_counted', $formValues, FALSE),
-      'weight' => CRM_Utils_Array::value('weight', $formValues),
-      'visibility_id' => CRM_Utils_Array::value('visibility_id', $formValues),
-    );
+    $params = [
+      'name' => $formValues['name'] ?? NULL,
+      'label' => $formValues['label'] ?? NULL,
+      'class' => $formValues['class'] ?? NULL,
+      'is_active' => $formValues['is_active'] ?? FALSE,
+      'is_counted' => $formValues['is_counted'] ?? FALSE,
+      'weight' => $formValues['weight'] ?? NULL,
+      'visibility_id' => $formValues['visibility_id'] ?? NULL,
+    ];
 
     // make sure a malicious POST does not change these on reserved statuses
     if ($this->_isReserved) {
@@ -126,11 +122,11 @@ class CRM_Admin_Form_ParticipantStatusType extends CRM_Admin_Form {
       $oldWeight = CRM_Core_DAO::getFieldValue('CRM_Event_DAO_ParticipantStatusType', $this->_id, 'weight', 'id');
     }
     else {
-      $oldWeight = 0;
+      $oldWeight = NULL;
     }
     $params['weight'] = CRM_Utils_Weight::updateOtherWeights('CRM_Event_DAO_ParticipantStatusType', $oldWeight, $params['weight']);
 
-    $participantStatus = CRM_Event_BAO_ParticipantStatusType::create($params);
+    $participantStatus = CRM_Event_BAO_ParticipantStatusType::writeRecord($params);
 
     if ($participantStatus->id) {
       if ($this->_action & CRM_Core_Action::UPDATE) {

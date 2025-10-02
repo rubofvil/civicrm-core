@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -34,17 +18,20 @@ namespace Civi\Core;
  * The SettingsManager is responsible for tracking settings across various
  * domains and users.
  *
- * Generally, for any given setting, there are three levels where values
+ * Generally, for any given setting, there are four levels where values
  * can be declared:
  *
- *   - Mandatory values (which come from a global $civicrm_setting).
+ *   - Mandatory values (set using an environment variable corresponding to the setting).
+ *   - Mandatory values (set using global variable $civicrm_setting).
  *   - Explicit values (which are chosen by the user and stored in the DB).
  *   - Default values (which come from the settings metadata).
  *
- * Note: During the early stages of bootstrap, default values are not be available.
- * Loading the defaults requires loading metadata from various sources. However,
- * near the end of bootstrap, one calls SettingsManager::useDefaults() to fetch
- * and merge the defaults.
+ * During bootstrap the SystemManager runs a limited version to
+ * get values we need for bootstap - before we have full metadata from
+ * the extension system, and setting values from the database.
+ *
+ * Near the end of bootstrap, one calls SettingsManager::bootComplete() to
+ * reload the full version.
  *
  * Note: In a typical usage, there will only be one active domain and one
  * active contact (each having its own bag) within a given request. However,
@@ -61,19 +48,30 @@ namespace Civi\Core;
  */
 class SettingsManager {
 
+  protected const BOOT_PHASE_EARLY = 0;
+  protected const BOOT_PHASE_MID = 1;
+  protected const BOOT_PHASE_COMPLETE = 2;
+
   /**
    * @var \CRM_Utils_Cache_Interface
    */
   protected $cache;
 
   /**
-   * @var
+   * @var array
    *   Array (int $id => SettingsBag $bag).
    */
-  protected $bagsByDomain = array(), $bagsByContact = array();
+  protected $bagsByDomain = [];
+
 
   /**
-   * @var array|NULL
+   * @var array
+   *   Array (int $id => SettingsBag $bag).
+   */
+  protected $bagsByContact = [];
+
+  /**
+   * @var array|null
    *   Array(string $entity => array(string $settingName => mixed $value)).
    *   Ex: $mandatory['domain']['uploadDir'].
    *   NULL means "autoload from $civicrm_setting".
@@ -81,11 +79,20 @@ class SettingsManager {
   protected $mandatory = NULL;
 
   /**
-   * Whether to use defaults.
+   * The SettingsManager boots through 3 phases:
    *
-   * @var bool
+   * 0. during early boot, we load metadata for a limited subset of settings
+   *    in core *.boot.setting.php files. Setting values come only from
+   *    environment variables, $civicrm_setting global, or default
+   *
+   * 1. once the database is loaded, we can load database values
+   *
+   * 2. once the extension system is booted, we have full and final settings
+   *    metadata (including from extensions)
+   *
+   * @var int
    */
-  protected $useDefaults = FALSE;
+  protected $bootPhase = self::BOOT_PHASE_EARLY;
 
   /**
    * @param \CRM_Utils_Cache_Interface $cache
@@ -96,28 +103,84 @@ class SettingsManager {
   }
 
   /**
-   * Ensure that all defaults values are included with
-   * all current and future bags.
+   * Signal that the SettingsManager can now load
+   * values from the DB
    *
    * @return SettingsManager
    */
+  public function dbAvailable() {
+    // we only need to move on the boot phase if we are
+    // currently in BOOT_PHASE_EARLY
+    if ($this->bootPhase === self::BOOT_PHASE_EARLY) {
+      $this->bootPhase = self::BOOT_PHASE_MID;
+
+      // if DB is newly available, reload DB values
+      // for all bags
+      $this->reloadValues();
+    }
+    return $this;
+  }
+
+  /**
+   * Remove pre-boot restrictions and reload defaults/mandatory
+   *
+   * @return SettingsManager
+   */
+  public function bootComplete() {
+    if ($this->bootPhase !== self::BOOT_PHASE_COMPLETE) {
+      $this->bootPhase = self::BOOT_PHASE_COMPLETE;
+
+      // on this transition, we need to reload all
+      // the value layers as the metadata might have
+      // changed
+      $this->reloadValues()->reloadDefaults()->useMandatory();
+    }
+    return $this;
+  }
+
+  /**
+   * Maintained as public alias of bootComplete for compatibility
+   *
+   * @deprecated
+   * @return SettingsManager
+   */
   public function useDefaults() {
-    if (!$this->useDefaults) {
-      $this->useDefaults = TRUE;
+    return $this->bootComplete();
+  }
 
-      if (!empty($this->bagsByDomain)) {
-        foreach ($this->bagsByDomain as $bag) {
-          /** @var SettingsBag $bag */
-          $bag->loadDefaults($this->getDefaults('domain'));
-        }
-      }
+  /**
+   * (Re)load database values for all existing settings bags
+   *
+   * @return SettingsManager
+   */
+  protected function reloadValues() {
+    foreach ($this->bagsByDomain as $bag) {
+      /** @var SettingsBag $bag */
+      $bag->loadValues();
+    }
 
-      if (!empty($this->bagsByContact)) {
-        foreach ($this->bagsByContact as $bag) {
-          /** @var SettingsBag $bag */
-          $bag->loadDefaults($this->getDefaults('contact'));
-        }
-      }
+    foreach ($this->bagsByContact as $bag) {
+      /** @var SettingsBag $bag */
+      $bag->loadValues();
+    }
+
+    return $this;
+  }
+
+  /**
+   * (Re)load default values for all existing settings bags
+   *
+   * @return SettingsManager
+   */
+  protected function reloadDefaults() {
+    foreach ($this->bagsByDomain as $bag) {
+      /** @var SettingsBag $bag */
+      $bag->loadDefaults($this->getDefaults('domain'));
+    }
+
+    foreach ($this->bagsByContact as $bag) {
+      /** @var SettingsBag $bag */
+      $bag->loadDefaults($this->getDefaults('contact'));
     }
 
     return $this;
@@ -128,7 +191,7 @@ class SettingsManager {
    * all current and future bags.
    *
    * If you call useMandatory multiple times, it will
-   * re-scan the global $civicrm_setting.
+   * re-scan the global $civicrm_setting and environment variables
    *
    * @return SettingsManager
    */
@@ -149,7 +212,10 @@ class SettingsManager {
   }
 
   /**
-   * @param int|NULL $domainId
+   * Get Settings by domain.
+   *
+   * @param int|null $domainId
+   *
    * @return SettingsBag
    */
   public function getBagByDomain($domainId) {
@@ -159,7 +225,7 @@ class SettingsManager {
 
     if (!isset($this->bagsByDomain[$domainId])) {
       $this->bagsByDomain[$domainId] = new SettingsBag($domainId, NULL);
-      if (\CRM_Core_Config::singleton()->dsn) {
+      if ($this->bootPhase !== self::BOOT_PHASE_EARLY) {
         $this->bagsByDomain[$domainId]->loadValues();
       }
       $this->bagsByDomain[$domainId]
@@ -170,19 +236,33 @@ class SettingsManager {
   }
 
   /**
-   * @param int|NULL $domainId
-   * @param int|NULL $contactId
+   * Get Settings by contact.
+   *
+   * @param int|null $domainId
+   *   For the default domain, leave $domainID as NULL.
+   * @param int|null $contactId
+   *   For the default/active user's contact, leave $domainID as NULL.
+   *
    * @return SettingsBag
+   * @throws \CRM_Core_Exception
+   *   If there is no contact, then there's no SettingsBag, and we'll throw
+   *   an exception.
    */
   public function getBagByContact($domainId, $contactId) {
     if ($domainId === NULL) {
       $domainId = \CRM_Core_Config::domainID();
     }
+    if ($contactId === NULL) {
+      $contactId = \CRM_Core_Session::getLoggedInContactID();
+      if (!$contactId) {
+        throw new \CRM_Core_Exception("Cannot access settings subsystem - user or domain is unavailable");
+      }
+    }
 
     $key = "$domainId:$contactId";
     if (!isset($this->bagsByContact[$key])) {
       $this->bagsByContact[$key] = new SettingsBag($domainId, $contactId);
-      if (\CRM_Core_Config::singleton()->dsn) {
+      if ($this->bootPhase !== self::BOOT_PHASE_EARLY) {
         $this->bagsByContact[$key]->loadValues();
       }
       $this->bagsByContact[$key]
@@ -201,28 +281,28 @@ class SettingsManager {
    *   Array(string $settingName => mixed $value).
    */
   protected function getDefaults($entity) {
-    if (!$this->useDefaults) {
-      return self::getSystemDefaults($entity);
-    }
-
-    $cacheKey = 'defaults:' . $entity;
+    $cacheKey = 'phase' . $this->bootPhase . '_defaults_' . $entity;
     $defaults = $this->cache->get($cacheKey);
+
     if (!is_array($defaults)) {
-      $specs = SettingsMetadata::getMetadata(array(
+      $defaults = [];
+
+      $specs = SettingsMetadata::getMetadata([
         'is_contact' => ($entity === 'contact' ? 1 : 0),
-      ));
-      $defaults = array();
+      ], NULL, FALSE, $this->bootPhase !== self::BOOT_PHASE_COMPLETE);
+
       foreach ($specs as $key => $spec) {
-        $defaults[$key] = \CRM_Utils_Array::value('default', $spec);
+        $defaults[$key] = $spec['default'] ?? NULL;
       }
-      \CRM_Utils_Array::extend($defaults, self::getSystemDefaults($entity));
+
       $this->cache->set($cacheKey, $defaults);
     }
     return $defaults;
   }
 
   /**
-   * Get a list of mandatory/overriden settings.
+   * Get a list of mandatory/overriden settings from $civicrm_setting global
+   * or environment.
    *
    * @param string $entity
    *   Ex: 'domain' or 'contact'.
@@ -231,13 +311,52 @@ class SettingsManager {
    */
   protected function getMandatory($entity) {
     if ($this->mandatory === NULL) {
-      $this->mandatory = self::parseMandatorySettings(\CRM_Utils_Array::value('civicrm_setting', $GLOBALS));
+      $this->mandatory = self::parseMandatorySettingsGlobalVar($GLOBALS['civicrm_setting'] ?? NULL);
+
+      // merge in settings from env - these take precedence over values from global
+      // TODO: should we warn if env var is overriding $civicrm_setting setting?
+      foreach (['domain', 'contact'] as $entityKey) {
+        $this->mandatory[$entityKey] = array_merge(
+            $this->mandatory[$entityKey] ?? [],
+            $this->getEnvSettingValues($entity)
+        );
+      }
     }
     return $this->mandatory[$entity];
   }
 
   /**
-   * Parse mandatory settings.
+   * Get any setting values set using environment variables
+   *
+   * @param string $entity
+   *   Ex: 'domain' or 'contact'.
+   *
+   * @return array
+   *   Array(string $settingName or $settingFqn => mixed $value).
+   */
+  protected function getEnvSettingValues($entity) {
+    $settings = [];
+
+    $specs = SettingsMetadata::getMetadata([
+      'is_contact' => ($entity === 'contact' ? 1 : 0),
+      'is_env_loadable' => TRUE,
+    ], NULL, FALSE, $this->bootPhase !== self::BOOT_PHASE_COMPLETE);
+
+    foreach ($specs as $key => $spec) {
+      $fqn = $spec['global_name'] ?? NULL;
+      if ($fqn) {
+        $envValue = getenv($fqn);
+        if ($envValue !== FALSE) {
+          $settings[$key] = $envValue;
+        }
+      }
+    }
+
+    return $settings;
+  }
+
+  /**
+   * Parse mandatory settings from global env var.
    *
    * In previous versions, settings were broken down into verbose+dynamic group names, e.g.
    *
@@ -245,48 +364,34 @@ class SettingsManager {
    *
    * We now simplify to two simple groups, 'domain' and 'contact'.
    *
-   *    $civicrm_settings['domain']['foo'] = 'bar';
+   *    $civicrm_setting['domain']['foo'] = 'bar';
    *
-   * However, the old groups are grand-fathered in as aliases.
+   * 'Personal Preferences' is still aliased for compatibility (is this still needed in June 2024?).
    *
    * @param array $civicrm_setting
    *   Ex: $civicrm_setting['Group Name']['field'] = 'value'.
    *   Group names are an historical quirk; ignore them.
    * @return array
    */
-  public static function parseMandatorySettings($civicrm_setting) {
-    $result = array(
-      'domain' => array(),
-      'contact' => array(),
-    );
+  public static function parseMandatorySettingsGlobalVar($civicrm_setting) {
+    $result = [
+      'domain' => [],
+      'contact' => [],
+    ];
 
-    $rewriteGroups = array(
-      //\CRM_Core_BAO_Setting::ADDRESS_STANDARDIZATION_PREFERENCES_NAME => 'domain',
-      //\CRM_Core_BAO_Setting::CAMPAIGN_PREFERENCES_NAME => 'domain',
-      //\CRM_Core_BAO_Setting::CONTRIBUTE_PREFERENCES_NAME => 'domain',
-      //\CRM_Core_BAO_Setting::DEVELOPER_PREFERENCES_NAME => 'domain',
-      //\CRM_Core_BAO_Setting::DIRECTORY_PREFERENCES_NAME => 'domain',
-      //\CRM_Core_BAO_Setting::EVENT_PREFERENCES_NAME => 'domain',
-      //\CRM_Core_BAO_Setting::LOCALIZATION_PREFERENCES_NAME => 'domain',
-      //\CRM_Core_BAO_Setting::MAILING_PREFERENCES_NAME => 'domain',
-      //\CRM_Core_BAO_Setting::MAP_PREFERENCES_NAME => 'domain',
-      //\CRM_Core_BAO_Setting::MEMBER_PREFERENCES_NAME => 'domain',
-      //\CRM_Core_BAO_Setting::MULTISITE_PREFERENCES_NAME => 'domain',
-      //\CRM_Core_BAO_Setting::PERSONAL_PREFERENCES_NAME => 'contact',
+    $rewriteGroups = [
       'Personal Preferences' => 'contact',
-      //\CRM_Core_BAO_Setting::SEARCH_PREFERENCES_NAME => 'domain',
-      //\CRM_Core_BAO_Setting::SYSTEM_PREFERENCES_NAME => 'domain',
-      //\CRM_Core_BAO_Setting::URL_PREFERENCES_NAME => 'domain',
       'domain' => 'domain',
       'contact' => 'contact',
-    );
+    ];
 
     if (is_array($civicrm_setting)) {
       foreach ($civicrm_setting as $oldGroup => $values) {
-        $newGroup = isset($rewriteGroups[$oldGroup]) ? $rewriteGroups[$oldGroup] : 'domain';
+        $newGroup = $rewriteGroups[$oldGroup] ?? 'domain';
         $result[$newGroup] = array_merge($result[$newGroup], $values);
       }
     }
+
     return $result;
   }
 
@@ -299,7 +404,8 @@ class SettingsManager {
     $this->mandatory = NULL;
 
     $this->cache->flush();
-    \Civi::cache('settings')->flush(); // SettingsMetadata; not guaranteed to use same cache.
+    // SettingsMetadata; not guaranteed to use same cache.
+    \Civi::cache('settings')->flush();
 
     foreach ($this->bagsByDomain as $bag) {
       /** @var SettingsBag $bag */
@@ -319,36 +425,75 @@ class SettingsManager {
   }
 
   /**
-   * Get a list of critical system defaults.
+   * Load boot settings from environment and/or settings file
    *
-   * The setting system can be modified by extensions, which means that it's not fully available
-   * during bootstrap -- in particular, defaults cannot be loaded. For a very small number of settings,
-   * we must define defaults before the system bootstraps.
-   *
-   * @param string $entity
-   *
-   * @return array
+   * @param string $settingsPath
+   *    Path to the civicrm.settings.php file
    */
-  private static function getSystemDefaults($entity) {
-    $defaults = array();
-    switch ($entity) {
-      case 'domain':
-        $defaults = array(
-          'installed' => FALSE,
-          'enable_components' => array('CiviEvent', 'CiviContribute', 'CiviMember', 'CiviMail', 'CiviReport', 'CiviPledge'),
-          'customFileUploadDir' => '[civicrm.files]/custom/',
-          'imageUploadDir' => '[civicrm.files]/persist/contribute/',
-          'uploadDir' => '[civicrm.files]/upload/',
-          'imageUploadURL' => '[civicrm.files]/persist/contribute/',
-          'extensionsDir' => '[civicrm.files]/ext/',
-          'extensionsURL' => '[civicrm.files]/ext/',
-          'resourceBase' => '[civicrm.root]/',
-          'userFrameworkResourceURL' => '[civicrm.root]/',
-        );
-        break;
+  public static function bootSettings($settingsPath) {
+    // during bootstrap we can't use a more persistent cache
+    $bootSettingsCache = \CRM_Utils_Cache::create([
+      'name' => 'bootSettings',
+      'type' => ['ArrayCache'],
+    ]);
 
+    $bootSettingsManager = new self($bootSettingsCache);
+
+    // check for constants we need to define
+    $bootConstants = SettingsMetadata::getMetadata(['is_contact' => 0, 'is_constant' => TRUE], NULL, FALSE, TRUE);
+
+    // if a constant value has been set using an env var, we need
+    // to jump in and define it now so the env var value takes precedence
+    // over any "define" calls in the civicrm.settings.php
+    // (hopefully these use if (!defined(X))))
+    $envSettingsValues = $bootSettingsManager->getEnvSettingValues('domain');
+
+    foreach ($bootConstants as $key => $meta) {
+      $fqn = $meta['global_name'] ?? NULL;
+      $value = $envSettingsValues[$key] ?? NULL;
+      if ($fqn && !defined($fqn) && !is_null($value)) {
+        define($fqn, $value);
+      }
     }
-    return $defaults;
+
+    // we need to make an exceptional check for if we have a value for DSN that
+    // is composed from consituent parts *before* we load the settings
+    // file in order to:
+    // a) ensure the env values take precedence over define('CIVICRM_DSN'...) in the settings file
+    // b) provide the right source value for CIVICRM_LOGGING_DSN (set from CIVICRM_DSN in the settings file template)
+    if (!defined('CIVICRM_DSN')) {
+      $composedDsn = $bootSettingsManager->getBagByDomain(NULL)->get('civicrm_db_dsn');
+      if ($composedDsn) {
+        define('CIVICRM_DSN', $composedDsn);
+      }
+    }
+
+    if (file_exists($settingsPath)) {
+      if (!defined('CIVICRM_SETTINGS_PATH')) {
+        define('CIVICRM_SETTINGS_PATH', $settingsPath);
+      }
+      require_once $settingsPath;
+    }
+
+    // get all effective values from the settings bag (resolving defaults etc)
+    $effectiveValues = $bootSettingsManager->getBagByDomain(NULL)->all();
+
+    foreach ($bootConstants as $key => $meta) {
+      $fqn = $meta['global_name'] ?? NULL;
+      $value = $effectiveValues[$key] ?? NULL;
+      if ($fqn && !defined($fqn) && !is_null($value)) {
+        define($fqn, $value);
+      }
+      // TODO: should we complain here if there are inconsistent defines
+      // from elsewhere?
+    }
+
+    // if in doubt, the root of civicrm-core is 3 steps
+    // up from this file
+    global $civicrm_root;
+    if (!$civicrm_root) {
+      $civicrm_root = dirname(__FILE__, 3) . DIRECTORY_SEPARATOR;
+    }
   }
 
 }

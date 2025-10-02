@@ -10,7 +10,8 @@
  * names. Each name may be a class (eg "MyFirstTest") or a method
  * (eg "MyFirstTest::testFoo").
  */
-class EnvTests extends \PHPUnit_Framework_TestSuite {
+class EnvTests extends \PHPUnit\Framework\TestSuite {
+
   /**
    * @return \EnvTests
    */
@@ -21,7 +22,7 @@ class EnvTests extends \PHPUnit_Framework_TestSuite {
     $suite = new EnvTests();
     $tests = getenv('PHPUNIT_TESTS');
     foreach (explode(' ', $tests) as $test) {
-      if (strpos($test, '::') !== FALSE) {
+      if (str_contains($test, '::')) {
         list ($class, $method) = explode('::', $test);
         $clazz = new \ReflectionClass($class);
         $suite->addTestMethod($clazz, $clazz->getMethod($method));

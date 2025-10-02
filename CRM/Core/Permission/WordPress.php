@@ -1,56 +1,40 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
- * $Id$
- *
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
  *
  */
 class CRM_Core_Permission_WordPress extends CRM_Core_Permission_Base {
+
   /**
    * Given a permission string, check for access requirements
    *
    * @param string $str
    *   The permission to check.
+   * @param int $userId
    *
    * @return bool
    *   true if yes, else false
    */
-  public function check($str) {
+  public function check($str, $userId = NULL) {
     // Generic cms 'administer users' role tranlates to users with the 'edit_users' capability' in WordPress
-    $str = $this->translatePermission($str, 'WordPress', array(
+    $str = $this->translatePermission($str, 'WordPress', [
       'administer users' => 'edit_users',
-    ));
+    ]);
     if ($str == CRM_Core_Permission::ALWAYS_DENY_PERMISSION) {
       return FALSE;
     }
@@ -74,30 +58,60 @@ class CRM_Core_Permission_WordPress extends CRM_Core_Permission_Base {
       return TRUE;
     }
 
-    if (current_user_can('super admin') || current_user_can('administrator')) {
+    $user = $userId ? get_userdata($userId) : wp_get_current_user();
+
+    if ($userId !== 0 && ($user->has_cap('super admin') || $user->has_cap('administrator'))) {
       return TRUE;
     }
 
     // Make string lowercase and convert spaces into underscore
     $str = CRM_Utils_String::munge(strtolower($str));
 
-    if (is_user_logged_in()) {
+    if ($userId !== 0 && $user->exists()) {
       // Check whether the logged in user has the capabilitity
-      if (current_user_can($str)) {
+      if ($user->has_cap($str)) {
         return TRUE;
       }
     }
     else {
       //check the capabilities of Anonymous user)
       $roleObj = new WP_Roles();
-      if (
-        $roleObj->get_role('anonymous_user') != NULL &&
-        array_key_exists($str, $roleObj->get_role('anonymous_user')->capabilities)
-      ) {
+      $anonObj = $roleObj->get_role('anonymous_user');
+      if (!empty($anonObj->capabilities) && array_key_exists($str, $anonObj->capabilities)) {
         return TRUE;
       }
     }
     return FALSE;
+  }
+
+  /**
+   * @inheritDoc
+   */
+  public function getAvailablePermissions() {
+    // We want to list *only* WordPress perms, so we'll *skip* Civi perms.
+    $mungedCorePerms = array_map(
+      function($str) {
+        return CRM_Utils_String::munge(strtolower($str));
+      },
+      array_keys(\CRM_Core_Permission::basicPermissions(TRUE))
+    );
+
+    // WP doesn't have an API to list all capabilities. However, we can discover a
+    // pretty good list by inspecting the (super)admin roles.
+    $wpCaps = [];
+    foreach (wp_roles()->roles as $wpRole) {
+      $wpCaps = array_unique(array_merge(array_keys($wpRole['capabilities']), $wpCaps));
+    }
+
+    $permissions = parent::getAvailablePermissions();
+    foreach ($wpCaps as $wpCap) {
+      if (!in_array($wpCap, $mungedCorePerms)) {
+        $permissions["WordPress:$wpCap"] = [
+          'title' => "WordPress: $wpCap",
+        ];
+      }
+    }
+    return $permissions;
   }
 
   /**

@@ -2,27 +2,11 @@
 
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -33,8 +17,23 @@
  */
 class CRM_Core_Error_Log extends \Psr\Log\AbstractLogger {
 
+  /**
+   * @var array
+   */
+  public $map;
+
+  /**
+   * CRM_Core_Error_Log constructor.
+   */
   public function __construct() {
-    $this->map = array(
+    $this->map = self::getMap();
+  }
+
+  /**
+   * @return array
+   */
+  public static function getMap():array {
+    return [
       \Psr\Log\LogLevel::DEBUG => PEAR_LOG_DEBUG,
       \Psr\Log\LogLevel::INFO => PEAR_LOG_INFO,
       \Psr\Log\LogLevel::NOTICE => PEAR_LOG_NOTICE,
@@ -43,7 +42,7 @@ class CRM_Core_Error_Log extends \Psr\Log\AbstractLogger {
       \Psr\Log\LogLevel::CRITICAL => PEAR_LOG_CRIT,
       \Psr\Log\LogLevel::ALERT => PEAR_LOG_ALERT,
       \Psr\Log\LogLevel::EMERGENCY => PEAR_LOG_EMERG,
-    );
+    ];
   }
 
   /**
@@ -53,16 +52,24 @@ class CRM_Core_Error_Log extends \Psr\Log\AbstractLogger {
    * @param string $message
    * @param array $context
    */
-  public function log($level, $message, array $context = array()) {
+  public function log($level, $message, array $context = []): void {
     // FIXME: This flattens a $context a bit prematurely. When integrating
     // with external/CMS logs, we should pass through $context.
     if (!empty($context)) {
       if (isset($context['exception'])) {
         $context['exception'] = CRM_Core_Error::formatTextException($context['exception']);
       }
-      $message .= "\n" . print_r($context, 1);
+      $fullContext = "\n" . print_r($context, 1);
+      $seeLog = sprintf(' (<em>%s</em>)', ts('See log for details.'));
     }
-    CRM_Core_Error::debug_log_message($message, FALSE, '', $this->map[$level]);
+    else {
+      $fullContext = $seeLog = '';
+    }
+    $pearPriority = $this->map[$level];
+    CRM_Core_Error::debug_log_message($message . $fullContext, FALSE, '', $pearPriority);
+    if ($pearPriority <= PEAR_LOG_ERR && CRM_Core_Config::singleton()->debug && isset($_SESSION['CiviCRM'])) {
+      CRM_Core_Session::setStatus($message . $seeLog, ts('Error'), 'error');
+    }
   }
 
 }

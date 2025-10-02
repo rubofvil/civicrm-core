@@ -1,40 +1,25 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
  * Joomla specific stuff goes here.
  */
 class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
+
   /**
    * Class constructor.
    */
@@ -49,14 +34,31 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
   }
 
   /**
+   * @internal
+   * @return bool
+   */
+  public function isLoaded(): bool {
+    return class_exists('JFactory') || class_exists('\Joomla\CMS\Factory');
+  }
+
+  /**
    * @inheritDoc
    */
-  public function createUser(&$params, $mail) {
+  public function createUser(&$params, $mailParam) {
     $baseDir = JPATH_SITE;
-    require_once $baseDir . '/components/com_users/models/registration.php';
-
     $userParams = JComponentHelper::getParams('com_users');
-    $model = new UsersModelRegistration();
+
+    if (version_compare(JVERSION, '4.0.0', 'ge')) {
+      $factoryClassName = $this->factoryClassName();
+
+      $model = $factoryClassName::getApplication()->bootComponent('com_users')->getMVCFactory()->createModel('Registration', 'Site');
+      $model->set('data', new \stdClass());
+    }
+    else {
+      require_once $baseDir . '/components/com_users/models/registration.php';
+      $model = new UsersModelRegistration();
+    }
+
     $ufID = NULL;
 
     // get the default usertype
@@ -76,18 +78,28 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
     }
 
     // Prepare the values for a new Joomla user.
-    $values = array();
+    $values = [];
     $values['name'] = $fullname;
     $values['username'] = trim($params['cms_name']);
     $values['password1'] = $values['password2'] = $params['cms_pass'];
-    $values['email1'] = $values['email2'] = trim($params[$mail]);
-
-    $lang = JFactory::getLanguage();
+    $values['email1'] = $values['email2'] = trim($params[$mailParam]);
+    if (version_compare(JVERSION, '4.0', 'lt')) {
+      $lang = JFactory::getLanguage();
+    }
+    else {
+      $lang = $factoryClassName::getApplication()->getLanguage();
+    }
     $lang->load('com_users', $baseDir);
 
     $register = $model->register($values);
-
-    $ufID = JUserHelper::getUserId($values['username']);
+    if (version_compare(JVERSION, '4.0', 'lt')) {
+      $ufID = JUserHelper::getUserId($values['username']);
+      JUserHelper::addUserToGroup($ufID, $userType);
+    }
+    else {
+      $ufID = \Joomla\CMS\User\UserHelper::getUserId($values['username']);
+      \Joomla\CMS\User\UserHelper::addUserToGroup($ufID, $userType);
+    }
     return $ufID;
   }
 
@@ -98,8 +110,14 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
     $ufID = CRM_Utils_Type::escape($ufID, 'Integer');
     $ufName = CRM_Utils_Type::escape($ufName, 'String');
 
-    $values = array();
-    $user = JUser::getInstance($ufID);
+    $values = [];
+    if (version_compare(JVERSION, '4.0', 'lt')) {
+      $user = JUser::getInstance($ufID);
+    }
+    else {
+      $factoryClassName = $this->factoryClassName();
+      $user = $factoryClassName::getContainer()->get(\Joomla\CMS\User\UserFactoryInterface::class)->loadUserById($ufID);
+    }
 
     $values['email'] = $ufName;
     $user->bind($values);
@@ -108,21 +126,36 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
   }
 
   /**
-   * Check if username and email exists in the Joomla db.
-   *
-   * @param array $params
-   *   Array of name and mail values.
-   * @param array $errors
-   *   Array of errors.
-   * @param string $emailName
-   *   Field label for the 'email'.
+   * @inheritdoc
+   */
+  public function getEmailFieldName(CRM_Core_Form $form, array $fields):string {
+    $emailName = '';
+    $billingLocationTypeID = CRM_Core_BAO_LocationType::getBilling();
+    if (array_key_exists("email-{$billingLocationTypeID}", $fields)) {
+      // this is a transaction related page
+      $emailName = 'email-' . $billingLocationTypeID;
+    }
+    else {
+      // find the email field in a profile page
+      foreach ($fields as $name => $dontCare) {
+        if (str_starts_with($name, 'email')) {
+          $emailName = $name;
+          break;
+        }
+      }
+    }
+
+    return $emailName;
+  }
+
+  /**
+   * @inheritdoc
    */
   public function checkUserNameEmailExists(&$params, &$errors, $emailName = 'email') {
     $config = CRM_Core_Config::singleton();
 
-    $dao = new CRM_Core_DAO();
-    $name = $dao->escape(CRM_Utils_Array::value('name', $params));
-    $email = $dao->escape(CRM_Utils_Array::value('mail', $params));
+    $name = $params['name'] ?? NULL;
+    $email = $params['mail'] ?? NULL;
     //don't allow the special characters and min. username length is two
     //regex \\ to match a single backslash would become '/\\\\/'
     $isNotValid = (bool) preg_match('/[\<|\>|\"|\'|\%|\;|\(|\)|\&|\\\\|\/]/im', $name);
@@ -130,36 +163,62 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
       $errors['cms_name'] = ts('Your username contains invalid characters or is too short');
     }
 
-    $JUserTable = &JTable::getInstance('User', 'JTable');
-
+    if (version_compare(JVERSION, '4.0', 'lt')) {
+      $JUserTable = &JTable::getInstance('User', 'JTable');
+    }
+    else {
+      $factoryClassName = $this->factoryClassName();
+      $db = $factoryClassName::getContainer()->get(\Joomla\Database\DatabaseInterface::class);
+      $JUserTable = new \Joomla\CMS\Table\User($db);
+    }
     $db = $JUserTable->getDbo();
     $query = $db->getQuery(TRUE);
     $query->select('username, email');
     $query->from($JUserTable->getTableName());
-    $query->where('(LOWER(username) = LOWER(\'' . $name . '\')) OR (LOWER(email) = LOWER(\'' . $email . '\'))');
+
+    // LOWER in query below roughly translates to 'hurt my database without deriving any benefit' See CRM-19811.
+    $query->where('(LOWER(username) = LOWER(' . $db->quote($name) . ')) OR (LOWER(email) = LOWER(' . $db->quote($email) . '))');
     $db->setQuery($query, 0, 10);
     $users = $db->loadAssocList();
 
-    $row = array();
+    $row = [];
     if (count($users)) {
       $row = $users[0];
     }
 
     if (!empty($row)) {
-      $dbName = CRM_Utils_Array::value('username', $row);
-      $dbEmail = CRM_Utils_Array::value('email', $row);
+      $dbName = $row['username'] ?? NULL;
+      $dbEmail = $row['email'] ?? NULL;
       if (strtolower($dbName) == strtolower($name)) {
         $errors['cms_name'] = ts('The username %1 is already taken. Please select another username.',
-          array(1 => $name)
+          [1 => $name]
         );
       }
       if (strtolower($dbEmail) == strtolower($email)) {
         $resetUrl = str_replace('administrator/', '', $config->userFrameworkBaseURL) . 'index.php?option=com_users&view=reset';
         $errors[$emailName] = ts('The email address %1 already has an account associated with it. <a href="%2">Have you forgotten your password?</a>',
-          array(1 => $email, 2 => $resetUrl)
+          [1 => $email, 2 => $resetUrl]
         );
       }
     }
+  }
+
+  /**
+   * @inheritdoc
+   *
+   * Joomla has a very slightly different main template
+   * from the shared CMSPrint.tpl
+   *
+   * @todo can we merge these and do away with this
+   * override? might need to update the breadcrumbs
+   * function below to match the others
+   */
+  public static function getContentTemplate($print = 0): string {
+    // I fear some callers of this function still pass FALSE rather than int
+    if (!$print) {
+      return 'CRM/common/joomla.tpl';
+    }
+    return parent::getContentTemplate($print);
   }
 
   /**
@@ -173,7 +232,7 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
     $template = CRM_Core_Smarty::singleton();
     $template->assign('pageTitle', $pageTitle);
 
-    $document = JFactory::getDocument();
+    $document = $this->getJoomlaDocument();
     $document->setTitle($title);
   }
 
@@ -182,12 +241,12 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
    */
   public function appendBreadCrumb($breadCrumbs) {
     $template = CRM_Core_Smarty::singleton();
-    $bc = $template->get_template_vars('breadcrumb');
+    $bc = $template->getTemplateVars('breadcrumb');
 
     if (is_array($breadCrumbs)) {
       foreach ($breadCrumbs as $crumbs) {
         if (stripos($crumbs['url'], 'id%%')) {
-          $args = array('cid', 'mid');
+          $args = ['cid', 'mid'];
           foreach ($args as $a) {
             $val = CRM_Utils_Request::retrieve($a, 'Positive', CRM_Core_DAO::$_nullObject,
               FALSE, NULL, $_GET
@@ -200,7 +259,7 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
         $bc[] = $crumbs;
       }
     }
-    $template->assign_by_ref('breadcrumb', $bc);
+    $template->assign('breadcrumb', $bc);
   }
 
   /**
@@ -214,7 +273,7 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
    */
   public function addHTMLHead($string = NULL) {
     if ($string) {
-      $document = JFactory::getDocument();
+      $document = $this->getJoomlaDocument();
       $document->addCustomTag($string);
     }
   }
@@ -224,7 +283,7 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
    */
   public function addStyleUrl($url, $region) {
     if ($region == 'html-header') {
-      $document = JFactory::getDocument();
+      $document = $this->getJoomlaDocument();
       $document->addStyleSheet($url);
       return TRUE;
     }
@@ -236,7 +295,7 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
    */
   public function addStyle($code, $region) {
     if ($region == 'html-header') {
-      $document = JFactory::getDocument();
+      $document = $this->getJoomlaDocument();
       $document->addStyleDeclaration($code);
       return TRUE;
     }
@@ -262,8 +321,13 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
 
     if ($config->userFrameworkFrontend) {
       $script = 'index.php';
-      if (JRequest::getVar("Itemid")) {
-        $Itemid = "{$separator}Itemid=" . JRequest::getVar("Itemid");
+
+      // Get Itemid using JInput::get()
+      $factoryClassName = $this->factoryClassName();
+      $input = $factoryClassName::getApplication()->getInput();
+      $itemIdNum = $input->get("Itemid");
+      if ($itemIdNum && (!str_contains($path, 'civicrm/payment/ipn'))) {
+        $Itemid = "{$separator}Itemid=" . $itemIdNum;
       }
     }
 
@@ -281,7 +345,7 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
     }
 
     // gross hack for joomla, we are in the backend and want to send a frontend url
-    if ($frontend && $config->userFramework == 'Joomla') {
+    if ($frontend) {
       // handle both joomla v1.5 and v1.6, CRM-7939
       $url = str_replace('/administrator/index2.php', '/index.php', $url);
       $url = str_replace('/administrator/index.php', '/index.php', $url);
@@ -294,8 +358,8 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
         $joomlaVersion = JVERSION;
       }
       else {
-        $jversion = new JVersion();
-        $joomlaVersion = $jversion->getShortVersion();
+        $joomlaBase = self::getBasePath();
+        $joomlaVersion = $this->getJVersion($joomlaBase);
       }
 
       if (version_compare($joomlaVersion, '1.6') >= 0) {
@@ -313,10 +377,19 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
    */
   public function setEmail(&$user) {
     global $database;
+    if (version_compare(JVERSION, '4.0', 'lt')) {
+      $JUserTable = &JTable::getInstance('User', 'JTable');
+    }
+    else {
+      $factoryClassName = $this->factoryClassName();
+      $db = $factoryClassName::getContainer()->get(\Joomla\Database\DatabaseInterface::class);
+      $JUserTable = new \Joomla\CMS\Table\User($db);
+    }
+    $db = $JUserTable->getDbo();
     $query = $db->getQuery(TRUE);
     $query->select($db->quoteName('email'))
-          ->from($db->quoteName('#__users'))
-          ->where($db->quoteName('id') . ' = ' . $user->id);
+      ->from($db->quoteName('#__users'))
+      ->where($db->quoteName('id') . ' = ' . $user->id);
     $database->setQuery($query);
     $user->email = $database->loadResult();
   }
@@ -327,45 +400,55 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
   public function authenticate($name, $password, $loadCMSBootstrap = FALSE, $realPath = NULL) {
     require_once 'DB.php';
 
+    /* Before we do any loading, let's start the session and write to it.
+     * We typically call authenticate only when we need to bootstrap the CMS
+     * directly via Civi and hence bypass the normal CMS auth and bootstrap
+     * process typically done in CLI and cron scripts. See: CRM-12648
+     */
+    $session = CRM_Core_Session::singleton();
+    $session->set('civicrmInitSession', TRUE);
+
     $config = CRM_Core_Config::singleton();
     $user = NULL;
 
     if ($loadCMSBootstrap) {
-      $bootStrapParams = array();
+      $bootStrapParams = [];
       if ($name && $password) {
-        $bootStrapParams = array(
+        $bootStrapParams = [
           'name' => $name,
           'pass' => $password,
-        );
+        ];
       }
       CRM_Utils_System::loadBootStrap($bootStrapParams, TRUE, TRUE, FALSE);
     }
 
-    jimport('joomla.application.component.helper');
-    jimport('joomla.database.table');
-    jimport('joomla.user.helper');
-
-    $JUserTable = JTable::getInstance('User', 'JTable');
+    if (version_compare(JVERSION, '4.0', 'lt')) {
+      jimport('joomla.application.component.helper');
+      jimport('joomla.database.table');
+      jimport('joomla.user.helper');
+      $JUserTable = &JTable::getInstance('User', 'JTable');
+    }
+    else {
+      $factoryClassName = $this->factoryClassName();
+      $db = $factoryClassName::getContainer()->get(\Joomla\Database\DatabaseInterface::class);
+      $JUserTable = new \Joomla\CMS\Table\User($db);
+    }
 
     $db = $JUserTable->getDbo();
     $query = $db->getQuery(TRUE);
     $query->select('id, name, username, email, password');
     $query->from($JUserTable->getTableName());
-    $query->where('(LOWER(username) = LOWER(\'' . $name . '\')) AND (block = 0)');
+    $query->where('(LOWER(username) = LOWER(' . $db->quote($name) . ')) AND (block = 0)');
     $db->setQuery($query, 0, 0);
     $users = $db->loadObjectList();
 
-    $row = array();
+    $row = [];
     if (count($users)) {
       $row = $users[0];
     }
 
-    $joomlaBase = dirname(dirname(dirname(dirname(dirname(dirname(dirname(dirname(__FILE__))))))));
-    if (!defined('JVERSION')) {
-      require $joomlaBase . '/libraries/cms/version/version.php';
-      $jversion = new JVersion();
-      define('JVERSION', $jversion->getShortVersion());
-    }
+    $joomlaBase = self::getBasePath();
+    self::getJVersion($joomlaBase);
 
     if (!empty($row)) {
       $dbPassword = $row->password;
@@ -376,19 +459,27 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
         (version_compare(JVERSION, '3.0', 'ge') && version_compare(JVERSION, '3.2.1', 'lt'))
       ) {
         // now check password
-        list($hash, $salt) = explode(':', $dbPassword);
+        [$hash, $salt] = explode(':', $dbPassword);
         $cryptpass = md5($password . $salt);
         if ($hash != $cryptpass) {
           return FALSE;
         }
       }
       else {
-        if (!JUserHelper::verifyPassword($password, $dbPassword, $dbId)) {
+        if (version_compare(JVERSION, '4.0', 'lt') && !JUserHelper::verifyPassword($password, $dbPassword, $dbId)) {
+          return FALSE;
+        }
+        elseif (!\Joomla\CMS\User\UserHelper::verifyPassword($password, $dbPassword, $dbId)) {
           return FALSE;
         }
 
+        if (version_compare(JVERSION, '3.8.0', 'ge')) {
+          jimport('joomla.application.helper');
+          jimport('joomla.application.cms');
+          jimport('joomla.application.administrator');
+        }
         //include additional files required by Joomla 3.2.1+
-        if (version_compare(JVERSION, '3.2.1', 'ge')) {
+        elseif (version_compare(JVERSION, '3.2.1', 'ge')) {
           require_once $joomlaBase . '/libraries/cms/application/helper.php';
           require_once $joomlaBase . '/libraries/cms/application/cms.php';
           require_once $joomlaBase . '/libraries/cms/application/administrator.php';
@@ -400,7 +491,7 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
       if (!$contactID) {
         return FALSE;
       }
-      return array($contactID, $dbId, mt_rand());
+      return [$contactID, $dbId, mt_rand()];
     }
 
     return FALSE;
@@ -413,9 +504,15 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
    *   Array with user specific data.
    */
   public function setUserSession($data) {
-    list($userID, $ufID) = $data;
-    $user = new JUser($ufID);
-    $session = JFactory::getSession();
+    [$userID, $ufID] = $data;
+    if (version_compare(JVERSION, '4.0', 'lt')) {
+      $user = new JUser($ufID);
+    }
+    else {
+      $user = new \Joomla\CMS\User\User($ufID);
+    }
+    $factoryClassName = $this->factoryClassName();
+    $session = $factoryClassName::getApplication()->getSession();
     $session->set('user', $user);
 
     parent::setUserSession($data);
@@ -429,6 +526,13 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
   public function setMessage($message) {
   }
 
+  public function factoryClassName(): string {
+    if (version_compare(JVERSION, '4.0.0', 'ge')) {
+      return '\Joomla\CMS\Factory';
+    }
+    return 'JFactory';
+  }
+
   /**
    * @param \string $username
    * @param \string $password
@@ -436,40 +540,75 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
    * @return bool
    */
   public function loadUser($username, $password = NULL) {
-    $uid = JUserHelper::getUserId($username);
+    $factoryClassName = self::factoryClassName();
+    if (version_compare(JVERSION, '4.0', 'lt')) {
+      $uid = JUserHelper::getUserId($username);
+    }
+    else {
+      $uid = \Joomla\CMS\User\UserHelper::getUserId($username);
+    }
     if (empty($uid)) {
       return FALSE;
     }
     $contactID = CRM_Core_BAO_UFMatch::getContactId($uid);
+
     if (!empty($password)) {
-      $instance = JFactory::getApplication('site');
-      $params = array(
+      if (version_compare(JVERSION, '4.0.0', 'ge')) {
+        $this->loadJoomlaApplication('site');
+        $instance = $factoryClassName::getApplication();
+      }
+      else {
+        $instance = $factoryClassName::getApplication('site');
+      }
+      $params = [
         'username' => $username,
         'password' => $password,
-      );
+      ];
       //perform the login action
       $instance->login($params);
     }
 
+    // Save details in Joomla session
+    if (version_compare(JVERSION, '4.0.0', 'ge')) {
+      $user = $factoryClassName::getContainer()->get(\Joomla\CMS\User\UserFactoryInterface::class)->loadUserById($uid);
+    }
+    else {
+      $user = $factoryClassName::getUser($uid);
+    }
+    $jsession = $factoryClassName::getApplication()->getSession();
+    $jsession->set('user', $user);
+
+    // Save details in Civi session
     $session = CRM_Core_Session::singleton();
     $session->set('ufID', $uid);
     $session->set('userID', $contactID);
     return TRUE;
   }
 
+  public function getUfId($username) {
+    if (version_compare(JVERSION, '4.0', 'lt')) {
+      jimport('joomla.user.helper');
+      $uid = JUserHelper::getUserId($username);
+    }
+    else {
+      $uid = \Joomla\CMS\User\UserHelper::getUserId($username);
+    }
+    return empty($uid) ? NULL : $uid;
+  }
+
   /**
    * FIXME: Use CMS-native approach
+   * @throws \CRM_Core_Exception.
    */
   public function permissionDenied() {
-    CRM_Core_Error::fatal(ts('You do not have permission to access this page.'));
+    throw new CRM_Core_Exception(ts('You do not have permission to access this page.'));
   }
 
   /**
    * @inheritDoc
    */
-  public function logout() {
-    session_destroy();
-    CRM_Utils_System::setHttpHeader("Location", "index.php");
+  public function postLogoutUrl(): string {
+    return "/index.php";
   }
 
   /**
@@ -477,7 +616,8 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
    */
   public function getUFLocale() {
     if (defined('_JEXEC')) {
-      $conf = JFactory::getConfig();
+      $factoryClassName = $this->factoryClassName();
+      $conf = $factoryClassName::getApplication()->getConfig();
       $locale = $conf->get('language');
       return str_replace('-', '_', $locale);
     }
@@ -500,9 +640,49 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
       $version = new JVersion();
       return $version->getShortVersion();
     }
+    elseif (class_exists('Version')) {
+      $version = new Version();
+      return $version->getShortVersion();
+    }
     else {
       return 'Unknown';
     }
+  }
+
+  public function getJVersion($joomlaBase) {
+    // Files may be in different places depending on Joomla version
+    if (!defined('JVERSION')) {
+      // Joomla 3.8.0+
+      $versionPhp = $joomlaBase . '/libraries/src/Version.php';
+      if (!file_exists($versionPhp)) {
+        // Joomla < 3.8.0
+        $versionPhp = $joomlaBase . '/libraries/cms/version/version.php';
+      }
+      require $versionPhp;
+      $class = 'jVersion';
+      if (!class_exists('jVersion')) {
+        $class = 'Version';
+      }
+      $jversion = new $class();
+      define('JVERSION', $jversion->getShortVersion());
+    }
+  }
+
+  protected function getJoomlaDocument() {
+    $factoryClassName = $this->factoryClassName();
+    $document = $factoryClassName::getApplication()->getDocument();
+    return $document;
+  }
+
+  /**
+   * Setup the base path related constant.
+   * @return mixed
+   */
+  public function getBasePath() {
+    global $civicrm_root;
+    $joomlaPath = explode(DIRECTORY_SEPARATOR . 'administrator', $civicrm_root);
+    $joomlaBase = $joomlaPath[0];
+    return $joomlaBase;
   }
 
   /**
@@ -518,49 +698,76 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
    *
    * @return bool
    */
-  public function loadBootStrap($params = array(), $loadUser = TRUE, $throwError = TRUE, $realPath = NULL, $loadDefines = TRUE) {
-    // Setup the base path related constant.
-    $joomlaBase = dirname(dirname(dirname(dirname(dirname(dirname(dirname(dirname(__FILE__))))))));
+  public function loadBootStrap($params = [], $loadUser = TRUE, $throwError = TRUE, $realPath = NULL, $loadDefines = TRUE) {
+    $joomlaBase = self::getBasePath();
 
     // load BootStrap here if needed
     // We are a valid Joomla entry point.
+    // dev/core#1384 Use DS to ensure a correct JPATH_BASE in Windows
     if (!defined('_JEXEC') && $loadDefines) {
       define('_JEXEC', 1);
       define('DS', DIRECTORY_SEPARATOR);
-      define('JPATH_BASE', $joomlaBase . '/administrator');
+      define('JPATH_BASE', $joomlaBase . DS . 'administrator');
       require $joomlaBase . '/administrator/includes/defines.php';
     }
 
     // Get the framework.
-    if (file_exists($joomlaBase . '/libraries/import.legacy.php')) {
+    if (file_exists($joomlaBase . '/libraries/import.legacy.php') && !file_exists($joomlaBase . '/libraries/bootstrap.php')) {
       require $joomlaBase . '/libraries/import.legacy.php';
     }
-    require $joomlaBase . '/libraries/import.php';
-    require $joomlaBase . '/libraries/joomla/event/dispatcher.php';
-    require $joomlaBase . '/configuration.php';
 
-    // Files may be in different places depending on Joomla version
-    if (!defined('JVERSION')) {
-      require $joomlaBase . '/libraries/cms/version/version.php';
-      $jversion = new JVersion();
-      define('JVERSION', $jversion->getShortVersion());
+    if (!file_exists($joomlaBase . '/libraries/bootstrap.php')) {
+      require $joomlaBase . '/libraries/cms.php';
     }
+    else {
+      require $joomlaBase . '/libraries/bootstrap.php';
+      require_once $joomlaBase . '/includes/framework.php';
+    }
+    self::getJVersion($joomlaBase);
+
+    if (version_compare(JVERSION, '3.8', 'lt')) {
+      require $joomlaBase . '/libraries/import.php';
+      require $joomlaBase . '/libraries/joomla/event/dispatcher.php';
+    }
+
+    require_once $joomlaBase . '/configuration.php';
 
     if (version_compare(JVERSION, '3.0', 'lt')) {
       require $joomlaBase . '/libraries/joomla/environment/uri.php';
       require $joomlaBase . '/libraries/joomla/application/component/helper.php';
     }
-    else {
-      require $joomlaBase . '/libraries/cms.php';
-      require $joomlaBase . '/libraries/joomla/uri/uri.php';
+    elseif (version_compare(JVERSION, '3.8', 'lt')) {
+      jimport('joomla.environment.uri');
     }
 
-    jimport('joomla.application.cli');
+    if (version_compare(JVERSION, '3.8', 'lt')) {
+      jimport('joomla.application.cli');
+    }
+
+    if (!defined('JDEBUG')) {
+      define('JDEBUG', FALSE);
+    }
+
+    if (version_compare(JVERSION, '4.0', '>=')) {
+      if (PHP_SAPI == 'cli') {
+        $this->loadJoomlaApplication('cli');
+      }
+      else {
+        $this->loadJoomlaApplication('admin');
+      }
+    }
+
+    // Set timezone for Joomla on Cron
+    $factoryClassName = $this->factoryClassName();
+    $config = $factoryClassName::getApplication()->getConfig();
+    $timezone = $config->get('offset');
+    if ($timezone) {
+      $this->setTimeZone($timezone);
+    }
 
     // CRM-14281 Joomla wasn't available during bootstrap, so hook_civicrm_config never executes.
     $config = CRM_Core_Config::singleton();
-    CRM_Utils_Hook::config($config);
-
+    CRM_Utils_Hook::config($config, ['uf' => TRUE]);
     return TRUE;
   }
 
@@ -568,15 +775,50 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
    * @inheritDoc
    */
   public function isUserLoggedIn() {
-    $user = JFactory::getUser();
-    return ($user->guest) ? FALSE : TRUE;
+    $factoryClassName = $this->factoryClassName();
+    if (version_compare(JVERSION, '4.0', 'lt')) {
+      $user = $factoryClassName::getUser();
+    }
+    else {
+      $user = $factoryClassName::getApplication()->getIdentity();
+    }
+    return !$user->guest;
+  }
+
+  /**
+   * @inheritDoc
+   */
+  public function isUserRegistrationPermitted() {
+    if (version_compare(JVERSION, '4.0', 'lt')) {
+      $userParams = JComponentHelper::getParams('com_users');
+    }
+    else {
+      $userParams = \Joomla\CMS\Component\ComponentHelper::getParams('com_users');
+    }
+    if (!$userParams->get('allowUserRegistration')) {
+      return FALSE;
+    }
+    return TRUE;
+  }
+
+  /**
+   * @inheritDoc
+   */
+  public function isPasswordUserGenerated() {
+    return TRUE;
   }
 
   /**
    * @inheritDoc
    */
   public function getLoggedInUfID() {
-    $user = JFactory::getUser();
+    $factoryClassName = $this->factoryClassName();
+    if (version_compare(JVERSION, '4.0', 'lt')) {
+      $user = $factoryClassName::getUser();
+    }
+    else {
+      $user = $factoryClassName::getApplication()->getIdentity();
+    }
     return ($user->guest) ? NULL : $user->id;
   }
 
@@ -584,8 +826,30 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
    * @inheritDoc
    */
   public function getLoggedInUniqueIdentifier() {
-    $user = JFactory::getUser();
+    $factoryClassName = $this->factoryClassName();
+    if (version_compare(JVERSION, '4.0', 'lt')) {
+      $user = $factoryClassName::getUser();
+    }
+    else {
+      $user = $factoryClassName::getApplication()->getIdentity();
+    }
     return $this->getUniqueIdentifierFromUserObject($user);
+  }
+
+  /**
+   * @inheritDoc
+   */
+  public function getUser($contactID) {
+    $user_details = parent::getUser($contactID);
+    $factoryClassName = $this->factoryClassName();
+    if (version_compare(JVERSION, '4.0.0', 'ge')) {
+      $user = $factoryClassName::getContainer()->get(\Joomla\CMS\User\UserFactoryInterface::class)->loadUserById($user_details['id']);
+    }
+    else {
+      $user = $factoryClassName::getUser($user_details['id']);
+    }
+    $user_details['name'] = $user->name;
+    return $user_details;
   }
 
   /**
@@ -606,7 +870,8 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
    * @inheritDoc
    */
   public function getTimeZoneString() {
-    $timezone = JFactory::getConfig()->get('offset');
+    $factoryClassName = $this->factoryClassName();
+    $timezone = $factoryClassName::getApplication()->getConfig()->get('offset');
     return !$timezone ? date_default_timezone_get() : $timezone;
   }
 
@@ -617,9 +882,14 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
    *   CRM_Core_Module
    */
   public function getModules() {
-    $result = array();
-
-    $db = JFactory::getDbo();
+    $result = [];
+    $factoryClassName = $this->factoryClassName();
+    if (version_compare(JVERSION, '4.0', 'lt')) {
+      $db = $factoryClassName::getDbo();
+    }
+    else {
+      $db = $factoryClassName::getContainer()->get(\Joomla\Database\DatabaseInterface::class);
+    }
     $query = $db->getQuery(TRUE);
     $query->select('type, folder, element, enabled')
       ->from('#__extensions')
@@ -627,8 +897,8 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
     $plugins = $db->setQuery($query)->loadAssocList();
     foreach ($plugins as $plugin) {
       // question: is the folder really a critical part of the plugin's name?
-      $name = implode('.', array('joomla', $plugin['type'], $plugin['folder'], $plugin['element']));
-      $result[] = new CRM_Core_Module($name, $plugin['enabled'] ? TRUE : FALSE);
+      $name = implode('.', ['joomla', $plugin['type'], $plugin['folder'], $plugin['element']]);
+      $result[] = new CRM_Core_Module($name, !empty($plugin['enabled']));
     }
 
     return $result;
@@ -692,9 +962,13 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
    *   local file system path to CMS root, or NULL if it cannot be determined
    */
   public function cmsRootPath() {
-    list($url, $siteName, $siteRoot) = $this->getDefaultSiteSettings();
-    $includePath = "$siteRoot/libraries/cms/version";
-    if (file_exists("$includePath/version.php")) {
+    global $civicrm_paths;
+    if (!empty($civicrm_paths['cms.root']['path'])) {
+      return $civicrm_paths['cms.root']['path'];
+    }
+
+    [$url, $siteName, $siteRoot] = $this->getDefaultSiteSettings();
+    if (file_exists("$siteRoot/administrator/index.php")) {
       return $siteRoot;
     }
     return NULL;
@@ -710,12 +984,24 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
       '',
       $config->userFrameworkBaseURL
     );
+    // CRM-19453 revisited. Under Windows, the pattern wasn't recognised.
+    // This is the original pattern, but it doesn't work under Windows.
+    // By setting the pattern to the one used before the change first and only
+    // changing it means that the change code only affects Windows users.
+    $pattern = '|/media/civicrm/.*$|';
+    if (DIRECTORY_SEPARATOR == '\\') {
+      // This regular expression will handle Windows as well as Linux
+      // and any combination of forward and back slashes in directory
+      // separators.  We only apply it if the directory separator is the one
+      // used by Windows.
+      $pattern = '|[\\\\/]media[\\\\/]civicrm[\\\\/].*$|';
+    }
     $siteRoot = preg_replace(
-      '|/media/civicrm/.*$|',
+      $pattern,
       '',
       $config->imageUploadDir
     );
-    return array($url, NULL, $siteRoot);
+    return [$url, NULL, $siteRoot];
   }
 
   /**
@@ -724,8 +1010,9 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
   public function getUserRecordUrl($contactID) {
     $uid = CRM_Core_BAO_UFMatch::getUFId($contactID);
     $userRecordUrl = NULL;
+    $factoryClassName = $this->factoryClassName();
     // if logged in user has user edit access, then allow link to other users joomla profile
-    if (JFactory::getUser()->authorise('core.edit', 'com_users')) {
+    if ($factoryClassName::getApplication()->getIdentity()->authorise('core.edit', 'com_users')) {
       return CRM_Core_Config::singleton()->userFrameworkBaseURL . "index.php?option=com_users&view=user&task=user.edit&id=" . $uid;
     }
     elseif (CRM_Core_Session::singleton()->get('userID') == $contactID) {
@@ -737,35 +1024,10 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
    * @inheritDoc
    */
   public function checkPermissionAddUser() {
-    if (JFactory::getUser()->authorise('core.create', 'com_users')) {
+    $factoryClassName = $this->factoryClassName();
+    if ($factoryClassName::getApplication()->getIdentity()->authorise('core.create', 'com_users')) {
       return TRUE;
     }
-  }
-
-  /**
-   * Output code from error function.
-   * @param string $content
-   */
-  public function outputError($content) {
-    if (class_exists('JErrorPage')) {
-      $error = new Exception($content);
-      JErrorPage::render($error);
-    }
-    elseif (class_exists('JError')) {
-      JError::raiseError('CiviCRM-001', $content);
-    }
-    else {
-      parent::outputError($content);
-    }
-  }
-
-  /**
-   * Append Joomla js to coreResourcesList.
-   *
-   * @param array $list
-   */
-  public function appendCoreResources(&$list) {
-    $list[] = 'js/crm.joomla.js';
   }
 
   /**
@@ -780,8 +1042,14 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
     $mail = 'email';
     $name = 'name';
 
-    $JUserTable = &JTable::getInstance('User', 'JTable');
-
+    if (version_compare(JVERSION, '4.0', 'lt')) {
+      $JUserTable = &JTable::getInstance('User', 'JTable');
+    }
+    else {
+      $factoryClassName = $this->factoryClassName();
+      $db = $factoryClassName::getContainer()->get(\Joomla\Database\DatabaseInterface::class);
+      $JUserTable = new \Joomla\CMS\Table\User($db);
+    }
     $db = $JUserTable->getDbo();
     $query = $db->getQuery(TRUE);
     $query->select($id . ', ' . $mail . ', ' . $name);
@@ -815,16 +1083,136 @@ class CRM_Utils_System_Joomla extends CRM_Utils_System_Base {
       else {
         $contactMatching++;
       }
-      if (is_object($match)) {
-        $match->free();
-      }
     }
 
-    return array(
+    return [
       'contactCount' => $contactCount,
       'contactMatching' => $contactMatching,
       'contactCreated' => $contactCreated,
-    );
+    ];
+  }
+
+  /**
+   * Determine the location of the CiviCRM source tree.
+   *
+   * FIXME:
+   *  1. This was pulled out from a bigger function. It should be split
+   *     into even smaller pieces and marked abstract.
+   *  2. This would be easier to compute by a calling a CMS API, but
+   *     for whatever reason we take the hard way.
+   *
+   * @return array
+   *   - url: string. ex: "http://example.com/sites/all/modules/civicrm"
+   *   - path: string. ex: "/var/www/sites/all/modules/civicrm"
+   */
+  public function getCiviSourceStorage():array {
+    global $civicrm_root;
+    if (!defined('CIVICRM_UF_BASEURL')) {
+      throw new RuntimeException('Undefined constant: CIVICRM_UF_BASEURL');
+    }
+    $baseURL = CRM_Utils_File::addTrailingSlash(CIVICRM_UF_BASEURL, '/');
+    if (CRM_Utils_System::isSSL()) {
+      $baseURL = str_replace('http://', 'https://', $baseURL);
+    }
+
+    // For Joomla CiviCRM Core files always live within the admistrator folder and $base_url is different on the frontend compared to the backend.
+    if (!str_contains($baseURL, 'administrator')) {
+      $userFrameworkResourceURL = $baseURL . "administrator/components/com_civicrm/civicrm/";
+    }
+    else {
+      $userFrameworkResourceURL = $baseURL . "components/com_civicrm/civicrm/";
+    }
+
+    return [
+      'url' => CRM_Utils_File::addTrailingSlash($userFrameworkResourceURL, '/'),
+      'path' => CRM_Utils_File::addTrailingSlash($civicrm_root),
+    ];
+  }
+
+  /**
+   * Return the CMS-specific url for its permissions page
+   * @return array
+   */
+  public function getCMSPermissionsUrlParams() {
+    $ufAccessURL = '';
+    $jAccessParams = '';
+    $config = CRM_Core_Config::singleton();
+    //condition based on Joomla version; <= 2.5 uses modal window; >= 3.0 uses full page with return value
+    if (version_compare(JVERSION, '3.0', 'lt')) {
+      JHTML::_('behavior.modal');
+      $ufAccessURL = $config->userFrameworkBaseURL . 'index.php?option=com_config&view=component&component=com_civicrm&tmpl=component';
+      $jAccessParams = 'rel="{handler: \'iframe\', size: {x: 875, y: 550}, onClose: function() {}}" class="modal"';
+    }
+    else {
+      $uri = (string) JUri::getInstance();
+      $return = urlencode(base64_encode($uri));
+      $ufAccessURL = $config->userFrameworkBaseURL . 'index.php?option=com_config&view=component&component=com_civicrm&return=' . $return;
+    }
+    return [
+      'ufAccessURL' => $ufAccessURL,
+      'jAccessParams' => $jAccessParams,
+    ];
+  }
+
+  /**
+   * @inheritdoc
+   */
+  public function getContactDetailsFromUser($uf_match):array {
+    $contactParameters = [];
+    $user = $uf_match['user'];
+    $contactParameters['email'] = $user->email;
+    if ($user->name) {
+      CRM_Utils_String::extractName($user->name, $contactParameters);
+    }
+
+    return $contactParameters;
+  }
+
+  /**
+   * @inheritdoc
+   */
+  public function modifyStandaloneProfile($profile, $params):string {
+    $urlReplaceWith = 'civicrm/profile/create&amp;gid=' . $params['gid'] . '&amp;reset=1';
+    $profile = str_replace('civicrm/admin/uf/group', $urlReplaceWith, $profile);
+
+    // FIXME: (CRM-3587) hack to make standalone profile work
+    // in Joomla without administrator login.
+    $profile = str_replace('/administrator/', '/index.php', $profile);
+    return $profile;
+  }
+
+  protected function loadJoomlaApplication(string $applicationName) {
+    // Boot the DI container
+    if ($applicationName === 'site') {
+      $applicationClass = \Joomla\CMS\Application\SiteApplication::class;
+      $session = 'session.web.site';
+    }
+    elseif ($applicationName == 'admin') {
+      $applicationClass = \Joomla\CMS\Application\AdministratorApplication::class;
+      $session = 'session.web.administrator';
+    }
+    else {
+      $applicationClass = \Joomla\CMS\Application\ConsoleApplication::class;
+      $session = 'session.cli';
+    }
+    $container = \Joomla\CMS\Factory::getContainer();
+    /*
+     * Alias the session service keys to the web session service as that is the primary session backend for this application
+     *
+     * In addition to aliasing "common" service keys, we also create aliases for the PHP classes to ensure autowiring objects
+     * is supported.  This includes aliases for aliased class names, and the keys for aliased class names should be considered
+     * deprecated to be removed when the class name alias is removed as well.
+     */
+    $container->alias('session', $session)
+      ->alias('JSession', $session)
+      ->alias(\Joomla\CMS\Session\Session::class, $session)
+      ->alias(\Joomla\Session\Session::class, $session)
+      ->alias(\Joomla\Session\SessionInterface::class, $session);
+    // Instantiate the application.
+    $app = $container->get($applicationClass);
+    $app->createExtensionNamespaceMap();
+    // Set the application as global app
+    \Joomla\CMS\Factory::$application = $app;
   }
 
 }

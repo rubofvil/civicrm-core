@@ -1,34 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -45,13 +29,6 @@ class CRM_Campaign_Form_SurveyType extends CRM_Admin_Form {
   protected $_gName;
 
   /**
-   * Id
-   *
-   * @var int
-   */
-  protected $_id;
-
-  /**
    * Action
    *
    * @var int
@@ -60,6 +37,8 @@ class CRM_Campaign_Form_SurveyType extends CRM_Admin_Form {
 
   /**
    * Set variables up before form is built.
+   *
+   * @throws \CRM_Core_Exception
    */
   public function preProcess() {
     $this->_action = CRM_Utils_Request::retrieve('action', 'String', $this);
@@ -78,13 +57,6 @@ class CRM_Campaign_Form_SurveyType extends CRM_Admin_Form {
     $session = CRM_Core_Session::singleton();
     $url = CRM_Utils_System::url('civicrm/admin/campaign/surveyType', 'reset=1');
     $session->pushUserContext($url);
-
-    if ($this->_id && in_array($this->_gName, CRM_Core_OptionGroup::$_domainIDGroups)) {
-      $domainID = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_OptionValue', $this->_id, 'domain_id', 'id');
-      if (CRM_Core_Config::domainID() != $domainID) {
-        CRM_Core_Error::fatal(ts('You do not have permission to access this page.'));
-      }
-    }
   }
 
   /**
@@ -98,7 +70,7 @@ class CRM_Campaign_Form_SurveyType extends CRM_Admin_Form {
     $defaults = parent::setDefaultValues();
 
     if (!isset($defaults['weight']) || !$defaults['weight']) {
-      $fieldValues = array('option_group_id' => $this->_gid);
+      $fieldValues = ['option_group_id' => $this->_gid];
       $defaults['weight'] = CRM_Utils_Weight::getDefaultWeight('CRM_Core_DAO_OptionValue', $fieldValues);
     }
 
@@ -127,9 +99,9 @@ class CRM_Campaign_Form_SurveyType extends CRM_Admin_Form {
     if ($this->_action == CRM_Core_Action::UPDATE &&
       CRM_Core_DAO::getFieldValue('CRM_Core_DAO_OptionGroup', $this->_id, 'is_reserved')
     ) {
-      $this->freeze(array('label', 'is_active'));
+      $this->freeze(['label', 'is_active']);
     }
-    $this->add('text', 'weight', ts('Order'), CRM_Core_DAO::getAttribute('CRM_Core_DAO_OptionValue', 'weight'), TRUE);
+    $this->add('number', 'weight', ts('Order'), CRM_Core_DAO::getAttribute('CRM_Core_DAO_OptionValue', 'weight'), TRUE);
 
     $this->assign('id', $this->_id);
   }
@@ -140,15 +112,15 @@ class CRM_Campaign_Form_SurveyType extends CRM_Admin_Form {
   public function postProcess() {
 
     if ($this->_action & CRM_Core_Action::DELETE) {
-      $fieldValues = array('option_group_id' => $this->_gid);
+      $fieldValues = ['option_group_id' => $this->_gid];
       $wt = CRM_Utils_Weight::delWeight('CRM_Core_DAO_OptionValue', $this->_id, $fieldValues);
 
-      if (CRM_Core_BAO_OptionValue::del($this->_id)) {
+      if (CRM_Core_BAO_OptionValue::deleteRecord(['id' => $this->_id])) {
         CRM_Core_Session::setStatus(ts('Selected Survey type has been deleted.'), ts('Record Deleted'), 'success');
       }
     }
     else {
-      $params = $ids = array();
+      $params = $ids = [];
       $params = $this->exportValues();
 
       // set db value of filter in params if filter is non editable
@@ -156,11 +128,10 @@ class CRM_Campaign_Form_SurveyType extends CRM_Admin_Form {
         $params['filter'] = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_OptionValue', $this->_id, 'filter', 'id');
       }
 
-      $groupParams = array('name' => ($this->_gName));
       $params['component_id'] = CRM_Core_Component::getComponentID('CiviCampaign');
-      $optionValue = CRM_Core_OptionValue::addOptionValue($params, $groupParams, $this->_action, $this->_id);
+      $optionValue = CRM_Core_OptionValue::addOptionValue($params, $this->_gName, $this->_action, $this->_id);
 
-      CRM_Core_Session::setStatus(ts('The Survey type \'%1\' has been saved.', array(1 => $optionValue->label)), ts('Saved'), 'success');
+      CRM_Core_Session::setStatus(ts('The Survey type \'%1\' has been saved.', [1 => $optionValue->label]), ts('Saved'), 'success');
     }
   }
 

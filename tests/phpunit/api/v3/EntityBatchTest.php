@@ -1,29 +1,12 @@
 <?php
 /*
- --------------------------------------------------------------------
- | CiviCRM version 4.7                                                |
- --------------------------------------------------------------------
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- --------------------------------------------------------------------
- | This file is a part of CiviCRM.                                    |
+ +--------------------------------------------------------------------+
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
- --------------------------------------------------------------------
- */
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
+ +--------------------------------------------------------------------+ */
 
 /**
  *  Test APIv3 civicrm_entity_batch_* functions
@@ -32,51 +15,102 @@
  * @group headless
  */
 class api_v3_EntityBatchTest extends CiviUnitTestCase {
-
-  protected $_apiversion = 3;
   protected $params;
   protected $id;
   protected $_entity;
 
-  public $DBResetRequired = FALSE;
-
-  public function setUp() {
+  /**
+   * @throws \CRM_Core_Exception
+   */
+  public function setUp(): void {
     parent::setUp();
-    $this->useTransaction(TRUE);
+    $this->useTransaction();
 
-    $entityParams = array('contact_id' => 1);
+    $entityParams = ['contact_id' => $this->individualCreate()];
+
+    $contributionId = $this->contributionCreate($entityParams);
+    $financialTrxnId = array_values($this->callAPISuccess('EntityFinancialTrxn', 'get', [
+      'entity_id' => $contributionId,
+      'entity_table' => 'civicrm_contribution',
+      'return' => ['financial_trxn_id'],
+    ])['values'])[0]['financial_trxn_id'];
 
     $this->_entity = 'EntityBatch';
-    $this->_entityID = $this->contributionCreate($entityParams);
-    $this->_batchID = $this->batchCreate();
-    $this->params = array(
-      'entity_id' => $this->_entityID,
-      'batch_id' => $this->_batchID,
+    $this->params = [
+      'entity_id' => $financialTrxnId,
+      'batch_id' => $this->batchCreate(),
       'entity_table' => 'civicrm_financial_trxn',
-    );
+    ];
   }
 
-  public function testCreateEntityBatch() {
-    $result = $this->callAPIAndDocument($this->_entity, 'create', $this->params, __FUNCTION__, __FILE__);
+  /**
+   * @throws \CRM_Core_Exception
+   */
+  public function testCreateEntityBatch(): void {
+    $result = $this->callAPISuccess($this->_entity, 'create', $this->params);
     $this->assertEquals(1, $result['count']);
     $this->getAndCheck($this->params, $result['id'], $this->_entity);
     $this->assertNotNull($result['values'][$result['id']]['id']);
   }
 
-  public function testGetEntityBatch() {
-    $result = $this->callAPISuccess($this->_entity, 'create', $this->params);
-    $result = $this->callAPIAndDocument($this->_entity, 'get', $this->params, __FUNCTION__, __FILE__);
+  /**
+   * @throws \CRM_Core_Exception
+   */
+  public function testGetEntityBatch(): void {
+    $this->callAPISuccess($this->_entity, 'create', $this->params);
+    $result = $this->callAPISuccess($this->_entity, 'get', $this->params);
     $this->assertEquals(1, $result['count']);
     $this->assertNotNull($result['values'][$result['id']]['id']);
-    $this->callAPISuccess($this->_entity, 'delete', array('id' => $result['id']));
+    $this->callAPISuccess($this->_entity, 'delete', ['id' => $result['id']]);
   }
 
-  public function testDeleteEntityBatch() {
+  /**
+   * @throws \CRM_Core_Exception
+   */
+  public function testDeleteEntityBatch(): void {
     $result = $this->callAPISuccess($this->_entity, 'create', $this->params);
-    $deleteParams = array('id' => $result['id']);
-    $result = $this->callAPIAndDocument($this->_entity, 'delete', $deleteParams, __FUNCTION__, __FILE__);
-    $checkDeleted = $this->callAPISuccess($this->_entity, 'get', array());
+    $deleteParams = ['id' => $result['id']];
+    $this->callAPISuccess($this->_entity, 'delete', $deleteParams);
+    $checkDeleted = $this->callAPISuccess($this->_entity, 'get', []);
     $this->assertEquals(0, $checkDeleted['count']);
+  }
+
+  /**
+   * Ensure that submitting multiple currencies results in an error.
+   * @throws \CRM_Core_Exception
+   */
+  public function testMultipleCurrencies(): void {
+    $params['name'] = $params['title'] = 'MultiCurrencyBatch';
+    $params['status_id'] = 1;
+    $batchId = $this->callAPISuccess('batch', 'create', $params)['id'];
+
+    $contributionId = $this->contributionCreate(['contact_id' => $this->individualCreate()]);
+    $financialTrxnId = array_values($this->callAPISuccess('EntityFinancialTrxn', 'get', [
+      'entity_id' => $contributionId,
+      'entity_table' => 'civicrm_contribution',
+      'return' => ['financial_trxn_id'],
+    ])['values'])[0]['financial_trxn_id'];
+    $firstEntityBatchParams = [
+      'entity_id' => $financialTrxnId,
+      'batch_id' => $batchId,
+      'entity_table' => 'civicrm_financial_trxn',
+    ];
+    $result = $this->callAPISuccess($this->_entity, 'create', $firstEntityBatchParams);
+    $this->assertEquals(1, $result['count']);
+    $secondContributionId = $this->contributionCreate(['contact_id' => $this->individualCreate(), 'currency' => 'CAD']);
+
+    $secondFinancialTrxnId = array_values($this->callAPISuccess('EntityFinancialTrxn', 'get', [
+      'entity_id' => $secondContributionId,
+      'entity_table' => 'civicrm_contribution',
+      'return' => ['financial_trxn_id'],
+    ])['values'])[0]['financial_trxn_id'];
+    $secondEntityBatchParams = [
+      'entity_id' => $secondFinancialTrxnId,
+      'batch_id' => $batchId,
+      'entity_table' => 'civicrm_financial_trxn',
+    ];
+    $result = $this->callAPIFailure($this->_entity, 'create', $secondEntityBatchParams);
+    $this->assertEquals("You cannot add items of two different currencies to a single contribution batch. Batch id {$batchId} currency: USD. Entity id {$secondFinancialTrxnId} currency: CAD.", $result['error_message']);
   }
 
 }

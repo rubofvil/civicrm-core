@@ -1,94 +1,128 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
- * $Id$
- *
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
+
+use Civi\Api4\CustomGroup;
+use Civi\Import\CustomValueParser;
 
 /**
  * This class gets the name of the file to upload
  */
-class CRM_Custom_Import_Form_DataSource extends CRM_Import_Form_DataSource {
+class CRM_Custom_Import_Form_DataSource extends CRM_CiviImport_Form_DataSource {
 
-  const PATH = 'civicrm/import/custom';
+  /**
+   * Get the name of the type to be stored in civicrm_user_job.type_id.
+   *
+   * @return string
+   */
+  public function getUserJobType(): string {
+    return 'custom_field_import';
+  }
 
-  const IMPORT_ENTITY = 'Multi value custom data';
+  /**
+   * Multiple field custom groups.
+   *
+   * @var array
+   */
+  protected $customFieldGroups;
+
+  /**
+   * Get multi-field custom groups.
+   *
+   * @return array
+   * @throws \CRM_Core_Exception
+   */
+  protected function getCustomGroups(): array {
+    if (isset($this->customFieldGroups)) {
+      return $this->customFieldGroups;
+    }
+    $this->customFieldGroups = [];
+    // If we make the permission TRUE is it too restrictive?
+    $fields = CustomGroup::get(FALSE)->addSelect('id', 'title')
+      ->addWhere('is_multiple', '=', TRUE)
+      ->addWhere('is_active', '=', TRUE)->execute();
+    foreach ($fields as $field) {
+      $this->customFieldGroups[$field['id']] = $field['title'];
+    }
+    return $this->customFieldGroups;
+  }
+
+  /**
+   * Get an error message to assign to the template.
+   *
+   * @return string
+   */
+  protected function getErrorMessage(): string {
+    return empty($this->getCustomGroups()) ? ts('This import screen cannot be used because there are no Multi-value custom data groups.') : '';
+  }
+
+  /**
+   * Get the import entity (translated).
+   *
+   * Used for template layer text.
+   *
+   * @return string
+   */
+  protected function getTranslatedEntity(): string {
+    return ts('Multi-value Custom Data');
+  }
+
+  /**
+   * Get the import entity plural (translated).
+   *
+   * Used for template layer text.
+   *
+   * @return string
+   */
+  protected function getTranslatedEntities(): string {
+    return ts('multi-value custom data records');
+  }
 
   /**
    * @return array
+   * @throws \CRM_Core_Exception
    */
-  public function setDefaultValues() {
-    $config = CRM_Core_Config::singleton();
-    $defaults = array(
-      'contactType' => CRM_Import_Parser::CONTACT_INDIVIDUAL,
-      'fieldSeparator' => $config->fieldSeparator,
-      'multipleCustomData' => $this->_id,
-    );
-
-    if ($loadeMapping = $this->get('loadedMapping')) {
-      $this->assign('loadedMapping', $loadeMapping);
-      $defaults['savedMapping'] = $loadeMapping;
-    }
-
-    return $defaults;
+  public function setDefaultValues(): array {
+    return array_merge(parent::setDefaultValues(), [
+      'contactType' => 'Individual',
+      // Perhaps never used, but permits url passing of the group.
+      'multipleCustomData' => CRM_Utils_Request::retrieve('id', 'Positive', $this),
+    ]);
   }
 
   /**
    * Build the form object.
    *
-   * @return void
+   * @throws \CRM_Core_Exception
    */
-  public function buildQuickForm() {
+  public function buildQuickForm(): void {
     parent::buildQuickForm();
-
-    $multipleCustomData = CRM_Core_BAO_CustomGroup::getMultipleFieldGroup();
-    $this->add('select', 'multipleCustomData', ts('Multi-value Custom Data'), array('' => ts('- select -')) + $multipleCustomData, TRUE);
-
-    $this->addContactTypeSelector();
+    $this->add('select', 'multipleCustomData', ts('Multi-value Custom Data'), ['' => ts('- select -')] + $this->getCustomGroups(), TRUE);
   }
 
   /**
-   * Process the uploaded file.
-   *
-   * @return void
+   * @return \Civi\Import\CustomValueParser
    */
-  public function postProcess() {
-    $this->storeFormValues(array(
-      'contactType',
-      'dateFormats',
-      'savedMapping',
-      'multipleCustomData',
-    ));
-
-    $this->submitFileForMapping('CRM_Custom_Import_Parser_Api', 'multipleCustomData');
+  protected function getParser(): CustomValueParser {
+    if (!$this->parser) {
+      $this->parser = new CustomValueParser();
+      $this->parser->setUserJobID($this->getUserJobID());
+      $this->parser->init();
+    }
+    return $this->parser;
   }
 
 }

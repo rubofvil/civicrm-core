@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -30,9 +14,7 @@
  * for a component to introduce itself to the system.
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
- * $Id$
- *
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 abstract class CRM_Core_Component_Info {
 
@@ -79,16 +61,39 @@ abstract class CRM_Core_Component_Info {
   const COMPONENT_MENU_XML = 'Menu';
 
   /**
-   * Stores component information.
-   * @var array component settings as key/value pairs
+   * Component settings as key/value pairs.
+   *
+   * @var array{name: string, translatedName: string, title: string, search: bool, showActivitiesInCore: bool, url: string}
    */
   public $info;
 
   /**
-   * Stores component keyword.
-   * @var string name of component keyword
+   * Component keyword.
+   *
+   * @var string
    */
   protected $keyword;
+
+  /**
+   * Component Name.
+   *
+   * @var string
+   */
+  public $name;
+
+  /**
+   * Component namespace.
+   * e.g. CRM_Contribute.
+   *
+   * @var string
+   */
+  public $namespace;
+
+  /**
+   * Component ID
+   * @var int
+   */
+  public $componentID;
 
   /**
    * @param string $name
@@ -106,14 +111,11 @@ abstract class CRM_Core_Component_Info {
   }
 
   /**
-   * EXPERIMENTAL: Get a list of AngularJS modules
-   *
-   * @return array
-   *   list of modules; same format as CRM_Utils_Hook::angularModules(&$angularModules)
-   * @see CRM_Utils_Hook::angularModules
+   * Name of the module-extension coupled with this component
+   * @return string
    */
-  public function getAngularModules() {
-    return array();
+  public function getExtensionName(): string {
+    return CRM_Utils_String::convertStringToSnakeCase($this->name);
   }
 
   /**
@@ -127,17 +129,6 @@ abstract class CRM_Core_Component_Info {
   abstract public function getInfo();
 
   /**
-   * Get a list of entities to register via API.
-   *
-   * @return array
-   *   list of entities; same format as CRM_Utils_Hook::managedEntities(&$entities)
-   * @see CRM_Utils_Hook::managedEntities
-   */
-  public function getManagedEntities() {
-    return array();
-  }
-
-  /**
    * Provides permissions that are unwise for Anonymous Roles to have.
    *
    * @return array
@@ -145,38 +136,15 @@ abstract class CRM_Core_Component_Info {
    * @see CRM_Component_Info::getPermissions
    */
   public function getAnonymousPermissionWarnings() {
-    return array();
+    return [];
   }
 
   /**
-   * Provides permissions that are used by component.
-   * Needs to be implemented in component's information
-   * class.
+   * Defines permissions that are used by component.
    *
-   * NOTE: if using conditionally permission return,
-   * implementation of $getAllUnconditionally is required.
-   *
-   * @param bool $getAllUnconditionally
-   *
-   * @return array|null
-   *   collection of permissions, null if none
-   */
-  abstract public function getPermissions($getAllUnconditionally = FALSE);
-
-  /**
-   * Determine how many other records refer to a given record.
-   *
-   * @param CRM_Core_DAO $dao
-   *   The item for which we want a reference count.
    * @return array
-   *   each item in the array is an array with keys:
-   *   - name: string, eg "sql:civicrm_email:contact_id"
-   *   - type: string, eg "sql"
-   *   - count: int, eg "5" if there are 5 email addresses that refer to $dao
    */
-  public function getReferenceCounts($dao) {
-    return array();
-  }
+  abstract public function getPermissions();
 
   /**
    * Provides information about user dashboard element.
@@ -197,6 +165,15 @@ abstract class CRM_Core_Component_Info {
    *                    null if no element offered
    */
   abstract public function registerTab();
+
+  /**
+   * Get icon font class representing this component.
+   *
+   * @return string
+   */
+  public function getIcon() {
+    return 'crm-i fa-puzzle-piece';
+  }
 
   /**
    * Provides information about advanced search pane
@@ -227,21 +204,7 @@ abstract class CRM_Core_Component_Info {
    *   true if component is enabled, false if not
    */
   public function isEnabled() {
-    $config = CRM_Core_Config::singleton();
-    if (in_array($this->info['name'], $config->enableComponents)) {
-      return TRUE;
-    }
-    return FALSE;
-  }
-
-  /**
-   * Provides component's menu definition object.
-   *
-   * @return mixed
-   *   component's menu definition object
-   */
-  public function getMenuObject() {
-    return $this->_instantiate(self::COMPONENT_MENU_CLASS);
+    return CRM_Core_Component::isEnabled($this->info['name']);
   }
 
   /**
@@ -312,7 +275,7 @@ abstract class CRM_Core_Component_Info {
    *   true if component needs search integration
    */
   public function usesSearch() {
-    return $this->info['search'] ? TRUE : FALSE;
+    return (bool) $this->info['search'];
   }
 
   /**
@@ -352,14 +315,13 @@ abstract class CRM_Core_Component_Info {
   /**
    * Helper for instantiating component's elements.
    *
-   * @param $cl
+   * @param string $cl
    *
    * @return mixed
    *   component's element as class instance
    */
   private function _instantiate($cl) {
     $className = $this->namespace . '_' . $cl;
-    require_once str_replace('_', DIRECTORY_SEPARATOR, $className) . '.php';
     return new $className();
   }
 

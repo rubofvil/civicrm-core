@@ -1,63 +1,89 @@
 <?php
 /*
-  +--------------------------------------------------------------------+
-  | CiviCRM version 4.7                                                |
-  +--------------------------------------------------------------------+
-  | Copyright CiviCRM LLC (c) 2004-2016                                |
-  +--------------------------------------------------------------------+
-  | This file is a part of CiviCRM.                                    |
-  |                                                                    |
-  | CiviCRM is free software; you can copy, modify, and distribute it  |
-  | under the terms of the GNU Affero General Public License           |
-  | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
-  |                                                                    |
-  | CiviCRM is distributed in the hope that it will be useful, but     |
-  | WITHOUT ANY WARRANTY; without even the implied warranty of         |
-  | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
-  | See the GNU Affero General Public License for more details.        |
-  |                                                                    |
-  | You should have received a copy of the GNU Affero General Public   |
-  | License and the CiviCRM Licensing Exception along                  |
-  | with this program; if not, contact CiviCRM LLC                     |
-  | at info[AT]civicrm[DOT]org. If you have questions about the        |
-  | GNU Affero General Public License or the licensing of CiviCRM,     |
-  | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
-  +--------------------------------------------------------------------+
+ +--------------------------------------------------------------------+
+ | Copyright CiviCRM LLC. All rights reserved.                        |
+ |                                                                    |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
+ +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
- * This form is intended to replace the overloading of many forms to generate a snippet for custom data.
+ * This form is loaded when custom data is loaded by ajax.
+ *
+ * The forms ALSO need to call enough functions from Form_CustomData
+ * to ensure the fields they need are added to the form or the values will be
+ * ignored in post process (ie. quick form will filter them out).
+ *
+ * This form never submits & hence has no post process.
  */
 class CRM_Custom_Form_CustomDataByType extends CRM_Core_Form {
 
   /**
-   * Preprocess function.
+   * @var array
    */
-  public function preProcess() {
+  protected $groupTree;
 
-    $this->_type = $this->_cdType = CRM_Utils_Request::retrieve('type', 'String', CRM_Core_DAO::$_nullObject, TRUE);
-    $this->_subType = CRM_Utils_Request::retrieve('subType', 'String');
-    $this->_subName = CRM_Utils_Request::retrieve('subName', 'String');
-    $this->_groupCount = CRM_Utils_Request::retrieve('cgcount', 'Positive');
-    $this->_entityId = CRM_Utils_Request::retrieve('entityID', 'Positive');
-    $this->_groupID = CRM_Utils_Request::retrieve('groupID', 'Positive');
+  /**
+   * @var array
+   */
+  private $groupCount;
+
+  /**
+   * @var int|mixed|string|null
+   */
+  private $groupID;
+
+  /**
+   * Preprocess function.
+   *
+   * @throws \CRM_Core_Exception
+   */
+  public function preProcess(): void {
+
+    $customDataType = CRM_Utils_Request::retrieve('type', 'String', NULL, TRUE);
+    $subType = CRM_Utils_Request::retrieve('subType', 'String');
+    $this->groupCount = CRM_Utils_Request::retrieve('cgcount', 'Positive');
+    $this->groupID = $groupID = CRM_Utils_Request::retrieve('groupID', 'Positive');
+    $onlySubType = CRM_Utils_Request::retrieve('onlySubtype', 'Boolean');
+    $this->_action = CRM_Utils_Request::retrieve('action', 'Alphanumeric');
     $this->assign('cdType', FALSE);
-    $this->assign('cgCount', $this->_groupCount);
+    $this->assign('cgCount', $this->groupCount);
 
     $contactTypes = CRM_Contact_BAO_ContactType::contactTypeInfo();
-    if (array_key_exists($this->_type, $contactTypes)) {
-      $this->assign('contactId', $this->_entityId);
+    if (array_key_exists($customDataType, $contactTypes)) {
+      $this->assign('contactId', CRM_Utils_Request::retrieve('entityID', 'Positive'));
     }
-    if (!is_array($this->_subType) && strstr($this->_subType, CRM_Core_DAO::VALUE_SEPARATOR)) {
-      $this->_subType = str_replace(CRM_Core_DAO::VALUE_SEPARATOR, ',', trim($this->_subType, CRM_Core_DAO::VALUE_SEPARATOR));
+
+    $groupTree = CRM_Core_BAO_CustomGroup::getTree(CRM_Utils_Request::retrieve('type', 'String'),
+      NULL,
+      CRM_Utils_Request::retrieve('entityID', 'Positive'),
+      $groupID,
+      $subType,
+      CRM_Utils_Request::retrieve('subName', 'String'),
+      TRUE,
+      $onlySubType
+    );
+
+    // we should use simplified formatted groupTree
+    $groupTree = CRM_Core_BAO_CustomGroup::formatGroupTree($groupTree, $this->groupCount, $this);
+
+    if (isset($this->groupTree) && is_array($this->groupTree)) {
+      $keys = array_keys($groupTree);
+      foreach ($keys as $key) {
+        $this->groupTree[$key] = $groupTree[$key];
+      }
     }
-    CRM_Custom_Form_CustomData::setGroupTree($this, $this->_subType, $this->_groupID);
+    else {
+      $this->groupTree = $groupTree;
+    }
 
     $this->assign('suppressForm', TRUE);
     $this->controller->_generateQFKey = FALSE;
@@ -68,19 +94,21 @@ class CRM_Custom_Form_CustomDataByType extends CRM_Core_Form {
    *
    * @return array
    */
-  public function setDefaultValues() {
-    $defaults = array();
-    CRM_Core_BAO_CustomGroup::setDefaults($this->_groupTree, $defaults, FALSE, FALSE, $this->get('action'));
+  public function setDefaultValues(): array {
+    $defaults = [];
+    CRM_Core_BAO_CustomGroup::setDefaults($this->groupTree, $defaults, FALSE, FALSE, $this->get('action'));
     return $defaults;
   }
 
   /**
    * Build quick form.
+   *
+   * @throws \CRM_Core_Exception
    */
-  public function buildQuickForm() {
+  public function buildQuickForm(): void {
     $this->addElement('hidden', 'hidden_custom', 1);
-    $this->addElement('hidden', "hidden_custom_group_count[{$this->_groupID}]", $this->_groupCount);
-    CRM_Core_BAO_CustomGroup::buildQuickForm($this, $this->_groupTree);
+    $this->addElement('hidden', "hidden_custom_group_count[{$this->groupID}]", $this->groupCount);
+    CRM_Core_BAO_CustomGroup::buildQuickForm($this, $this->groupTree);
   }
 
 }

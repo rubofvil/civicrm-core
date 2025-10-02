@@ -1,59 +1,52 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 class CRM_Contribute_Form_ContributionPage_Widget extends CRM_Contribute_Form_ContributionPage {
-  protected $_colors;
 
+  /**
+   * Configuration for each form field
+   *
+   * @var array
+   * @internal
+   */
+  public $_fields = [];
+
+  /**
+   * Configuration for each color field
+   *
+   * @var array
+   * @internal
+   */
+  public $_colorFields = [];
+
+  /**
+   * @var CRM_Contribute_DAO_Widget
+   */
   protected $_widget;
 
   public function preProcess() {
     parent::preProcess();
+    $this->setSelectedChild('widget');
 
     $this->_widget = new CRM_Contribute_DAO_Widget();
     $this->_widget->contribution_page_id = $this->_id;
-    if (!$this->_widget->find(TRUE)) {
-      $this->_widget = NULL;
-    }
-    else {
-      $this->assign('widget_id', $this->_widget->id);
-
-      // check of home url is set, if set then it flash widget might be in use.
-      $this->assign('showStatus', FALSE);
-      if ($this->_widget->url_homepage) {
-        $this->assign('showStatus', TRUE);
-      }
-    }
-
+    $this->_widget->find(TRUE);
+    $this->assign('widget_id', !empty($this->_widget->id) ? $this->_widget->id : NULL);
     $this->assign('cpageId', $this->_id);
+    $this->assign('widgetExternUrl', CRM_Utils_System::externUrl('extern/widget', "cpageId={$this->_id}&widgetId=" . ($this->_widget->id ?? '') . "&format=3"));
 
     $config = CRM_Core_Config::singleton();
     $title = CRM_Core_DAO::getFieldValue('CRM_Contribute_DAO_ContributionPage',
@@ -61,90 +54,90 @@ class CRM_Contribute_Form_ContributionPage_Widget extends CRM_Contribute_Form_Co
       'title'
     );
 
-    $this->_fields = array(
-      'title' => array(
+    $this->_fields = [
+      'title' => [
         ts('Title'),
         'text',
         FALSE,
         $title,
-      ),
-      'url_logo' => array(
+      ],
+      'url_logo' => [
         ts('URL to Logo Image'),
         'text',
         FALSE,
         NULL,
-      ),
-      'button_title' => array(
+      ],
+      'button_title' => [
         ts('Button Title'),
         'text',
         FALSE,
         ts('Contribute!'),
-      ),
-    );
+      ],
+    ];
 
-    $this->_colorFields = array(
-      'color_title' => array(
-        ts('Title Text Color'),
-        'text',
+    $this->_colorFields = [
+      'color_title' => [
+        ts('Title Text'),
+        'color',
         FALSE,
         '#2786C2',
-      ),
-      'color_bar' => array(
-        ts('Progress Bar Color'),
-        'text',
-        FALSE,
-        '#2786C2',
-      ),
-      'color_main_text' => array(
-        ts('Additional Text Color'),
-        'text',
-        FALSE,
-        '#FFFFFF',
-      ),
-      'color_main' => array(
-        ts('Background Color'),
-        'text',
-        FALSE,
-        '#96C0E7',
-      ),
-      'color_main_bg' => array(
-        ts('Background Color Top Area'),
-        'text',
+      ],
+      'color_main_bg' => [
+        ts('Title Background'),
+        'color',
         FALSE,
         '#B7E2FF',
-      ),
-      'color_bg' => array(
-        ts('Border Color'),
-        'text',
+      ],
+      'color_bar' => [
+        ts('Progress Bar'),
+        'color',
+        FALSE,
+        '#2786C2',
+      ],
+      'color_main_text' => [
+        ts('Additional Text'),
+        'color',
+        FALSE,
+        '#FFFFFF',
+      ],
+      'color_main' => [
+        ts('Background'),
+        'color',
         FALSE,
         '#96C0E7',
-      ),
-      'color_about_link' => array(
-        ts('Button Text Color'),
-        'text',
+      ],
+      'color_bg' => [
+        ts('Border'),
+        'color',
+        FALSE,
+        '#96C0E7',
+      ],
+      'color_about_link' => [
+        ts('Button Text'),
+        'color',
         FALSE,
         '#556C82',
-      ),
-      'color_button' => array(
-        ts('Button Background Color'),
-        'text',
+      ],
+      'color_button' => [
+        ts('Button Background'),
+        'color',
         FALSE,
         '#FFFFFF',
-      ),
-      'color_homepage_link' => array(
-        ts('Homepage Link Color'),
-        'text',
+      ],
+      'color_homepage_link' => [
+        ts('Homepage Link'),
+        'color',
         FALSE,
         '#FFFFFF',
-      ),
-    );
+      ],
+    ];
   }
 
   /**
    * Set default values for the form.
    */
   public function setDefaultValues() {
-    $defaults = array();
+    $defaults = [];
     // check if there is a widget already created
     if ($this->_widget) {
       CRM_Core_DAO::storeValues($this->_widget, $defaults);
@@ -173,9 +166,9 @@ class CRM_Contribute_Form_ContributionPage_Widget extends CRM_Contribute_Form_Co
 
     $this->addElement('checkbox',
       'is_active',
-      ts('Enable Widget?'),
+      ts('Enable the Widget'),
       NULL,
-      array('onclick' => "widgetBlock(this)")
+      ['onclick' => "widgetBlock(this)"]
     );
 
     $this->add('wysiwyg', 'about', ts('About'), $attributes['about']);
@@ -197,16 +190,11 @@ class CRM_Contribute_Form_ContributionPage_Widget extends CRM_Contribute_Form_Co
       );
     }
 
-    $this->assign_by_ref('fields', $this->_fields);
-    $this->assign_by_ref('colorFields', $this->_colorFields);
+    $this->assign('fields', $this->_fields);
+    $this->assign('colorFields', $this->_colorFields);
 
-    $this->_refreshButtonName = $this->getButtonName('refresh');
-    $this->addElement('submit',
-      $this->_refreshButtonName,
-      ts('Save and Preview')
-    );
     parent::buildQuickForm();
-    $this->addFormRule(array('CRM_Contribute_Form_ContributionPage_Widget', 'formRule'), $this);
+    $this->addFormRule(['CRM_Contribute_Form_ContributionPage_Widget', 'formRule'], $this);
   }
 
   /**
@@ -216,25 +204,16 @@ class CRM_Contribute_Form_ContributionPage_Widget extends CRM_Contribute_Form_Co
    *   (ref.) an assoc array of name/value pairs.
    *
    * @param $files
-   * @param $self
+   * @param self $self
    *
    * @return bool|array
    *   mixed true or array of errors
    */
   public static function formRule($params, $files, $self) {
-    $errors = array();
+    $errors = [];
     if (!empty($params['is_active'])) {
       if (empty($params['title'])) {
         $errors['title'] = ts('Title is a required field.');
-      }
-      if (empty($params['about'])) {
-        $errors['about'] = ts('About is a required field.');
-      }
-
-      foreach ($params as $key => $val) {
-        if (substr($key, 0, 6) == 'color_' && empty($params[$key])) {
-          $errors[$key] = ts('%1 is a required field.', array(1 => $self->_colorFields[$key][0]));
-        }
       }
     }
     return empty($errors) ? TRUE : $errors;
@@ -253,17 +232,13 @@ class CRM_Contribute_Form_ContributionPage_Widget extends CRM_Contribute_Form_Co
       $params['id'] = $this->_widget->id;
     }
     $params['contribution_page_id'] = $this->_id;
-    $params['is_active'] = CRM_Utils_Array::value('is_active', $params, FALSE);
+    $params['is_active'] ??= FALSE;
     $params['url_homepage'] = 'null';
 
     $widget = new CRM_Contribute_DAO_Widget();
     $widget->copyValues($params);
     $widget->save();
 
-    $buttonName = $this->controller->getButtonName();
-    if ($buttonName == $this->_refreshButtonName) {
-      return;
-    }
     parent::endPostProcess();
   }
 

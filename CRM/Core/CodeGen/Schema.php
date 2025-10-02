@@ -2,36 +2,44 @@
 
 /**
  * Create SQL files to create and populate a new schema.
+ *
+ * @deprecated
+ *   Replaced by CRM_Core_CodeGen_PhpSchema.
+ *   Delete this after civicrm-core and civix drop their references.
+ *   Maybe allow grace-period of a couple months.
  */
 class CRM_Core_CodeGen_Schema extends CRM_Core_CodeGen_BaseTask {
-  /**
-   */
-  public function __construct($config) {
-    parent::__construct($config);
-    $this->locales = $this->findLocales();
-  }
 
   public function run() {
     CRM_Core_CodeGen_Util_File::createDir($this->config->sqlCodePath);
 
-    $this->generateCreateSql();
-    $this->generateDropSql();
+    $put = function ($files) {
+      foreach ($files as $file => $content) {
+        if (substr($content, -1) !== "\n") {
+          $content .= "\n";
+        }
+        file_put_contents($this->config->sqlCodePath . $file, $content);
+      }
+    };
 
-    $this->generateLocaleDataSql();
+    echo "Generating sql file\n";
+    $put($this->generateCreateSql());
+
+    echo "Generating sql drop tables file\n";
+    $put($this->generateDropSql());
 
     // also create the archive tables
     // $this->generateCreateSql('civicrm_archive.mysql' );
     // $this->generateDropSql('civicrm_archive_drop.mysql');
 
-    $this->generateNavigation();
-    $this->generateSample();
+    echo "Generating navigation file\n";
+    $put($this->generateNavigation());
+
+    echo "Generating sample file\n";
+    $put($this->generateSample());
   }
 
-  /**
-   * @param string $fileName
-   */
-  public function generateCreateSql($fileName = 'civicrm.mysql') {
-    echo "Generating sql file\n";
+  public function generateCreateSql() {
     $template = new CRM_Core_CodeGen_Util_Template('sql');
 
     $template->assign('database', $this->config->database);
@@ -39,91 +47,38 @@ class CRM_Core_CodeGen_Schema extends CRM_Core_CodeGen_BaseTask {
     $dropOrder = array_reverse(array_keys($this->tables));
     $template->assign('dropOrder', $dropOrder);
     $template->assign('mysql', 'modern');
-
-    $template->run('schema.tpl', $this->config->sqlCodePath . $fileName);
+    CRM_Core_CodeGen_Util_MessageTemplates::assignSmartyVariables($template->getSmarty());
+    return ['civicrm.mysql' => $template->fetch('schema.tpl')];
   }
 
-  /**
-   * @param string $fileName
-   */
-  public function generateDropSql($fileName = 'civicrm_drop.mysql') {
-    echo "Generating sql drop tables file\n";
+  public function generateDropSql() {
     $dropOrder = array_reverse(array_keys($this->tables));
     $template = new CRM_Core_CodeGen_Util_Template('sql');
     $template->assign('dropOrder', $dropOrder);
-    $template->run('drop.tpl', $this->config->sqlCodePath . $fileName);
+    $template->assign('isOutputLicense', TRUE);
+    return ['civicrm_drop.mysql' => $template->fetch('drop.tpl')];
   }
 
   public function generateNavigation() {
-    echo "Generating navigation file\n";
     $template = new CRM_Core_CodeGen_Util_Template('sql');
-    $template->run('civicrm_navigation.tpl', $this->config->sqlCodePath . "civicrm_navigation.mysql");
-  }
-
-  public function generateLocaleDataSql() {
-    $template = new CRM_Core_CodeGen_Util_Template('sql');
-
-    global $tsLocale;
-    $oldTsLocale = $tsLocale;
-    foreach ($this->locales as $locale) {
-      echo "Generating data files for $locale\n";
-      $tsLocale = $locale;
-      $template->assign('locale', $locale);
-      $template->assign('db_version', $this->config->db_version);
-
-      $sections = array(
-        'civicrm_country.tpl',
-        'civicrm_state_province.tpl',
-        'civicrm_currency.tpl',
-        'civicrm_data.tpl',
-        'civicrm_navigation.tpl',
-        'civicrm_version_sql.tpl',
-      );
-
-      $ext = ($locale != 'en_US' ? ".$locale" : '');
-      // write the initialize base-data sql script
-      $template->runConcat($sections, $this->config->sqlCodePath . "civicrm_data$ext.mysql");
-
-      // write the acl sql script
-      $template->run('civicrm_acl.tpl', $this->config->sqlCodePath . "civicrm_acl$ext.mysql");
-    }
-    $tsLocale = $oldTsLocale;
-  }
-
-  public function generateSample() {
-    $template = new CRM_Core_CodeGen_Util_Template('sql');
-    $sections = array(
-      'civicrm_sample.tpl',
-      'civicrm_acl.tpl',
-    );
-    $template->runConcat($sections, $this->config->sqlCodePath . 'civicrm_sample.mysql');
-
-    $template->run('case_sample.tpl', $this->config->sqlCodePath . 'case_sample.mysql');
+    return ['civicrm_navigation.mysql' => $template->fetch('civicrm_navigation.tpl')];
   }
 
   /**
    * @return array
+   *   Array(string $fileName => string $fileContent).
+   *   List of files
    */
-  public function findLocales() {
-    require_once 'CRM/Core/Config.php';
-    $config = CRM_Core_Config::singleton(FALSE);
-    $locales = array();
-    $localeDir = CRM_Core_I18n::getResourceDir();
-    if (file_exists($localeDir)) {
-      $locales = preg_grep('/^[a-z][a-z]_[A-Z][A-Z]$/', scandir($localeDir));
-    }
-
-    $localesMask = getenv('CIVICRM_LOCALES');
-    if (!empty($localesMask)) {
-      $mask = explode(',', $localesMask);
-      $locales = array_intersect($locales, $mask);
-    }
-
-    if (!in_array('en_US', $locales)) {
-      array_unshift($locales, 'en_US');
-    }
-
-    return $locales;
+  public function generateSample() {
+    $template = new CRM_Core_CodeGen_Util_Template('sql');
+    $sections = [
+      'civicrm_sample.tpl',
+      'civicrm_acl.tpl',
+    ];
+    return [
+      'civicrm_sample.mysql' => $template->fetchConcat($sections),
+      'case_sample.mysql' => $template->fetch('case_sample.tpl'),
+    ];
   }
 
 }

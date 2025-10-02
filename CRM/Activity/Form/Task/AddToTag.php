@@ -1,40 +1,23 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
- * This class provides the functionality to delete a group of
- * contacts. This class provides functionality for the actual
- * addition of contacts to groups.
+ * This class provides the functionality to tag a group of
+ * activities (or a single activity)
  */
 class CRM_Activity_Form_Task_AddToTag extends CRM_Activity_Form_Task {
 
@@ -53,6 +36,11 @@ class CRM_Activity_Form_Task_AddToTag extends CRM_Activity_Form_Task {
   protected $_tags;
 
   /**
+   * @var bool
+   */
+  public $submitOnce = TRUE;
+
+  /**
    * Build the form object.
    */
   public function buildQuickForm() {
@@ -60,7 +48,7 @@ class CRM_Activity_Form_Task_AddToTag extends CRM_Activity_Form_Task {
     $this->_tags = CRM_Core_BAO_Tag::getTags('civicrm_activity');
 
     foreach ($this->_tags as $tagID => $tagName) {
-      $this->_tagElement = &$this->addElement('checkbox', "tag[$tagID]", NULL, $tagName);
+      $this->addElement('checkbox', "tag[$tagID]", NULL, $tagName);
     }
 
     $parentNames = CRM_Core_BAO_Tag::getTagSet('civicrm_activity');
@@ -71,7 +59,7 @@ class CRM_Activity_Form_Task_AddToTag extends CRM_Activity_Form_Task {
   }
 
   public function addRules() {
-    $this->addFormRule(array('CRM_Activity_Form_Task_AddToTag', 'formRule'));
+    $this->addFormRule(['CRM_Activity_Form_Task_AddToTag', 'formRule']);
   }
 
   /**
@@ -81,7 +69,7 @@ class CRM_Activity_Form_Task_AddToTag extends CRM_Activity_Form_Task {
    * @return array
    */
   public static function formRule($form, $rule) {
-    $errors = array();
+    $errors = [];
     if (empty($form['tag']) && empty($form['activity_taglist'])) {
       $errors['_qf_default'] = ts("Please select at least one tag.");
     }
@@ -94,7 +82,7 @@ class CRM_Activity_Form_Task_AddToTag extends CRM_Activity_Form_Task {
   public function postProcess() {
     // Get the submitted values in an array.
     $params = $this->controller->exportValues($this->_name);
-    $activityTags = $tagList = array();
+    $activityTags = $tagList = [];
 
     // check if contact tags exists
     if (!empty($params['tag'])) {
@@ -131,22 +119,22 @@ class CRM_Activity_Form_Task_AddToTag extends CRM_Activity_Form_Task {
     // merge activity and taglist tags
     $allTags = CRM_Utils_Array::crmArrayMerge($activityTags, $tagList);
 
-    $this->_name = array();
+    $this->_name = [];
     foreach ($allTags as $key => $dnc) {
       $this->_name[] = $this->_tags[$key];
 
-      list($total, $added, $notAdded) = CRM_Core_BAO_EntityTag::addEntitiesToTag($this->_activityHolderIds, $key,
+      [, $added, $notAdded] = CRM_Core_BAO_EntityTag::addEntitiesToTag($this->_activityHolderIds, $key,
         'civicrm_activity', FALSE);
 
-      $status = array(ts('Activity tagged', array('count' => $added, 'plural' => '%count activities tagged')));
+      $status = [ts('Activity tagged', ['count' => $added, 'plural' => '%count activities tagged'])];
       if ($notAdded) {
-        $status[] = ts('1 activity already had this tag', array(
+        $status[] = ts('1 activity already had this tag', [
           'count' => $notAdded,
           'plural' => '%count activities already had this tag',
-        ));
+        ]);
       }
       $status = '<ul><li>' . implode('</li><li>', $status) . '</li></ul>';
-      CRM_Core_Session::setStatus($status, ts("Added Tag <em>%1</em>", array(1 => $this->_tags[$key])), 'success', array('expires' => 0));
+      CRM_Core_Session::setStatus($status, ts("Added Tag <em>%1</em>", [1 => $this->_tags[$key]]), 'success');
     }
 
   }

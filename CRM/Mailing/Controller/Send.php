@@ -1,41 +1,25 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 class CRM_Mailing_Controller_Send extends CRM_Core_Controller {
 
   /**
    * Class constructor.
    *
-   * @param null $title
+   * @param string $title
    * @param bool|int $action
    * @param bool $modal
    *
@@ -55,7 +39,7 @@ class CRM_Mailing_Controller_Send extends CRM_Core_Controller {
     if ($mid && $continue) {
       //CRM-15979 - check if abtest exist for mailing then redirect accordingly
       $abtest = CRM_Mailing_BAO_MailingAB::getABTest($mid);
-      if (!empty($abtest) && !empty($abtest->id)) {
+      if (!empty($abtest->id)) {
         $redirect = CRM_Utils_System::url('civicrm/a/', NULL, TRUE, '/abtest/' . $abtest->id);
       }
       else {
@@ -64,7 +48,37 @@ class CRM_Mailing_Controller_Send extends CRM_Core_Controller {
       CRM_Utils_System::redirect($redirect);
     }
     if ($mid && !$continue) {
-      $clone = civicrm_api3('Mailing', 'clone', array('id' => $mid));
+      $clone = civicrm_api3('Mailing', 'clone', ['id' => $mid]);
+      civicrm_api3('Mailing', 'create', [
+        'id' => $clone['id'],
+        'name' => ts('Copy of %1', [1 => $clone['values'][$clone['id']]['name']]),
+      ]);
+
+      // Remove non active groups from clone
+      $mailingGroups = \Civi\Api4\MailingGroup::get(FALSE)
+        ->addSelect('id', 'group.title', 'group.id')
+        ->addJoin('Group AS group', 'INNER', ['entity_id', '=', 'group.id'], ['group.is_active', '=', FALSE])
+        ->addWhere('mailing_id', '=', $clone['id'])
+        ->execute();
+      $removeGroups = [];
+      foreach ($mailingGroups as $mailingGroup) {
+        // We use the group title to construct HTML for setStatus()
+        $removeGroups[$mailingGroup['id']] = htmlentities($mailingGroup['group.title']);
+      }
+      if (!empty($removeGroups)) {
+        $results = \Civi\Api4\MailingGroup::delete(FALSE)
+          ->addWhere('id', 'IN', array_keys($removeGroups))
+          ->addWhere('mailing_id', '=', $clone['id'])
+          ->execute();
+        CRM_Core_Session::setStatus(
+          ts('Remove %1 disabled group(s) while copying: <ul><li>%2</li></ul>Please check recipients.', [
+            1 => count($removeGroups),
+            2 => implode('</li><li>', $removeGroups),
+          ]),
+          ts('Removed disabled groups')
+        );
+      }
+
       CRM_Utils_System::redirect(CRM_Utils_System::url('civicrm/a/', NULL, TRUE, '/mailing/' . $clone['id']));
     }
   }

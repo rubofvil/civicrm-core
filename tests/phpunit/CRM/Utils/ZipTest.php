@@ -1,28 +1,12 @@
 <?php
 /*
  +--------------------------------------------------------------------+
-| CiviCRM version 4.7                                                |
-+--------------------------------------------------------------------+
-| Copyright CiviCRM LLC (c) 2004-2016                                |
-+--------------------------------------------------------------------+
-| This file is a part of CiviCRM.                                    |
-|                                                                    |
-| CiviCRM is free software; you can copy, modify, and distribute it  |
-| under the terms of the GNU Affero General Public License           |
-| Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
-|                                                                    |
-| CiviCRM is distributed in the hope that it will be useful, but     |
-| WITHOUT ANY WARRANTY; without even the implied warranty of         |
-| MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
-| See the GNU Affero General Public License for more details.        |
-|                                                                    |
-| You should have received a copy of the GNU Affero General Public   |
-| License and the CiviCRM Licensing Exception along                  |
-| with this program; if not, contact CiviCRM LLC                     |
-| at info[AT]civicrm[DOT]org. If you have questions about the        |
-| GNU Affero General Public License or the licensing of CiviCRM,     |
-| see the CiviCRM license FAQ at http://civicrm.org/licensing        |
-+--------------------------------------------------------------------+
+ | Copyright CiviCRM LLC. All rights reserved.                        |
+ |                                                                    |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
+ +--------------------------------------------------------------------+
  */
 
 /**
@@ -31,118 +15,125 @@
  */
 class CRM_Utils_ZipTest extends CiviUnitTestCase {
 
-  public function setUp() {
+  /**
+   * Reference to filename, to allow cleanup in tearDown
+   * @var string|false
+   */
+  private $file = FALSE;
+
+  public function setUp(): void {
     parent::setUp();
+    $this->useTransaction();
     $this->file = FALSE;
   }
 
-  public function tearDown() {
+  public function tearDown(): void {
     parent::tearDown();
     if ($this->file) {
       unlink($this->file);
     }
   }
 
-  public function testFindBaseDirName_normal() {
+  public function testFindBaseDirName_normal(): void {
     $this->_doFindBaseDirName('author-com.example.foo-random/',
-      array('author-com.example.foo-random'),
-      array('author-com.example.foo-random/README.txt' => 'hello')
+      ['author-com.example.foo-random'],
+      ['author-com.example.foo-random/README.txt' => 'hello']
     );
   }
 
-  public function testFindBaseDirName_0() {
+  public function testFindBaseDirName_0(): void {
     $this->_doFindBaseDirName('0/',
-      array('0'),
-      array()
+      ['0'],
+      []
     );
   }
 
-  public function testFindBaseDirName_plainfile() {
+  public function testFindBaseDirName_plainfile(): void {
     $this->_doFindBaseDirName(FALSE,
-      array(),
-      array('README.txt' => 'hello')
+      [],
+      ['README.txt' => 'hello']
     );
   }
 
-  public function testFindBaseDirName_twodir() {
+  public function testFindBaseDirName_twodir(): void {
     $this->_doFindBaseDirName(FALSE,
-      array('dir-1', 'dir-2'),
-      array('dir-1/README.txt' => 'hello')
+      ['dir-1', 'dir-2'],
+      ['dir-1/README.txt' => 'hello']
     );
   }
 
-  public function testFindBaseDirName_dirfile() {
+  public function testFindBaseDirName_dirfile(): void {
     $this->_doFindBaseDirName(FALSE,
-      array('dir-1'),
-      array('dir-1/README.txt' => 'hello', 'MANIFEST.MF' => 'extra')
+      ['dir-1'],
+      ['dir-1/README.txt' => 'hello', 'MANIFEST.MF' => 'extra']
     );
   }
 
-  public function testFindBaseDirName_dot() {
+  public function testFindBaseDirName_dot(): void {
     $this->_doFindBaseDirName(FALSE,
-      array('.'),
-      array('./README.txt' => 'hello')
+      ['.'],
+      ['./README.txt' => 'hello']
     );
   }
 
-  public function testFindBaseDirName_dots() {
+  public function testFindBaseDirName_dots(): void {
     $this->_doFindBaseDirName(FALSE,
-      array('..'),
-      array('../README.txt' => 'hello')
+      ['..'],
+      ['../README.txt' => 'hello']
     );
   }
 
-  public function testFindBaseDirName_weird() {
+  public function testFindBaseDirName_weird(): void {
     $this->_doFindBaseDirName(FALSE,
-      array('foo/../'),
-      array('foo/../README.txt' => 'hello')
+      ['foo/../'],
+      ['foo/../README.txt' => 'hello']
     );
   }
 
-  public function testGuessBaseDir_normal() {
+  public function testGuessBaseDir_normal(): void {
     $this->_doGuessBaseDir('author-com.example.foo-random',
-      array('author-com.example.foo-random'),
-      array('author-com.example.foo-random/README.txt' => 'hello'),
+      ['author-com.example.foo-random'],
+      ['author-com.example.foo-random/README.txt' => 'hello'],
       'com.example.foo'
     );
   }
 
-  public function testGuessBaseDir_MACOSX() {
+  public function testGuessBaseDir_MACOSX(): void {
     $this->_doGuessBaseDir('com.example.foo',
-      array('com.example.foo', '__MACOSX'),
-      array('author-com.example.foo-random/README.txt' => 'hello', '__MACOSX/foo' => 'bar'),
+      ['com.example.foo', '__MACOSX'],
+      ['author-com.example.foo-random/README.txt' => 'hello', '__MACOSX/foo' => 'bar'],
       'com.example.foo'
     );
   }
 
-  public function testGuessBaseDir_0() {
+  public function testGuessBaseDir_0(): void {
     $this->_doGuessBaseDir('0',
-      array('0'),
-      array(),
+      ['0'],
+      [],
       'com.example.foo'
     );
   }
 
-  public function testGuessBaseDir_plainfile() {
+  public function testGuessBaseDir_plainfile(): void {
     $this->_doGuessBaseDir(FALSE,
-      array(),
-      array('README.txt' => 'hello'),
+      [],
+      ['README.txt' => 'hello'],
       'com.example.foo'
     );
   }
 
-  public function testGuessBaseDirTwoDir() {
+  public function testGuessBaseDirTwoDir(): void {
     $this->_doGuessBaseDir(FALSE,
-      array('dir-1', 'dir-2'),
-      array('dir-1/README.txt' => 'hello'),
+      ['dir-1', 'dir-2'],
+      ['dir-1/README.txt' => 'hello'],
       'com.example.foo'
     );
   }
 
-  public function testGuessBaseDirWeird() {
+  public function testGuessBaseDirWeird(): void {
     $this->_doGuessBaseDir(FALSE,
-      array('foo/../'),
-      array('foo/../README.txt' => 'hello'),
+      ['foo/../'],
+      ['foo/../README.txt' => 'hello'],
       'com.example.foo'
     );
   }

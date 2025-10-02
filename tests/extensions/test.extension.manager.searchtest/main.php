@@ -6,6 +6,7 @@ require_once 'CRM/Contact/Form/Search/Custom/Base.php';
  * Class test_extension_manager_searchtest
  */
 class test_extension_manager_searchtest extends CRM_Contact_Form_Search_Custom_Base implements CRM_Contact_Form_Search_Interface {
+
   /**
    * @param $formValues
    */
@@ -21,7 +22,7 @@ class test_extension_manager_searchtest extends CRM_Contact_Form_Search_Custom_B
    * @return void
    */
   public function buildForm(&$form) {
-    CRM_Utils_System::setTitle(ts('My Search Title'));
+    $form->setTitle(ts('My Search Title'));
 
     $form->add('text',
       'household_name',
@@ -48,9 +49,10 @@ class test_extension_manager_searchtest extends CRM_Contact_Form_Search_Custom_B
   /**
    * Get a list of summary data points.
    *
-   * @return mixed; NULL or array with keys:
-   *   - summary: string
-   *   - total: numeric
+   * @return mixed
+   *   - NULL or array with keys:
+   *     - summary: string
+   *     - total: numeric
    */
   public function summary() {
     return NULL;
@@ -129,11 +131,11 @@ class test_extension_manager_searchtest extends CRM_Contact_Form_Search_Custom_B
    * @return string, sql fragment with conditional expressions
    */
   public function where($includeContactIDs = FALSE) {
-    $params = array();
+    $params = [];
     $where = "contact_a.contact_type   = 'Household'";
 
     $count  = 1;
-    $clause = array();
+    $clause = [];
     $name   = CRM_Utils_Array::value('household_name',
       $this->_formValues
     );

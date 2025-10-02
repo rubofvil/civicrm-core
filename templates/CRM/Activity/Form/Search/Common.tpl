@@ -1,26 +1,10 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 <tr>
@@ -30,7 +14,7 @@
   </td>
 </tr>
 <tr>
-  {if $form.activity_type_id}
+  {if !empty($form.activity_type_id)}
     <td><label>{$form.activity_type_id.label}</label>
        <br />
        {$form.activity_type_id.html}
@@ -38,9 +22,9 @@
   {else}
     <td>&nbsp;</td>
   {/if}
-  {if $form.activity_survey_id || $buildEngagementLevel}
+  {if !empty($form.activity_survey_id) || $buildEngagementLevel}
     <td>
-      {if $form.activity_survey_id}
+      {if !empty($form.activity_survey_id)}
         <label>{$form.activity_survey_id.label}</label>
         <br/>
         {$form.activity_survey_id.html}
@@ -59,58 +43,61 @@
   <td>
     <table>
       <tr><td>
-        {if $form.parent_id}
-          <label>{ts}Has a Followup Activity?{/ts}</label>
+        {if !empty($form.parent_id)}
+          <label>{ts}Has a Followup Activity{/ts}</label>
           <br/>
           {$form.parent_id.html}
         {/if}
       </td></tr>
       <tr><td>
-      {if $form.followup_parent_id}
-          <label>{ts}Is a Followup Activity?{/ts}</label>
+      {if !empty($form.followup_parent_id)}
+          <label>{ts}Is a Followup Activity{/ts}</label>
           <br/>
           {$form.followup_parent_id.html}
         {/if}
       </td></tr>
     </table>
   </td>
-  {if $form.activity_tags}
-    <td><label>{ts}Activity Tag(s){/ts}</label>
-      <div id="Tags" class="listing-box">
-        {foreach from=$form.activity_tags item="tag_val"}
-          <div class="{cycle values='odd-row,even-row'}">
-            {$tag_val.html}
-          </div>
-        {/foreach}
-    </td>
-  {else}
-    <td>&nbsp;</td>
-  {/if}
 </tr>
 
+{if !empty($form.activity_tags)}
+  <tr>
+    <td><label>{$form.activity_tags.label}</label>
+      <br/>
+      {$form.activity_tags.html}
+    </td>
+  </tr>
+{/if}
+
 <tr>
-  <td><label>{ts}Activity Dates{/ts}</label></td>
-</tr>
-<tr>
-  {include file="CRM/Core/DateRange.tpl" fieldName="activity_date" from='_low' to='_high'}
+  {include file="CRM/Core/DatePickerRangeWrapper.tpl" fieldName="activity_date_time" to='' from='' colspan="2" hideRelativeLabel=0 class =''}
+  <td>&nbsp;</td>
 </tr>
 <tr>
   <td>
-    {$form.activity_subject.label}<br/>
-    {$form.activity_subject.html|crmAddClass:big}
+    {$form.activity_text.label}<br/>
+    {$form.activity_text.html|crmAddClass:big}<br/>
+    {$form.activity_option.html}<br/>
   </td>
   <td colspan="2">
-    {$form.status_id.label}<br/>
-    {$form.status_id.html}
+    {$form.activity_status_id.label}<br/>
+    {$form.activity_status_id.html}
   </td>
 </tr>
 <tr>
-  {* td intentionally left blank to align the 'is test' widget on the right *}
-  <td></td>
+  <td>
+    {$form.priority_id.label}<br />
+    {$form.priority_id.html}
+  </td>
   <td colspan="2">
-    {$form.activity_test.label} {help id="is-test" file="CRM/Contact/Form/Search/Advanced"}
+    {$form.activity_test.label} {help id="is_test" file="CRM/Contact/Form/Search/Advanced" title=$form.activity_test.textLabel}
     &nbsp; {$form.activity_test.html}
   </td>
+</tr>
+<tr>
+<td>{$form.activity_location.label}<br />
+  {$form.activity_location.html}</td>
+<td></td>
 </tr>
 {if $buildSurveyResult }
   <tr>
@@ -127,12 +114,12 @@
 {/if}
 
 {* campaign in activity search *}
-{include file="CRM/Campaign/Form/addCampaignToComponent.tpl"
-campaignContext="componentSearch" campaignTrClass='' campaignTdClass=''}
+{include file="CRM/Campaign/Form/addCampaignToSearch.tpl"
+campaignTrClass='' campaignTdClass=''}
 
-{if $activityGroupTree}
+{if !empty($activityGroupTree)}
   <tr id="activityCustom">
-    <td id="activityCustomData" colspan="2">
+    <td id="activityCustomData" colspan="4">
       {include file="CRM/Custom/Form/Search.tpl" groupTree=$activityGroupTree showHideLinks=false}
     </td>
   </tr>

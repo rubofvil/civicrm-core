@@ -1,48 +1,31 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
  * This class generates form element for free tag widget.
  */
 class CRM_Core_Form_Tag {
-  public $_entityTagValues;
 
   /**
    * Build tag widget if correct parent is passed
    *
    * @param CRM_Core_Form $form
    *   Form object.
-   * @param string $parentNames
+   * @param array $parentNames
    *   Parent name ( tag name).
    * @param string $entityTable
    *   Entitytable 'eg: civicrm_contact'.
@@ -58,40 +41,41 @@ class CRM_Core_Form_Tag {
   public static function buildQuickForm(
     &$form, $parentNames, $entityTable, $entityId = NULL, $skipTagCreate = FALSE,
     $skipEntityAction = FALSE, $tagsetElementName = NULL) {
-    $tagset = $form->_entityTagValues = array();
-    $form->assign("isTagset", FALSE);
+    $tagset = [];
+    $form->_entityTagValues ??= [];
+    // Initialize isTagset tpl var if it hasn't been initialized already
+    $isTagset = $form->getTemplateVars('isTagset');
+    $form->assign('isTagset', (bool) $isTagset);
     $mode = NULL;
 
-    foreach ($parentNames as &$parentNameItem) {
-      // get the parent id for tag list input for keyword
-      $parentId = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_Tag', $parentNameItem, 'id', 'name');
-
+    foreach ($parentNames as $parentId => $parentNameItem) {
       // check if parent exists
       if ($parentId) {
         $tagsetItem = $tagsetElementName . 'parentId_' . $parentId;
         $tagset[$tagsetItem]['parentID'] = $parentId;
 
-        list(, $mode) = explode('_', $entityTable);
+        [, $mode] = explode('_', $entityTable);
         if (!$tagsetElementName) {
           $tagsetElementName = $mode . "_taglist";
         }
         $tagset[$tagsetItem]['tagsetElementName'] = $tagsetElementName;
 
-        $form->addEntityRef("{$tagsetElementName}[{$parentId}]", $parentNameItem, array(
-          'entity' => 'tag',
+        $form->addEntityRef("{$tagsetElementName}[{$parentId}]", $parentNameItem, [
+          'entity' => 'Tag',
           'multiple' => TRUE,
           'create' => !$skipTagCreate,
-          'api' => array('params' => array('parent_id' => $parentId)),
+          'api' => ['params' => ['parent_id' => $parentId]],
           'data-entity_table' => $entityTable,
           'data-entity_id' => $entityId,
           'class' => "crm-$mode-tagset",
-        ));
+          'select' => ['minimumInputLength' => 0],
+        ]);
 
         if ($entityId) {
           $tagset[$tagsetItem]['entityId'] = $entityId;
           $entityTags = CRM_Core_BAO_EntityTag::getChildEntityTags($parentId, $entityId, $entityTable);
           if ($entityTags) {
-            $form->setDefaults(array("{$tagsetElementName}[{$parentId}]" => implode(',', array_keys($entityTags))));
+            $form->setDefaults(["{$tagsetElementName}[{$parentId}]" => implode(',', array_keys($entityTags))]);
           }
         }
         else {
@@ -101,18 +85,19 @@ class CRM_Core_Form_Tag {
       }
     }
 
+    $form->addExpectedSmartyVariable('tagsetInfo');
     if (!empty($tagset)) {
       // assign current tagsets which is used in postProcess
       $form->_tagsetInfo = $tagset;
       $form->assign("tagsetType", $mode);
       // Merge this tagset info with possibly existing info in the template
-      $tagsetInfo = (array) $form->get_template_vars("tagsetInfo");
+      $tagsetInfo = (array) $form->getTemplateVars("tagsetInfo");
       if (empty($tagsetInfo[$mode])) {
-        $tagsetInfo[$mode] = array();
+        $tagsetInfo[$mode] = [];
       }
       $tagsetInfo[$mode] = array_merge($tagsetInfo[$mode], $tagset);
-      $form->assign("tagsetInfo", $tagsetInfo);
-      $form->assign("isTagset", TRUE);
+      $form->assign('tagsetInfo', $tagsetInfo);
+      $form->assign('isTagset', TRUE);
     }
   }
 
@@ -127,7 +112,7 @@ class CRM_Core_Form_Tag {
    * @param CRM_Core_Form $form
    *   Form object.
    */
-  public static function postProcess(&$params, $entityId, $entityTable = 'civicrm_contact', &$form) {
+  public static function postProcess(&$params, $entityId, $entityTable = 'civicrm_contact', &$form = NULL) {
     if ($form && !empty($form->_entityTagValues)) {
       $existingTags = $form->_entityTagValues;
     }
@@ -151,8 +136,8 @@ class CRM_Core_Form_Tag {
     // when form is submitted with tagset values below logic will work and in the case when all tags in a tagset
     // are deleted we will have to set $params[tagset id] = '' which is done by above logic
     foreach ($params as $parentId => $value) {
-      $newTagIds = array();
-      $tagIds = array();
+      $newTagIds = [];
+      $tagIds = [];
 
       if ($value) {
         $tagIds = explode(',', $value);
@@ -177,7 +162,7 @@ class CRM_Core_Form_Tag {
 
       if (!empty($newTagIds)) {
         // New tag ids can be inserted directly into the db table.
-        $insertValues = array();
+        $insertValues = [];
         foreach ($newTagIds as $tagId) {
           $insertValues[] = "( {$tagId}, {$entityId}, '{$entityTable}' ) ";
         }

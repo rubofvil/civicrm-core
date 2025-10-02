@@ -1,40 +1,23 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 <div class="crm-block crm-form-block crm-uf-field-form-block">
 {if $action eq 8}
   <div class="messages status no-popup">
-    <div class="icon inform-icon"></div>
+    {icon icon="fa-info-circle"}{/icon}
     {ts}WARNING: Deleting this profile field will remove it from Profile forms and listings. If this field is used in any 'stand-alone' Profile forms, you will need to update those forms to remove this field.{/ts} {ts}Do you want to continue?{/ts}
   </div>
 {else}
-  <div class="crm-submit-buttons">{include file="CRM/common/formButtons.tpl" location="top"}</div>
   <table class="form-layout-compressed">
     <tr class="crm-uf-field-form-block-field_name">
-      <td class="label">{$form.field_name.label} {help id='field_name_0'}</td>
-      <td>{$form.field_name.html}<br />
+      <td class="label">{$form.field_name.label} {help id='field_name'}</td>
+      <td>{$form.field_name.html nofilter}<br />
         <span class="description">&nbsp;{ts}Select the type of CiviCRM record and the field you want to include in this Profile.{/ts}</span></td>
     </tr>
     <tr class="crm-uf-field-form-block-label">
@@ -53,24 +36,26 @@
       <td class="label">{$form.is_view.label} {help id='is_view'}</td>
       <td>{$form.is_view.html}</td>
     </tr>
-    <tr  id="profile_visibility" class="crm-uf-field-form-block-visibility">
-      <td class="label">{$form.visibility.label} {help id='visibility'}</td>
-      <td>{$form.visibility.html}</td>
-    </tr>
-    <tr class="crm-uf-field-form-block-is_searchable">
-      <td class="label"><div id="is_search_label">{$form.is_searchable.label} {help id='is_searchable'}</div></td>
-      <td><div id="is_search_html">{$form.is_searchable.html}</td>
-    </tr>
-    <tr class="crm-uf-field-form-block-in_selector">
-      <td class="label"><div id="in_selector_label">{$form.in_selector.label}{help id='in_selector'}</div></td>
-      <td><div id="in_selector_html">{$form.in_selector.html}</div></td>
-    </tr>
+    {if $legacyprofiles}
+      <tr  id="profile_visibility" class="crm-uf-field-form-block-visibility">
+        <td class="label">{$form.visibility.label} {help id='visibility'}</td>
+        <td>{$form.visibility.html}</td>
+      </tr>
+      <tr class="crm-uf-field-form-block-is_searchable">
+        <td class="label"><div id="is_search_label">{$form.is_searchable.label} {help id='is_searchable'}</div></td>
+        <td><div id="is_search_html">{$form.is_searchable.html}</td>
+      </tr>
+      <tr class="crm-uf-field-form-block-in_selector">
+        <td class="label"><div id="in_selector_label">{$form.in_selector.label}{help id='in_selector'}</div></td>
+        <td><div id="in_selector_html">{$form.in_selector.html}</div></td>
+      </tr>
+    {/if}
     <tr class="crm-uf-field-form-block-help_pre">
-      <td class="label">{$form.help_pre.label}{if $action == 2}{include file='CRM/Core/I18n/Dialog.tpl' table='civicrm_uf_field' field='help_pre' id=$fieldId}{/if} {help id='help'}</td>
+      <td class="label">{$form.help_pre.label}{if $action == 2}{include file='CRM/Core/I18n/Dialog.tpl' table='civicrm_uf_field' field='help_pre' id=$fieldId}{/if} {help id='help_pre'}</td>
       <td>{$form.help_pre.html}</td>
     </tr>
     <tr class="crm-uf-field-form-block-help_post">
-      <td class="label">{$form.help_post.label}{if $action == 2}{include file='CRM/Core/I18n/Dialog.tpl' table='civicrm_uf_field' field='help_post' id=$fieldId}{/if} {help id='help'}</td>
+      <td class="label">{$form.help_post.label}{if $action == 2}{include file='CRM/Core/I18n/Dialog.tpl' table='civicrm_uf_field' field='help_post' id=$fieldId}{/if} {help id='help_pre' title=$form.help_post.textLabel}</td>
       <td>{$form.help_post.html}</td>
     </tr>
     <tr class="crm-uf-field-form-block-weight">
@@ -86,13 +71,13 @@
   <div class="crm-submit-buttons">{include file="CRM/common/formButtons.tpl" location="bottom"}</div>
 </div>
 
-{$initHideBoxes}
+{$initHideBoxes nofilter}
 
 {literal}
 <script type="text/javascript">
 
 CRM.$(function($) {
-  var otherModule = {/literal}{$otherModules|@json_encode}{literal};
+  var otherModule = {/literal}{$otherModules|@json_encode nofilter}{literal};
   if ( $.inArray( "Profile", otherModule ) > -1 && $.inArray( "Search Profile", otherModule ) == -1 ){
     $('#profile_visibility').show();
   }
@@ -158,21 +143,12 @@ function showLabel( ) {
   {/foreach}
   {literal}
 
-  // Code to set Profile Field help, from custom data field help
-  if (fieldId.substring(0, 7) == 'custom_') {
-    fieldId = fieldId.substring( fieldId.length, 7);
-    var dataUrl = {/literal}"{crmURL p='civicrm/ajax/custom' h=0 }"{literal};
-    cj.post( dataUrl, { id: fieldId }, function(data) {
-      cj('#help_post').val(data.help_post);
-      cj('#help_pre').val(data.help_pre);
-    }, 'json');
-  }
 }
 
 {/literal}{if $action neq 8}{literal}
-showHideSeletorSearch();
+showHideSelectorSearch();
 
-function showHideSeletorSearch() {
+function showHideSelectorSearch() {
   var is_search = cj('#is_search_label, #is_search_html');
   var in_selector = cj('#in_selector_label, #in_selector_html');
   if (cj("#visibility").val() == "User and User Admin Only") {
@@ -195,7 +171,7 @@ function showHideSeletorSearch() {
 }
 
 cj("#field_name_1").bind( 'change blur', function( ) {
-  showHideSeletorSearch( );
+  showHideSelectorSearch( );
 });
 
 CRM.$(function($) {
@@ -207,45 +183,40 @@ CRM.$(function($) {
 });
 {/literal}{/if}{literal}
 
-cj("#field_name_1").change(
-  function() {
-    multiSummaryToggle(cj(this).val());
-  });
-
 CRM.$(function($) {
-  var fieldId = cj("#field_name_1").val();
-  multiSummaryToggle(fieldId);
-});
+  $("#field_name_1").change(handleCustomField).each(handleCustomField);
 
-function multiSummaryToggle(customId) {
-  if (customId && customId.match(/custom_[\d]/)) {
-
-    var dataUrl = "{/literal}{crmURL p='civicrm/ajax/rest' q='className=CRM_UF_Page_AJAX&fnName=checkIsMultiRecord&json=1' h=0 }"{literal};
-    dataUrl = dataUrl + '&customId=' + customId;
-    cj.ajax({  url: dataUrl,
-      async: false,
-      global: false,
-      dataType : 'json',
-      success : function(response) {
-        if (response.is_multi != 0 ) {
-          cj('.crm-uf-field-form-block-is_multi').show();
-        }
-        else {
-          if (cj('#is_multi_summary').is(':checked')) {
-            cj('#is_multi_summary').prop('checked', false);
-          }
-          cj('.crm-uf-field-form-block-is_multi').hide();
-        }
-      }
-    });
+  function hideMultiSummary() {
+    $('#is_multi_summary').prop('checked', false);
+    $('.crm-uf-field-form-block-is_multi').hide();
   }
-  else {
-    if (cj('#is_multi_summary').is(':checked')) {
-      cj('#is_multi_summary').prop('checked', false);
+
+  function handleCustomField() {
+    const fieldName = $(this).val();
+    if (fieldName && fieldName.match(/^custom_[\d]/)) {
+      const customFieldId = fieldName.split('_')[1];
+
+      CRM.api4('CustomField', 'get', {
+        select: ['help_pre', 'help_post', 'custom_group_id.is_multiple'],
+        where: [['id', '=', customFieldId]]
+      }, 0).then(function(result) {
+        if (result && result.help_pre) {
+          $('#help_pre').val(result.help_pre);
+        }
+        if (result && result.help_post) {
+          $('#help_post').val(result.help_post);
+        }
+        if (result && result['custom_group_id.is_multiple']) {
+          $('.crm-uf-field-form-block-is_multi').show();
+        } else {
+          hideMultiSummary()
+        }
+      });
+    } else {
+      hideMultiSummary();
     }
-    cj('.crm-uf-field-form-block-is_multi').hide();
   }
-}
+});
 
 function viewOnlyShowHide() {
   var is_search = cj('#is_search_label, #is_search_html');

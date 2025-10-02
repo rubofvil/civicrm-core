@@ -1,26 +1,10 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 {if $showDirectly}
@@ -60,10 +44,10 @@
       {if $location.lat}
     var point  = new google.maps.LatLng({$location.lat},{$location.lng});
     var image  = null;
-    {if $location.image && ( $location.marker_class neq 'Event' ) }
+    {if $location.image && ( $location.marker_class neq 'Event' )}
        image = '{$location.image}';
     {else}
-                 {if $location.marker_class eq 'Individual'}
+       {if $location.marker_class eq 'Individual'}
            image = "{$config->resourceBase}i/contact_ind.gif";
        {/if}
        {if $location.marker_class eq 'Household'}
@@ -83,8 +67,6 @@
         {if count($locations) gt 1}
             map.fitBounds(bounds);
             map.setMapTypeId(google.maps.MapTypeId.TERRAIN);
-        {elseif $location.marker_class eq 'Event' || $location.marker_class eq 'Individual'|| $location.marker_class eq 'Household' || $location.marker_class eq 'Organization' }
-            map.setZoom({$defaultZoom});
         {else}
             map.setZoom({$defaultZoom});
         {/if}
@@ -105,7 +87,7 @@
     function gpopUp() {
   var from   = document.getElementById('from').value;
   var to     = document.getElementById('to').value;
-  var URL    = "http://maps.google.com/maps?saddr=" + from + "&daddr=" + to;
+  var URL    = "https://maps.google.com/maps?saddr=" + from + "&daddr=" + to;
   day = new Date();
   id  = day.getTime();
   eval("page" + id + " = window.open(URL, '" + id + "', 'toolbar=0,scrollbars=0,location=0,statusbar=0,menubar=0,resizable=0,width=780,height=640,left = 202,top = 100');");

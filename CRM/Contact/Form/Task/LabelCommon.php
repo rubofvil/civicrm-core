@@ -1,38 +1,24 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
  * This class provides the common functionality for sending email to one or a group of contact ids.
+ *
+ * @deprecated since 6.3 will be removed around 6.15
  */
 class CRM_Contact_Form_Task_LabelCommon {
 
@@ -45,8 +31,14 @@ class CRM_Contact_Form_Task_LabelCommon {
    *   Format in which labels needs to be printed.
    * @param string $fileName
    *   The name of the file to save the label in.
+   *
+   * @deprecated since 6.3 will be removed around 6.15
    */
-  public static function createLabel(&$contactRows, &$format, $fileName = 'MailingLabels_CiviCRM.pdf') {
+  public static function createLabel($contactRows, $format, $fileName = 'MailingLabels_CiviCRM.pdf') {
+    CRM_Core_Error::deprecatedFunctionWarning('no alternative');
+    if (CIVICRM_UF === 'UnitTests') {
+      throw new CRM_Core_Exception_PrematureExitException('civiExit called', ['rows' => $contactRows, 'format' => $format, 'file_name' => $fileName]);
+    }
     $pdf = new CRM_Utils_PDF_Label($format, 'mm');
     $pdf->Open();
     $pdf->AddPage();
@@ -64,47 +56,36 @@ class CRM_Contact_Form_Task_LabelCommon {
     $pdf->Output($fileName, 'D');
   }
 
-
   /**
    * Get the rows for the labels.
    *
-   * @param $contactIDs
+   * @param array $contactIDs
    * @param int $locationTypeID
    * @param bool $respectDoNotMail
-   * @param $mergeSameAddress
+   * @param bool $mergeSameAddress
    * @param bool $mergeSameHousehold
    *   UNUSED.
    *
    * @return array
    *   Array of rows for labels
+   *
+   * @deprecated since 6.3 will be removed around 6.15
    */
   public static function getRows($contactIDs, $locationTypeID, $respectDoNotMail, $mergeSameAddress, $mergeSameHousehold) {
+    CRM_Core_Error::deprecatedFunctionWarning('no alternative');
     $locName = NULL;
-    $rows = array();
+    $rows = [];
     //get the address format sequence from the config file
     $addressReturnProperties = CRM_Contact_Form_Task_LabelCommon::getAddressReturnProperties();
 
     //build the return properties
-    $returnProperties = array('display_name' => 1, 'contact_type' => 1, 'prefix_id' => 1);
+    $returnProperties = ['display_name' => 1, 'contact_type' => 1, 'prefix_id' => 1];
     $mailingFormat = Civi::settings()->get('mailing_format');
 
-    $mailingFormatProperties = array();
     if ($mailingFormat) {
       $mailingFormatProperties = CRM_Utils_Token::getReturnProperties($mailingFormat);
       $returnProperties = array_merge($returnProperties, $mailingFormatProperties);
     }
-
-    $customFormatProperties = array();
-    if (stristr($mailingFormat, 'custom_')) {
-      foreach ($mailingFormatProperties as $token => $true) {
-        if (substr($token, 0, 7) == 'custom_') {
-          if (empty($customFormatProperties[$token])) {
-            $customFormatProperties[$token] = $mailingFormatProperties[$token];
-          }
-        }
-      }
-    }
-    $returnProperties = array_merge($returnProperties, $customFormatProperties);
 
     if ($mergeSameAddress) {
       // we need first name/last name for summarising to avoid spillage
@@ -113,64 +94,43 @@ class CRM_Contact_Form_Task_LabelCommon {
     }
 
     //get the contacts information
-    $params = $custom = array();
+    $params = $custom = [];
     foreach ($contactIDs as $key => $contactID) {
-      $params[] = array(
+      $params[] = [
         CRM_Core_Form::CB_PREFIX . $contactID,
         '=',
         1,
         0,
         0,
-      );
+      ];
     }
 
     // fix for CRM-2651
     if (!empty($respectDoNotMail['do_not_mail'])) {
-      $params[] = array('do_not_mail', '=', 0, 0, 0);
+      $params[] = ['do_not_mail', '=', 0, 0, 0];
     }
     // fix for CRM-2613
-    $params[] = array('is_deceased', '=', 0, 0, 0);
+    $params[] = ['is_deceased', '=', 0, 0, 0];
 
     if ($locationTypeID) {
-      $locType = CRM_Core_PseudoConstant::get('CRM_Core_DAO_Address', 'location_type_id');
+      $locType = CRM_Core_DAO_Address::buildOptions('location_type_id');
       $locName = $locType[$locationTypeID];
-      $location = array('location' => array("{$locName}" => $addressReturnProperties));
+      $location = ['location' => ["{$locName}" => $addressReturnProperties]];
       $returnProperties = array_merge($returnProperties, $location);
-      $params[] = array('location_type', '=', array($locationTypeID => 1), 0, 0);
+      $params[] = ['location_type', '=', [$locationTypeID => 1], 0, 0];
     }
     else {
       $returnProperties = array_merge($returnProperties, $addressReturnProperties);
-    }
-
-    foreach ($returnProperties as $name) {
-      $cfID = CRM_Core_BAO_CustomField::getKeyID($name);
-      if ($cfID) {
-        $custom[] = $cfID;
-      }
     }
 
     //get the total number of contacts to fetch from database.
     $numberofContacts = count($contactIDs);
     //this does the same as calling civicrm_api3('contact, get, array('id' => array('IN' => $this->_contactIds)
     // except it also handles multiple locations
-    $query = new CRM_Contact_BAO_Query($params, $returnProperties);
-    $details = $query->apiQuery($params, $returnProperties, NULL, NULL, 0, $numberofContacts);
-
-    $messageToken = CRM_Utils_Token::getTokens($mailingFormat);
-    $details = $details[0];
-    $tokenFields = CRM_Contact_Form_Task_LabelCommon::getTokenData($details);
+    [$details] = CRM_Contact_BAO_Query::apiQuery($params, $returnProperties, NULL, NULL, 0, $numberofContacts);
 
     foreach ($contactIDs as $value) {
-      foreach ($custom as $cfID) {
-        if (isset($details[$value]["custom_{$cfID}"])) {
-          $details[$value]["custom_{$cfID}"] = CRM_Core_BAO_CustomField::displayValue($details[$value]["custom_{$cfID}"], $cfID);
-        }
-      }
-      $contact = CRM_Utils_Array::value($value, $details);
-
-      if (is_a($contact, 'CRM_Core_Error')) {
-        return NULL;
-      }
+      $contact = $details[$value] ?? NULL;
 
       // we need to remove all the "_id"
       unset($contact['contact_id']);
@@ -179,52 +139,13 @@ class CRM_Contact_Form_Task_LabelCommon {
         // If location type is not primary, $contact contains
         // one more array as "$contact[$locName] = array( values... )"
 
-        if (!CRM_Contact_Form_Task_Label::tokenIsFound($contact, $mailingFormatProperties, $tokenFields)) {
-          continue;
-        }
-
         unset($contact[$locName]);
 
         if (!empty($contact['county_id'])) {
           unset($contact['county_id']);
         }
-
-        foreach ($contact as $field => $fieldValue) {
-          $rows[$value][$field] = $fieldValue;
-        }
-
-        $valuesothers = array();
-        $paramsothers = array('contact_id' => $value);
-        $valuesothers = CRM_Core_BAO_Location::getValues($paramsothers, $valuesothers);
-        if ($locationTypeID) {
-          foreach ($valuesothers as $vals) {
-            if (CRM_Utils_Array::value('location_type_id', $vals) ==
-              $locationTypeID
-            ) {
-              foreach ($vals as $k => $v) {
-                if (in_array($k, array(
-                  'email',
-                  'phone',
-                  'im',
-                  'openid',
-                ))) {
-                  if ($k == 'im') {
-                    $rows[$value][$k] = $v['1']['name'];
-                  }
-                  else {
-                    $rows[$value][$k] = $v['1'][$k];
-                  }
-                  $rows[$value][$k . '_id'] = $v['1']['id'];
-                }
-              }
-            }
-          }
-        }
       }
       else {
-        if (!CRM_Contact_Form_Task_Label::tokenIsFound($contact, $mailingFormatProperties, $tokenFields)) {
-          continue;
-        }
 
         if (!empty($contact['addressee_display'])) {
           $contact['addressee_display'] = trim($contact['addressee_display']);
@@ -232,15 +153,14 @@ class CRM_Contact_Form_Task_LabelCommon {
         if (!empty($contact['addressee'])) {
           $contact['addressee'] = $contact['addressee_display'];
         }
-
-        // now create the rows for generating mailing labels
-        foreach ($contact as $field => $fieldValue) {
-          $rows[$value][$field] = $fieldValue;
-        }
+      }
+      // now create the rows for generating mailing labels
+      foreach ($contact as $field => $fieldValue) {
+        $rows[$value][$field] = $fieldValue;
       }
     }
     // sigh couldn't extract out tokenfields yet
-    return array($rows, $tokenFields);
+    return [$rows];
   }
 
   /**
@@ -249,8 +169,11 @@ class CRM_Contact_Form_Task_LabelCommon {
    * @return array
    *   return properties for address e.g
    *   [street_address => 1, supplemental_address_1 => 1, supplemental_address_2 => 1]
+   *
+   * @deprecated since 6.3 will be removed around 6.15
    */
-  public static function getAddressReturnProperties() {
+  public static function getAddressReturnProperties(): array {
+    CRM_Core_Error::deprecatedFunctionWarning('no alternative');
     $mailingFormat = Civi::settings()->get('mailing_format');
 
     $addressFields = CRM_Utils_Address::sequence($mailingFormat);
@@ -263,43 +186,17 @@ class CRM_Contact_Form_Task_LabelCommon {
   }
 
   /**
-   * Get token list from mailing format & contacts
-   * @param array $contacts
-   * @return array
-   */
-  public static function getTokenData(&$contacts) {
-    $mailingFormat = Civi::settings()->get('mailing_format');
-    $tokens = $tokenFields = array();
-    $messageToken = CRM_Utils_Token::getTokens($mailingFormat);
-
-    // also get all token values
-    CRM_Utils_Hook::tokenValues($contacts,
-      array_keys($contacts),
-      NULL,
-      $messageToken,
-      'CRM_Contact_Form_Task_LabelCommon'
-    );
-
-    CRM_Utils_Hook::tokens($tokens);
-
-    foreach ($tokens as $category => $catTokens) {
-      foreach ($catTokens as $token => $tokenName) {
-        $tokenFields[] = $token;
-      }
-    }
-    return $tokenFields;
-
-  }
-
-  /**
    * @param array $rows
    *
    * @return array
+   *
+   * @deprecated since 6.3 will be removed around 6.15
    */
-  public function mergeSameHousehold(&$rows) {
+  public static function mergeSameHousehold(&$rows) {
+    CRM_Core_Error::deprecatedFunctionWarning('no alternative');
     // group selected contacts by type
-    $individuals = array();
-    $households = array();
+    $individuals = [];
+    $households = [];
     foreach ($rows as $contact_id => $row) {
       if ($row['contact_type'] == 'Household') {
         $households[$contact_id] = $row;

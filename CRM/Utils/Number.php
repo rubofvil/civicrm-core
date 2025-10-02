@@ -1,39 +1,24 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
  * Class CRM_Utils_Number
  */
 class CRM_Utils_Number {
+
   /**
    * Create a random number with a given precision.
    *
@@ -45,7 +30,7 @@ class CRM_Utils_Number {
    * @link https://dev.mysql.com/doc/refman/5.1/en/fixed-point-types.html
    */
   public static function createRandomDecimal($precision) {
-    list ($sigFigs, $decFigs) = $precision;
+    [$sigFigs, $decFigs] = $precision;
     $rand = rand(0, pow(10, $sigFigs) - 1);
     return $rand / pow(10, $decFigs);
   }
@@ -62,15 +47,18 @@ class CRM_Utils_Number {
    * @link https://dev.mysql.com/doc/refman/5.1/en/fixed-point-types.html
    */
   public static function createTruncatedDecimal($keyValue, $precision) {
-    list ($sigFigs, $decFigs) = $precision;
+    [$sigFigs, $decFigs] = $precision;
     $sign = ($keyValue < 0) ? '-1' : 1;
-    $val = str_replace('.', '', abs($keyValue)); // ex: -123.456 ==> 123456
-    $val = substr($val, 0, $sigFigs);            // ex: 123456 => 1234
+    // ex: -123.456 ==> 123456
+    $val = str_replace('.', '', abs($keyValue));
+    // ex: 123456 => 1234
+    $val = substr($val, 0, $sigFigs);
 
     // Move any extra digits after decimal
     $extraFigs = strlen($val) - ($sigFigs - $decFigs);
     if ($extraFigs > 0) {
-      return $sign * $val / pow(10, $extraFigs); // ex: 1234 => 1.234
+      // ex: 1234 => 1.234
+      return $sign * $val / pow(10, $extraFigs);
     }
     else {
       return $sign * $val;
@@ -78,16 +66,16 @@ class CRM_Utils_Number {
   }
 
   /**
-   * Some kind of numbery-looky-printy thing.
+   * Convert a file size value from the formats allowed in php_ini to the number of bytes.
    *
    * @param string $size
-   * @param bool $checkForPostMax
    *
    * @return int
    */
-  public static function formatUnitSize($size, $checkForPostMax = FALSE) {
+  public static function formatUnitSize($size): int {
     if ($size) {
-      $last = strtolower($size{strlen($size) - 1});
+      $last = strtolower($size[strlen($size) - 1]);
+      $size = (int) $size;
       switch ($last) {
         // The 'G' modifier is available since PHP 5.1.0
 
@@ -98,21 +86,53 @@ class CRM_Utils_Number {
         case 'k':
           $size *= 1024;
       }
-
-      if ($checkForPostMax) {
-        $maxImportFileSize = self::formatUnitSize(ini_get('upload_max_filesize'));
-        $postMaxSize = self::formatUnitSize(ini_get('post_max_size'));
-        if ($maxImportFileSize > $postMaxSize && $postMaxSize == $size) {
-          CRM_Core_Session::setStatus(ts("Note: Upload max filesize ('upload_max_filesize') should not exceed Post max size ('post_max_size') as defined in PHP.ini, please check with your system administrator."), ts("Warning"), "alert");
-        }
-        // respect php.ini upload_max_filesize
-        if ($size > $maxImportFileSize && $size !== $postMaxSize) {
-          $size = $maxImportFileSize;
-          CRM_Core_Session::setStatus(ts("Note: Please verify your configuration for Maximum File Size (in MB) <a href='%1'>Administrator >> System Settings >> Misc</a>. It should support 'upload_max_size' as defined in PHP.ini.Please check with your system administrator.", array(1 => CRM_Utils_System::url('civicrm/admin/setting/misc', 'reset=1'))), ts("Warning"), "alert");
-        }
-      }
       return $size;
     }
+  }
+
+  /**
+   * Get the maximum size permitted for a file upload.
+   *
+   * @return float
+   */
+  public static function getMaximumFileUploadSize(): float {
+    $uploadFileSize = \CRM_Utils_Number::formatUnitSize(\Civi::settings()->get('maxFileSize') . 'm', TRUE);
+    //Fetch uploadFileSize from php_ini when $config->maxFileSize is set to "no limit".
+    if (empty($uploadFileSize)) {
+      $uploadFileSize = \CRM_Utils_Number::formatUnitSize(ini_get('upload_max_filesize'), TRUE);
+    }
+    return round(($uploadFileSize / (1024 * 1024)), 2);
+  }
+
+  /**
+   * Format number for display according to the current or supplied locale.
+   *
+   * Note this should not be used in conjunction with any calls to
+   * replaceCurrencySeparators as this function already does that.
+   *
+   * @param string $amount
+   * @param string $locale
+   * @param int[] $attributes
+   *   Options passed to NumberFormatter::setAttribute
+   *   see https://www.php.net/manual/en/class.numberformatter.php#intl.numberformatter-constants.unumberformatattribute
+   *
+   * @return string
+   */
+  public static function  formatLocaleNumeric(string $amount, $locale = NULL, array $attributes = []): string {
+    if ($amount === "") {
+      CRM_Core_Error::deprecatedWarning('Passing an empty string for amount is deprecated.');
+      return $amount;
+    }
+
+    $formatter = new \NumberFormatter($locale ?? CRM_Core_I18n::getLocale(), NumberFormatter::DECIMAL);
+    $formatter->setSymbol(\NumberFormatter::DECIMAL_SEPARATOR_SYMBOL, CRM_Core_Config::singleton()->monetaryDecimalPoint);
+    $formatter->setSymbol(\NumberFormatter::GROUPING_SEPARATOR_SYMBOL, CRM_Core_Config::singleton()->monetaryThousandSeparator);
+
+    foreach ($attributes as $key => $value) {
+      $formatter->setAttribute($key, (int) $value);
+    }
+
+    return $formatter->format($amount);
   }
 
 }

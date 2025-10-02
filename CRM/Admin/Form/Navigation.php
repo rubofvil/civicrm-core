@@ -1,34 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -38,8 +22,18 @@ class CRM_Admin_Form_Navigation extends CRM_Admin_Form {
 
   /**
    * The parent id of the navigation menu.
+   * @var int
    */
   protected $_currentParentID = NULL;
+
+  /**
+   * @var bool
+   */
+  public $submitOnce = TRUE;
+
+  public function getDefaultEntity(): string {
+    return 'Navigation';
+  }
 
   /**
    * Build the form object.
@@ -47,15 +41,16 @@ class CRM_Admin_Form_Navigation extends CRM_Admin_Form {
   public function buildQuickForm() {
     parent::buildQuickForm();
 
-    $this->setPageTitle(ts('Menu Item'));
-
-    if ($this->_action & CRM_Core_Action::DELETE) {
-      return;
+    if (isset($this->_id)) {
+      $params = ['id' => $this->_id];
+      $navDao = CRM_Core_BAO_Navigation::retrieve($params, $this->_defaults);
     }
 
-    if (isset($this->_id)) {
-      $params = array('id' => $this->_id);
-      CRM_Core_BAO_Navigation::retrieve($params, $this->_defaults);
+    if ($this->_action & CRM_Core_Action::DELETE) {
+      $childCount = CRM_Core_BAO_Navigation::getChildCount($this->_id);
+      $this->assign('label', $navDao->label ?: $navDao->url);
+      $this->assign('childCount', $childCount);
+      return;
     }
 
     $this->applyFilter('__ALL__', 'trim');
@@ -67,24 +62,31 @@ class CRM_Admin_Form_Navigation extends CRM_Admin_Form {
     );
 
     $this->add('text', 'url', ts('Url'), CRM_Core_DAO::getAttribute('CRM_Core_DAO_Navigation', 'url'));
-    $permissions = array();
-    foreach (CRM_Core_Permission::basicPermissions(TRUE, TRUE) as $id => $vals) {
-      $permissions[] = array('id' => $id, 'label' => $vals[0], 'description' => (array) CRM_Utils_Array::value(1, $vals));
+
+    $this->add('text', 'icon', ts('Icon'), ['class' => 'crm-icon-picker', 'title' => ts('Choose Icon'), 'allowClear' => TRUE]);
+
+    $getPerms = (array) \Civi\Api4\Permission::get(0)
+      ->addWhere('group', 'IN', ['civicrm', 'cms', 'const'])
+      ->setOrderBy(['title' => 'ASC'])
+      ->execute();
+    $permissions = [];
+    foreach ($getPerms as $perm) {
+      $permissions[] = ['id' => $perm['name'], 'text' => $perm['title'], 'description' => $perm['description'] ?? ''];
     }
-    $this->add('text', 'permission', ts('Permission'),
-      array('placeholder' => ts('Unrestricted'), 'class' => 'huge', 'data-select-params' => json_encode(array('data' => array('results' => $permissions, 'text' => 'label'))))
+    $this->add('select2', 'permission', ts('Permission'), $permissions, FALSE,
+      ['placeholder' => ts('Unrestricted'), 'class' => 'huge', 'multiple' => TRUE]
     );
 
-    $operators = array('AND' => ts('AND'), 'OR' => ts('OR'));
-    $this->add('select', 'permission_operator', NULL, $operators);
+    $operators = ['AND' => ts('AND'), 'OR' => ts('OR')];
+    $this->add('select', 'permission_operator', ts('Permission Operator'), $operators);
 
     //make separator location configurable
-    $separator = array(ts('None'), ts('After menu element'), ts('Before menu element'));
-    $this->add('select', 'has_separator', ts('Separator'), $separator);
+    $separator = CRM_Core_SelectValues::navigationMenuSeparator();
+    $this->add('select', 'has_separator', ts('Separator'), $separator, FALSE, ['class' => 'crm-select2']);
 
     $active = $this->add('advcheckbox', 'is_active', ts('Enabled'));
 
-    if (CRM_Utils_Array::value('name', $this->_defaults) == 'Home') {
+    if (($this->_defaults['name'] ?? NULL) == 'Home') {
       $active->freeze();
     }
     else {
@@ -98,7 +100,7 @@ class CRM_Admin_Form_Navigation extends CRM_Admin_Form {
       $homeMenuId = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_Navigation', 'Home', 'id', 'name');
       unset($parentMenu[$homeMenuId]);
 
-      $this->add('select', 'parent_id', ts('Parent'), array('' => ts('Top level')) + $parentMenu, FALSE, array('class' => 'crm-select2'));
+      $this->add('select', 'parent_id', ts('Parent'), ['' => ts('Top level')] + $parentMenu, FALSE, ['class' => 'crm-select2 huge']);
     }
   }
 
@@ -106,11 +108,16 @@ class CRM_Admin_Form_Navigation extends CRM_Admin_Form {
    * @return array
    */
   public function setDefaultValues() {
-    $defaults = $this->_defaults;
+    $defaults = parent::setDefaultValues();
+
+    if ($this->_action & CRM_Core_Action::DELETE) {
+      return $defaults;
+    }
+
     if (isset($this->_id)) {
       //Take parent id in object variable to calculate the menu
       //weight if menu parent id changed
-      $this->_currentParentID = CRM_Utils_Array::value('parent_id', $this->_defaults);
+      $this->_currentParentID = $this->_defaults['parent_id'] ?? NULL;
     }
     else {
       $defaults['permission'] = "access CiviCRM";
@@ -118,6 +125,10 @@ class CRM_Admin_Form_Navigation extends CRM_Admin_Form {
 
     // its ok if there is no element called is_active
     $defaults['is_active'] = ($this->_id) ? $this->_defaults['is_active'] : 1;
+
+    if (!empty($defaults['icon'])) {
+      $defaults['icon'] = trim(str_replace('crm-i', '', $defaults['icon']));
+    }
 
     return $defaults;
   }
@@ -129,9 +140,24 @@ class CRM_Admin_Form_Navigation extends CRM_Admin_Form {
     // get the submitted form values.
     $params = $this->controller->exportValues($this->_name);
 
+    if ($this->_action & CRM_Core_Action::DELETE) {
+      CRM_Core_BAO_Navigation::deleteRecords([['id' => $this->_id]]);
+      $childCount = $this->getTemplateVars('childCount');
+      $msg = ts('One menu item permanently deleted.', [
+        'plural' => '%count menu items permanently deleted.',
+        'count' => $childCount + 1,
+      ]);
+      CRM_Core_Session::setStatus($msg, ts('Deleted'), 'success');
+      return;
+    }
+
     if (isset($this->_id)) {
       $params['id'] = $this->_id;
       $params['current_parent_id'] = $this->_currentParentID;
+    }
+
+    if (!empty($params['icon'])) {
+      $params['icon'] = 'crm-i ' . $params['icon'];
     }
 
     $navigation = CRM_Core_BAO_Navigation::add($params);
@@ -140,7 +166,7 @@ class CRM_Admin_Form_Navigation extends CRM_Admin_Form {
     CRM_Core_BAO_Navigation::resetNavigation();
 
     CRM_Core_Session::setStatus(ts('Menu \'%1\' has been saved.',
-      array(1 => $navigation->label)
+      [1 => $navigation->label]
     ), ts('Saved'), 'success');
   }
 

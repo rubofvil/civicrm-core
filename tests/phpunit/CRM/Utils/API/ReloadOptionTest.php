@@ -11,55 +11,57 @@
  */
 class CRM_Utils_API_ReloadOptionTest extends CiviUnitTestCase {
 
-  public function setUp() {
+  public function setUp(): void {
     parent::setUp();
-    CRM_Utils_Hook_UnitTests::singleton()->setHook('civicrm_post', array($this, 'onPost'));
+    $this->useTransaction();
+    CRM_Utils_Hook_UnitTests::singleton()->setHook('civicrm_post', [$this, 'onPost']);
   }
 
   /**
    * If reload option is missing, then 'create' returns the inputted nick_name -- despite the
    * fact that the hook manipulated the actual DB content.
    */
-  public function testNoReload() {
-    $result = $this->callAPISuccess('contact', 'create', array(
+  public function testNoReload(): void {
+    $result = $this->callAPISuccess('contact', 'create', [
       'contact_type' => 'Individual',
       'first_name' => 'First',
       'last_name' => 'Last',
       'nick_name' => 'Firstie',
-    ));
+    ]);
     $this->assertEquals('First', $result['values'][$result['id']]['first_name']);
-    $this->assertEquals('Firstie', $result['values'][$result['id']]['nick_name']); // munged by hook, but we haven't realized it
+    // munged by hook, but we haven't realized it
+    $this->assertEquals('Firstie', $result['values'][$result['id']]['nick_name']);
   }
 
   /**
    * When the reload option is unrecognized, generate an error
    */
-  public function testReloadInvalid() {
-    $this->callAPIFailure('contact', 'create', array(
+  public function testReloadInvalid(): void {
+    $this->callAPIFailure('contact', 'create', [
       'contact_type' => 'Individual',
       'first_name' => 'First',
       'last_name' => 'Last',
       'nick_name' => 'Firstie',
-      'options' => array(
+      'options' => [
         'reload' => 'invalid',
-      ),
-    ));
+      ],
+    ]);
   }
 
   /**
    * If reload option is set, then 'create' returns the final nick_name -- even if it
    * differs from the inputted nick_name.
    */
-  public function testReloadDefault() {
-    $result = $this->callAPISuccess('contact', 'create', array(
+  public function testReloadDefault(): void {
+    $result = $this->callAPISuccess('contact', 'create', [
       'contact_type' => 'Individual',
       'first_name' => 'First',
       'last_name' => 'Last',
       'nick_name' => 'Firstie',
-      'options' => array(
+      'options' => [
         'reload' => 1,
-      ),
-    ));
+      ],
+    ]);
     $this->assertEquals('First', $result['values'][$result['id']]['first_name']);
     $this->assertEquals('munged', $result['values'][$result['id']]['nick_name']);
   }
@@ -68,19 +70,19 @@ class CRM_Utils_API_ReloadOptionTest extends CiviUnitTestCase {
    * When the reload option is combined with chaining, the reload should munge
    * the chain results.
    */
-  public function testReloadNoChainInterference() {
-    $result = $this->callAPISuccess('contact', 'create', array(
+  public function testReloadNoChainInterference(): void {
+    $result = $this->callAPISuccess('contact', 'create', [
       'contact_type' => 'Individual',
       'first_name' => 'First',
       'last_name' => 'Last',
       'nick_name' => 'Firstie',
-      'api.Email.create' => array(
+      'api.Email.create' => [
         'email' => 'test@example.com',
-      ),
-      'options' => array(
+      ],
+      'options' => [
         'reload' => 1,
-      ),
-    ));
+      ],
+    ]);
     $this->assertEquals('First', $result['values'][$result['id']]['first_name']);
     $this->assertEquals('munged', $result['values'][$result['id']]['nick_name']);
     $this->assertAPISuccess($result['values'][$result['id']]['api.Email.create']);
@@ -90,42 +92,23 @@ class CRM_Utils_API_ReloadOptionTest extends CiviUnitTestCase {
    * When the reload option is combined with chaining, the reload should munge
    * the chain results, even if sequential=1.
    */
-  public function testReloadNoChainInterferenceSequential() {
-    $result = $this->callAPISuccess('contact', 'create', array(
+  public function testReloadNoChainInterferenceSequential(): void {
+    $result = $this->callAPISuccess('contact', 'create', [
       'sequential' => 1,
       'contact_type' => 'Individual',
       'first_name' => 'First',
       'last_name' => 'Last',
       'nick_name' => 'Firstie',
-      'api.Email.create' => array(
+      'api.Email.create' => [
         'email' => 'test@example.com',
-      ),
-      'options' => array(
+      ],
+      'options' => [
         'reload' => 1,
-      ),
-    ));
+      ],
+    ]);
     $this->assertEquals('First', $result['values'][0]['first_name']);
     $this->assertEquals('munged', $result['values'][0]['nick_name']);
     $this->assertAPISuccess($result['values'][0]['api.Email.create']);
-  }
-
-  /**
-   * An implementation of hook_civicrm_post used with all our test cases.
-   *
-   * @param $op
-   * @param string $objectName
-   * @param int $objectId
-   * @param $objectRef
-   */
-  public function onPost($op, $objectName, $objectId, &$objectRef) {
-    if ($op == 'create' && $objectName == 'Individual') {
-      CRM_Core_DAO::executeQuery(
-        "UPDATE civicrm_contact SET nick_name = 'munged' WHERE id = %1",
-        array(
-          1 => array($objectId, 'Integer'),
-        )
-      );
-    }
   }
 
 }

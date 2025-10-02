@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -31,7 +15,9 @@ namespace Civi\API\Event;
  * Class Event
  * @package Civi\API\Event
  */
-class Event extends \Symfony\Component\EventDispatcher\Event {
+class Event extends \Civi\Core\Event\GenericHookEvent {
+
+  use RequestTrait;
 
   /**
    * @var \Civi\API\Kernel
@@ -45,14 +31,6 @@ class Event extends \Symfony\Component\EventDispatcher\Event {
   protected $apiProvider;
 
   /**
-   * @var array
-   *   The full description of the API request.
-   *
-   * @see \Civi\API\Request::create
-   */
-  protected $apiRequest;
-
-  /**
    * @param \Civi\API\Provider\ProviderInterface $apiProvider
    *   The API responsible for executing the request.
    * @param array $apiRequest
@@ -62,7 +40,7 @@ class Event extends \Symfony\Component\EventDispatcher\Event {
   public function __construct($apiProvider, $apiRequest, $apiKernel) {
     $this->apiKernel = $apiKernel;
     $this->apiProvider = $apiProvider;
-    $this->apiRequest = $apiRequest;
+    $this->setApiRequest($apiRequest);
   }
 
   /**
@@ -79,13 +57,6 @@ class Event extends \Symfony\Component\EventDispatcher\Event {
    */
   public function getApiProvider() {
     return $this->apiProvider;
-  }
-
-  /**
-   * @return array
-   */
-  public function getApiRequest() {
-    return $this->apiRequest;
   }
 
 }

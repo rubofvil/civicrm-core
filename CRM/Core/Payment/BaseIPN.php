@@ -1,59 +1,45 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
+
+use Civi\Api4\Contribution;
 
 /**
  * Class CRM_Core_Payment_BaseIPN.
  */
 class CRM_Core_Payment_BaseIPN {
 
-  static $_now = NULL;
+  public static $_now = NULL;
 
   /**
    * Input parameters from payment processor. Store these so that
    * the code does not need to keep retrieving from the http request
    * @var array
    */
-  protected $_inputParameters = array();
+  protected $_inputParameters = [];
 
   /**
    * Only used by AuthorizeNetIPN.
+   * @var bool
    *
    * @deprecated
    *
-   * @var bool
    */
   protected $_isRecurring = FALSE;
 
   /**
    * Only used by AuthorizeNetIPN.
+   * @var bool
    *
    * @deprecated
    *
-   * @var bool
    */
   protected $_isFirstOrLastRecurringPayment = FALSE;
 
@@ -61,6 +47,7 @@ class CRM_Core_Payment_BaseIPN {
    * Constructor.
    */
   public function __construct() {
+    CRM_Core_Error::deprecatedWarning('CRM_Core_Payment_BaseIPN will be removed around 6.6 - if you see this warning your payment processor needs to be updated!');
     self::$_now = date('YmdHis');
   }
 
@@ -79,158 +66,29 @@ class CRM_Core_Payment_BaseIPN {
   }
 
   /**
-   * Validate incoming data.
-   *
-   * This function is intended to ensure that incoming data matches
-   * It provides a form of pseudo-authentication - by checking the calling fn already knows
-   * the correct contact id & contribution id (this can be problematic when that has changed in
-   * the meantime for transactions that are delayed & contacts are merged in-between. e.g
-   * Paypal allows you to resend Instant Payment Notifications if you, for example, moved site
-   * and didn't update your IPN URL.
-   *
-   * @param array $input
-   *   Interpreted values from the values returned through the IPN.
-   * @param array $ids
-   *   More interpreted values (ids) from the values returned through the IPN.
-   * @param array $objects
-   *   An empty array that will be populated with loaded object.
-   * @param bool $required
-   *   Boolean Return FALSE if the relevant objects don't exist.
-   * @param int $paymentProcessorID
-   *   Id of the payment processor ID in use.
-   *
-   * @return bool
-   */
-  public function validateData(&$input, &$ids, &$objects, $required = TRUE, $paymentProcessorID = NULL) {
-
-    // make sure contact exists and is valid
-    $contact = new CRM_Contact_BAO_Contact();
-    $contact->id = $ids['contact'];
-    if (!$contact->find(TRUE)) {
-      CRM_Core_Error::debug_log_message("Could not find contact record: {$ids['contact']} in IPN request: " . print_r($input, TRUE));
-      echo "Failure: Could not find contact record: {$ids['contact']}<p>";
-      return FALSE;
-    }
-
-    // make sure contribution exists and is valid
-    $contribution = new CRM_Contribute_BAO_Contribution();
-    $contribution->id = $ids['contribution'];
-    if (!$contribution->find(TRUE)) {
-      CRM_Core_Error::debug_log_message("Could not find contribution record: {$contribution->id} in IPN request: " . print_r($input, TRUE));
-      echo "Failure: Could not find contribution record for {$contribution->id}<p>";
-      return FALSE;
-    }
-    $contribution->receive_date = CRM_Utils_Date::isoToMysql($contribution->receive_date);
-    $contribution->receipt_date = CRM_Utils_Date::isoToMysql($contribution->receipt_date);
-
-    $objects['contact'] = &$contact;
-    $objects['contribution'] = &$contribution;
-    if (!$this->loadObjects($input, $ids, $objects, $required, $paymentProcessorID)) {
-      return FALSE;
-    }
-    //the process is that the loadObjects is kind of hacked by loading the objects for the original contribution and then somewhat inconsistently using them for the
-    //current contribution. Here we ensure that the original contribution is available to the complete transaction function
-    //we don't want to fix this in the payment processor classes because we would have to fix all of them - so better to fix somewhere central
-    if (isset($objects['contributionRecur'])) {
-      $objects['first_contribution'] = $objects['contribution'];
-    }
-    return TRUE;
-  }
-
-  /**
-   * Load objects related to contribution.
-   *
-   * @input array information from Payment processor
-   *
-   * @param array $input
-   * @param array $ids
-   * @param array $objects
-   * @param bool $required
-   * @param int $paymentProcessorID
-   * @param array $error_handling
-   *
-   * @return bool|array
-   */
-  public function loadObjects(&$input, &$ids, &$objects, $required, $paymentProcessorID, $error_handling = NULL) {
-    if (empty($error_handling)) {
-      // default options are that we log an error & echo it out
-      // note that we should refactor this error handling into error code @ some point
-      // but for now setting up enough separation so we can do unit tests
-      $error_handling = array(
-        'log_error' => 1,
-        'echo_error' => 1,
-      );
-    }
-    $ids['paymentProcessor'] = $paymentProcessorID;
-    if (is_a($objects['contribution'], 'CRM_Contribute_BAO_Contribution')) {
-      $contribution = &$objects['contribution'];
-    }
-    else {
-      //legacy support - functions are 'used' to be able to pass in a DAO
-      $contribution = new CRM_Contribute_BAO_Contribution();
-      $contribution->id = CRM_Utils_Array::value('contribution', $ids);
-      $contribution->find(TRUE);
-      $objects['contribution'] = &$contribution;
-    }
-    try {
-      $success = $contribution->loadRelatedObjects($input, $ids);
-      if ($required && empty($contribution->_relatedObjects['paymentProcessor'])) {
-        throw new CRM_Core_Exception("Could not find payment processor for contribution record: " . $contribution->id);
-      }
-    }
-    catch (Exception $e) {
-      $success = FALSE;
-      if (!empty($error_handling['log_error'])) {
-        CRM_Core_Error::debug_log_message($e->getMessage());
-      }
-      if (!empty($error_handling['echo_error'])) {
-        echo $e->getMessage();
-      }
-      if (!empty($error_handling['return_error'])) {
-        return array(
-          'is_error' => 1,
-          'error_message' => ($e->getMessage()),
-        );
-      }
-    }
-    $objects = array_merge($objects, $contribution->_relatedObjects);
-    return $success;
-  }
-
-  /**
    * Set contribution to failed.
    *
    * @param array $objects
-   * @param object $transaction
-   * @param array $input
+   *
+   * @deprecated use the api.
    *
    * @return bool
+   * @throws \CRM_Core_Exception
    */
-  public function failed(&$objects, &$transaction, $input = array()) {
+  public function failed($objects) {
+    CRM_Core_Error::deprecatedFunctionWarning('use the api');
     $contribution = &$objects['contribution'];
-    $memberships = array();
+    $memberships = [];
     if (!empty($objects['membership'])) {
       $memberships = &$objects['membership'];
       if (is_numeric($memberships)) {
-        $memberships = array($objects['membership']);
+        $memberships = [$objects['membership']];
       }
     }
 
-    $addLineItems = FALSE;
-    if (empty($contribution->id)) {
-      $addLineItems = TRUE;
-    }
+    $addLineItems = empty($contribution->id);
     $participant = &$objects['participant'];
-
-    // CRM-15546
-    $contributionStatuses = CRM_Core_PseudoConstant::get('CRM_Contribute_DAO_Contribution', 'contribution_status_id', array(
-        'labelColumn' => 'name',
-        'flip' => 1,
-      ));
-    $contribution->receive_date = CRM_Utils_Date::isoToMysql($contribution->receive_date);
-    $contribution->receipt_date = CRM_Utils_Date::isoToMysql($contribution->receipt_date);
-    $contribution->thankyou_date = CRM_Utils_Date::isoToMysql($contribution->thankyou_date);
-    $contribution->contribution_status_id = $contributionStatuses['Failed'];
+    $contribution->contribution_status_id = CRM_Core_PseudoConstant::getKey('CRM_Contribute_DAO_Contribution', 'contribution_status_id', 'Failed');
     $contribution->save();
 
     // Add line items for recurring payments.
@@ -238,50 +96,25 @@ class CRM_Core_Payment_BaseIPN {
       CRM_Contribute_BAO_ContributionRecur::addRecurLineItems($objects['contributionRecur']->id, $contribution);
     }
 
-    //add new soft credit against current contribution id and
-    //copy initial contribution custom fields for recurring contributions
-    if (!empty($objects['contributionRecur']) && $objects['contributionRecur']->id) {
-      CRM_Contribute_BAO_ContributionRecur::addrecurSoftCredit($objects['contributionRecur']->id, $contribution->id);
-      CRM_Contribute_BAO_ContributionRecur::copyCustomValues($objects['contributionRecur']->id, $contribution->id);
-    }
-
-    if (empty($input['IAmAHorribleNastyBeyondExcusableHackInTheCRMEventFORMTaskClassThatNeedsToBERemoved'])) {
-      if (!empty($memberships)) {
-        // if transaction is failed then set "Cancelled" as membership status
-        $membershipStatuses = CRM_Core_PseudoConstant::get('CRM_Member_DAO_Membership', 'status_id', array(
-            'labelColumn' => 'name',
-            'flip' => 1,
-          ));
-        foreach ($memberships as $membership) {
-          if ($membership) {
-            $membership->status_id = $membershipStatuses['Cancelled'];
-            $membership->save();
-
-            //update related Memberships.
-            $params = array('status_id' => $membershipStatuses['Cancelled']);
-            CRM_Member_BAO_Membership::updateRelatedMemberships($membership->id, $params);
-          }
-        }
-      }
-
-      if ($participant) {
-        $participantStatuses = CRM_Core_PseudoConstant::get('CRM_Event_DAO_Participant', 'status_id', array(
-            'labelColumn' => 'name',
-            'flip' => 1,
-          ));
-        $participant->status_id = $participantStatuses['Cancelled'];
-        $participant->save();
+    if (!empty($memberships)) {
+      foreach ($memberships as $membership) {
+        // @fixme Should we cancel only Pending memberships? per cancelled()
+        $this->cancelMembership($membership, $membership->status_id, FALSE);
       }
     }
 
-    $transaction->commit();
-    CRM_Core_Error::debug_log_message("Setting contribution status to failed");
-    //echo "Success: Setting contribution status to failed<p>";
+    if ($participant) {
+      $this->cancelParticipant($participant->id);
+    }
+
+    Civi::log()->debug("Setting contribution status to Failed");
     return TRUE;
   }
 
   /**
    * Handled pending contribution status.
+   *
+   * @deprecated
    *
    * @param array $objects
    * @param object $transaction
@@ -289,95 +122,84 @@ class CRM_Core_Payment_BaseIPN {
    * @return bool
    */
   public function pending(&$objects, &$transaction) {
+    CRM_Core_Error::deprecatedFunctionWarning('This function will be removed at some point');
     $transaction->commit();
-    CRM_Core_Error::debug_log_message("returning since contribution status is pending");
-    echo "Success: Returning since contribution status is pending<p>";
+    Civi::log()->debug('Returning since contribution status is Pending');
+    echo 'Success: Returning since contribution status is pending<p>';
     return TRUE;
   }
 
   /**
    * Process cancelled payment outcome.
    *
+   * @deprecated The intended replacement code is
+   *
+   * Contribution::update(FALSE)->setValues([
+   *  'cancel_date' => 'now',
+   *  'contribution_status_id:name' => 'Cancelled',
+   * ])->addWhere('id', '=', $contribution->id)->execute();
+   *
    * @param array $objects
-   * @param CRM_Core_Transaction $transaction
-   * @param array $input
    *
    * @return bool
+   * @throws \CRM_Core_Exception
    */
-  public function cancelled(&$objects, &$transaction, $input = array()) {
+  public function cancelled($objects) {
+    CRM_Core_Error::deprecatedFunctionWarning('Use Contribution create api to cancel the contribution');
     $contribution = &$objects['contribution'];
-    $memberships = &$objects['membership'];
-    if (is_numeric($memberships)) {
-      $memberships = array($objects['membership']);
-    }
 
-    $participant = &$objects['participant'];
-    $addLineItems = FALSE;
     if (empty($contribution->id)) {
+      // This code is believed to be unreachable.
+      // this entire function is due to be deprecated in the near future so
+      // this code will live in a deprecated function until it gets removed.
       $addLineItems = TRUE;
-    }
-    $contributionStatuses = CRM_Core_PseudoConstant::get('CRM_Contribute_DAO_Contribution', 'contribution_status_id', array(
+      // CRM-15546
+      $contributionStatuses = CRM_Core_PseudoConstant::get('CRM_Contribute_DAO_Contribution', 'contribution_status_id', [
         'labelColumn' => 'name',
         'flip' => 1,
-      ));
-    $contribution->contribution_status_id = $contributionStatuses['Cancelled'];
-    $contribution->cancel_date = self::$_now;
-    $contribution->cancel_reason = CRM_Utils_Array::value('reasonCode', $input);
-    $contribution->receive_date = CRM_Utils_Date::isoToMysql($contribution->receive_date);
-    $contribution->receipt_date = CRM_Utils_Date::isoToMysql($contribution->receipt_date);
-    $contribution->thankyou_date = CRM_Utils_Date::isoToMysql($contribution->thankyou_date);
-    $contribution->save();
-
-    //add lineitems for recurring payments
-    if (!empty($objects['contributionRecur']) && $objects['contributionRecur']->id && $addLineItems) {
-      CRM_Contribute_BAO_ContributionRecur::addRecurLineItems($objects['contributionRecur']->id, $contribution);
-    }
-
-    //add new soft credit against current $contribution and
-    //copy initial contribution custom fields for recurring contributions
-    if (!empty($objects['contributionRecur']) && $objects['contributionRecur']->id) {
-      CRM_Contribute_BAO_ContributionRecur::addrecurSoftCredit($objects['contributionRecur']->id, $contribution->id);
-      CRM_Contribute_BAO_ContributionRecur::copyCustomValues($objects['contributionRecur']->id, $contribution->id);
-    }
-
-    if (empty($input['IAmAHorribleNastyBeyondExcusableHackInTheCRMEventFORMTaskClassThatNeedsToBERemoved'])) {
+      ]);
+      $contribution->contribution_status_id = $contributionStatuses['Cancelled'];
+      $contribution->cancel_date = self::$_now;
+      $contribution->save();
+      // Add line items for recurring payments.
+      if (!empty($objects['contributionRecur']) && $objects['contributionRecur']->id && $addLineItems) {
+        CRM_Contribute_BAO_ContributionRecur::addRecurLineItems($objects['contributionRecur']->id, $contribution);
+      }
+      $memberships = [];
+      if (!empty($objects['membership'])) {
+        $memberships = &$objects['membership'];
+        if (is_numeric($memberships)) {
+          $memberships = [$objects['membership']];
+        }
+      }
       if (!empty($memberships)) {
-        $membershipStatuses = CRM_Core_PseudoConstant::get('CRM_Member_DAO_Membership', 'status_id', array(
-            'labelColumn' => 'name',
-            'flip' => 1,
-          ));
-        // Cancel only Pending memberships
-        // CRM-18688
-        $pendingStatusId = $membershipStatuses['Pending'];
         foreach ($memberships as $membership) {
-          if ($membership && ($membership->status_id == $pendingStatusId)) {
-            $membership->status_id = $membershipStatuses['Cancelled'];
-            $membership->save();
-
-            //update related Memberships.
-            $params = array('status_id' => $membershipStatuses['Cancelled']);
-            CRM_Member_BAO_Membership::updateRelatedMemberships($membership->id, $params);
+          if ($membership) {
+            $this->cancelMembership($membership, $membership->status_id);
           }
         }
       }
+      $participant = &$objects['participant'];
 
       if ($participant) {
-        $participantStatuses = CRM_Core_PseudoConstant::get('CRM_Event_DAO_Participant', 'status_id', array(
-            'labelColumn' => 'name',
-            'flip' => 1,
-          ));
-        $participant->status_id = $participantStatuses['Cancelled'];
-        $participant->save();
+        $this->cancelParticipant($participant->id);
       }
     }
-    $transaction->commit();
-    CRM_Core_Error::debug_log_message("Setting contribution status to cancelled");
-    //echo "Success: Setting contribution status to cancelled<p>";
+    else {
+      Contribution::update(FALSE)->setValues([
+        'cancel_date' => 'now',
+        'contribution_status_id:name' => 'Cancelled',
+      ])->addWhere('id', '=', $contribution->id)->execute();
+    }
+
+    Civi::log()->debug("Setting contribution status to Cancelled");
     return TRUE;
   }
 
   /**
    * Rollback unhandled outcomes.
+   *
+   * @deprecated
    *
    * @param array $objects
    * @param CRM_Core_Transaction $transaction
@@ -385,13 +207,68 @@ class CRM_Core_Payment_BaseIPN {
    * @return bool
    */
   public function unhandled(&$objects, &$transaction) {
+    CRM_Core_Error::deprecatedFunctionWarning('This function will be removed at some point');
     $transaction->rollback();
-    CRM_Core_Error::debug_log_message("returning since contribution status: is not handled");
-    echo "Failure: contribution status is not handled<p>";
+    Civi::log()->debug('Returning since contribution status is not handled');
+    echo 'Failure: contribution status is not handled<p>';
     return FALSE;
   }
 
   /**
+   * Logic to cancel a participant record when the related contribution changes to failed/cancelled.
+   * @todo This is part of a bigger refactor for dev/core/issues/927 - "duplicate" functionality exists in CRM_Contribute_BAO_Contribution::cancel()
+   *
+   * @deprecated
+   *
+   * @param $participantID
+   *
+   * @throws \CRM_Core_Exception
+   */
+  private function cancelParticipant($participantID) {
+    // @fixme https://lab.civicrm.org/dev/core/issues/927 Cancelling membership etc is not desirable for all use-cases and we should be able to disable it
+    $participantParams['id'] = $participantID;
+    $participantParams['status_id'] = 'Cancelled';
+    civicrm_api3('Participant', 'create', $participantParams);
+  }
+
+  /**
+   * Logic to cancel a membership record when the related contribution changes to failed/cancelled.
+   * @todo This is part of a bigger refactor for dev/core/issues/927 - "duplicate" functionality exists in CRM_Contribute_BAO_Contribution::cancel()
+   * @param \CRM_Member_BAO_Membership $membership
+   * @param int $membershipStatusID
+   * @param bool $onlyCancelPendingMembership
+   *   Do we only cancel pending memberships? OR memberships in any status? (see CRM-18688)
+   * @fixme Historically failed() cancelled membership in any status, cancelled() cancelled only pending memberships so we retain that behaviour for now.
+   * @deprecated
+   */
+  private function cancelMembership($membership, $membershipStatusID, $onlyCancelPendingMembership = TRUE) {
+    CRM_Core_Error::deprecatedFunctionWarning('use the api');
+    // @fixme https://lab.civicrm.org/dev/core/issues/927 Cancelling membership etc is not desirable for all use-cases and we should be able to disable it
+    // Cancel only Pending memberships
+    $pendingMembershipStatusId = CRM_Core_PseudoConstant::getKey('CRM_Member_BAO_Membership', 'status_id', 'Pending');
+    if (($membershipStatusID == $pendingMembershipStatusId) || ($onlyCancelPendingMembership == FALSE)) {
+      $cancelledMembershipStatusId = CRM_Core_PseudoConstant::getKey('CRM_Member_BAO_Membership', 'status_id', 'Cancelled');
+
+      $membership->status_id = $cancelledMembershipStatusId;
+      $membership->save();
+
+      $params = ['status_id' => $cancelledMembershipStatusId];
+      CRM_Member_BAO_Membership::updateRelatedMemberships($membership->id, $params);
+
+      // @todo Convert the above to API
+      // $membershipParams = [
+      //   'id' => $membership->id,
+      //   'status_id' => $cancelledMembershipStatusId,
+      // ];
+      // civicrm_api3('Membership', 'create', $membershipParams);
+      // CRM_Member_BAO_Membership::updateRelatedMemberships($membershipParams['id'], ['status_id' => $cancelledMembershipStatusId]);
+    }
+
+  }
+
+  /**
+   * @deprecated
+   *
    * Jumbled up function.
    *
    * The purpose of this function is to transition a pending transaction to Completed including updating any
@@ -411,7 +288,7 @@ class CRM_Core_Payment_BaseIPN {
    * This function has been problematic for some time but there are now several tests via the api_v3_Contribution test
    * and the Paypal & Authorize.net IPN tests so any refactoring should be done in conjunction with those.
    *
-   * This function needs to have the 'body' moved to the CRM_Contribution_BAO_Contribute class and to undergo
+   * This function needs to have the 'body' moved to the CRM_Contribute_BAO_Contribute class and to undergo
    * refactoring to separate the complete transaction and repeat transaction functionality into separate functions with
    * a shared function that updates related components.
    *
@@ -427,7 +304,7 @@ class CRM_Core_Payment_BaseIPN {
    *        // @todo check if it is a repeat transaction & call repeattransaction instead.
    *        civicrm_api3('contribution', 'completetransaction', array('id' => $this->transaction_id));
    *      }
-   *     catch (CiviCRM_API3_Exception $e) {
+   *     catch (CRM_Core_Exception $e) {
    *     if (!stristr($e->getMessage(), 'Contribution already completed')) {
    *       $this->handleError('error', $this->transaction_id  . $e->getMessage(), 'ipn_completion', 9000, 'An error may
    *         have occurred. Please check your receipt is correct');
@@ -441,19 +318,16 @@ class CRM_Core_Payment_BaseIPN {
    * @param array $input
    * @param array $ids
    * @param array $objects
-   * @param CRM_Core_Transaction $transaction
-   * @param bool $recur
+   *
+   * @throws \CRM_Core_Exception
    */
-  public function completeTransaction(&$input, &$ids, &$objects, &$transaction, $recur = FALSE) {
-    $isRecurring = $this->_isRecurring;
-    $isFirstOrLastRecurringPayment = $this->_isFirstOrLastRecurringPayment;
-    $contribution = &$objects['contribution'];
-
-    CRM_Contribute_BAO_Contribution::completeOrder($input, $ids, $objects, $transaction, $recur, $contribution,
-      $isRecurring, $isFirstOrLastRecurringPayment);
+  public function completeTransaction($input, $ids, $objects) {
+    CRM_Core_Error::deprecatedFunctionWarning('Use Payment.create api');
+    CRM_Contribute_BAO_Contribution::completeOrder($input, !empty($objects['contributionRecur']) ? $objects['contributionRecur']->id : NULL, $objects['contribution']->id ?? NULL);
   }
 
   /**
+   * @deprecated
    * Get site billing ID.
    *
    * @param array $ids
@@ -461,9 +335,10 @@ class CRM_Core_Payment_BaseIPN {
    * @return bool
    */
   public function getBillingID(&$ids) {
+    CRM_Core_Error::deprecatedFunctionWarning('CRM_Core_BAO_LocationType::getBilling()');
     $ids['billing'] = CRM_Core_BAO_LocationType::getBilling();
     if (!$ids['billing']) {
-      CRM_Core_Error::debug_log_message(ts('Please set a location type of %1', array(1 => 'Billing')));
+      CRM_Core_Error::debug_log_message(ts('Please set a location type of %1', [1 => 'Billing']));
       echo "Failure: Could not find billing location type<p>";
       return FALSE;
     }
@@ -471,9 +346,9 @@ class CRM_Core_Payment_BaseIPN {
   }
 
   /**
-   * Send receipt from contribution.
-   *
    * @deprecated
+   *
+   * @todo confirm this function is not being used by any payment processor outside core & remove.
    *
    * Note that the compose message part has been moved to contribution
    * In general LoadObjects is called first to get the objects but the composeMessageArray function now calls it
@@ -483,19 +358,14 @@ class CRM_Core_Payment_BaseIPN {
    * @param array $ids
    *   Related object IDs.
    * @param array $objects
-   * @param array $values
-   *   Values related to objects that have already been loaded.
-   * @param bool $recur
-   *   Is it part of a recurring contribution.
-   * @param bool $returnMessageText
-   *   Should text be returned instead of sent. This.
-   *   is because the function is also used to generate pdfs
    *
-   * @return array
+   * @throws \CRM_Core_Exception
    */
-  public function sendMail(&$input, &$ids, &$objects, &$values, $recur = FALSE, $returnMessageText = FALSE) {
-    return CRM_Contribute_BAO_Contribution::sendMail($input, $ids, $objects['contribution']->id, $values, $recur,
-      $returnMessageText);
+  public function sendMail($input, $ids, $objects) {
+    CRM_Core_Error::deprecatedFunctionWarning('this should be done via completetransaction api');
+    civicrm_api3('Contribution', 'sendconfirmation', [
+      'id' => $objects['contribution']->id,
+    ]);
   }
 
 }

@@ -1,44 +1,27 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 {* Search form and results for Activities *}
 <div class="crm-form-block crm-search-form-block">
-  <div class="crm-accordion-wrapper crm-advanced_search_form-accordion {if $rows}collapsed{/if}">
-    <div class="crm-accordion-header crm-master-accordion-header">
+  <details class="crm-accordion-light crm-advanced_search_form-accordion" {if !$rows}open=""{/if}">
+    <summary>
       {ts}Edit Search Criteria{/ts}
-    </div>
-    <!-- /.crm-accordion-header -->
+    </summary>
     <div class="crm-accordion-body">
       <div id="searchForm" class="form-item">
         {strip}
           <table class="form-layout">
             <tr>
-              <td class="font-size12pt" colspan="2">
+              <td colspan="2">
                 {$form.sort_name.label}&nbsp;&nbsp;{$form.sort_name.html|crmAddClass:'twenty'}
                 <div>
-                  <div class="description font-italic">{ts}Complete OR Partial Name{/ts}
+                  <div class="description font-italic">{ts}Name{/ts}
                     <span class="contact-name-option option-1">{ts} of the Source Contact{/ts}</span>
                     <span class="contact-name-option option-2">{ts} of the Assignee Contact{/ts}</span>
                     <span class="contact-name-option option-3">{ts} of the Target Contact{/ts}</span>
@@ -57,10 +40,10 @@
         {/strip}
       </div>
     </div>
-  </div>
+  </details>
 </div>
 
-{if $rowsEmpty || $rows }
+{if $rowsEmpty || $rows}
   <div class="crm-content-block">
     {if $rowsEmpty}
       <div class="crm-results-block crm-results-block-empty">

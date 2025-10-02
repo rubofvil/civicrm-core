@@ -1,31 +1,15 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 {if $votingTab and $errorMessages}
   <div class='messages status'>
-    <div class="icon inform-icon"></div>
+    {icon icon="fa-info-circle"}{/icon}
     <ul>
       {foreach from=$errorMessages item=errorMsg}
         <li>{ts}{$errorMsg}{/ts}</li>
@@ -42,7 +26,7 @@
 
     <div id='responseErrors' class = "hiddenElement messages crm-error"></div>
 
-    <div id='help'>
+    <div class='help'>
       {if $votingTab}
         {ts}Click <strong>record response</strong> button to update values for each respondent as needed.{/ts}
       {else}
@@ -59,6 +43,7 @@
           <th></th>
           <th>{ts}Column{/ts}</th>
           <th>{ts}Order{/ts}</th>
+          <th></th>
         </tr>
 
         {section name=rowLoop start=1 loop=5}
@@ -66,7 +51,7 @@
           <tr id="optionField_{$index}" class="form-item {cycle values="odd-row,even-row"}">
             <td>
               {if $index GT 1}
-                <a onclick="hideRow({$index}); return false;" name="orderBy_{$index}" href="#" class="form-link"><img src="{$config->resourceBase}i/TreeMinus.gif" class="action-icon" alt="{ts}hide field or section{/ts}"/></a>
+                <a onclick="hideRow({$index}); return false;" name="orderBy_{$index}" href="#" class="form-link">{icon icon="fa-trash"}{ts}hide field or section{/ts}{/icon}</a>
               {/if}
             </td>
             <td> {$form.order_bys.$index.column.html}</td>
@@ -80,7 +65,7 @@
         {/section}
       </table>
       <div id="optionFieldLink" class="add-remove-link">
-        <a onclick="showHideRow(); return false;" name="optionFieldLink" href="#" class="form-link"><img src="{$config->resourceBase}i/TreePlus.gif" class="action-icon" alt="{ts}show field or section{/ts}"/>{ts}another column{/ts}</a>
+        <a onclick="showHideRow(); return false;" name="optionFieldLink" href="#" class="form-link"><i class="crm-i fa-plus action-icon" role="img" aria-hidden="true"></i> {ts}another column{/ts}</a>
       </div>
 
       <script type="text/javascript">
@@ -131,13 +116,13 @@
             {if $field.skipDisplay}
               {continue}
             {/if}
-            <th><img  src="{$config->resourceBase}i/copy.png" alt="{ts 1=$field.title}Click to copy %1 from row one to all rows.{/ts}" fname="{$field.name}" class="action-icon" title="{ts}Click here to copy the value in row one to ALL rows.{/ts}" />{$field.title}</th>
+            <th>{copyIcon name=$field.name title=$field.title}{$field.title}</th>
           {/foreach}
         {/if}
 
-        <th><img  src="{$config->resourceBase}i/copy.png" alt="{ts 1=note}Click to copy %1 from row one to all rows.{/ts}" fname="note" class="action-icon" title="{ts}Click here to copy the value in row one to ALL rows.{/ts}" />{ts}Note{/ts}</th>
-        <th><img  src="{$config->resourceBase}i/copy.png" alt="{ts 1=result}Click to copy %1 from row one to all rows.{/ts}" fname="result" class="action-icon" title="{ts}Click here to copy the value in row one to ALL rows.{/ts}" />{ts}Result{/ts}</th>
-        <th><a id="interview_voter_button" class='button' style="float:left;" href="#" title={ts}Vote{/ts} onclick="registerInterviewforall( ); return false;">{ts}Record Responses for All{/ts}</a></th>
+        <th>{capture assign="tsNote"}{ts}Note{/ts}{/capture}{copyIcon name=note title=$tsNote}{$tsNote}</th>
+        <th>{capture assign="tsResult"}{ts}Result{/ts}{/capture}{copyIcon name=result title=$tsResult}{$tsResult}</th>
+        <th><a id="interview_voter_button" class='button' style="float:left;" href="#" title="{ts escape='htmlattribute'}Vote{/ts}" onclick="registerInterviewforall( ); return false;">{ts}Record Responses for All{/ts}</a></th>
       </tr>
       </thead>
 
@@ -155,9 +140,7 @@
                 {continue}
               {/if}
               <td class="compressed {$field.data_type} {$fieldName}">
-                {if ( ( $fieldName eq 'thankyou_date' ) or ( $fieldName eq 'cancel_date' ) or ( $fieldName eq 'receipt_date' ) or (  $fieldName eq 'activity_date_time') ) and $field.is_view neq 1 }
-                {include file="CRM/common/jcalendar.tpl" elementName=$fieldName elementIndex=$voterId batchUpdate=1}
-                {elseif $fieldName|substr:0:5 eq 'phone'}
+                {if $fieldName|substr:0:5 eq 'phone'}
                   {assign var="phone_ext_field" value=$fieldName|replace:'phone':'phone_ext'}
                   {$form.field.$voterId.$fieldName.html}
                   {if $form.field.$voterId.$phone_ext_field.html}
@@ -174,11 +157,11 @@
           <td class='result'>{$form.field.$voterId.result.html}</td>
 
           <td>
-            <a id="interview_voter_button_{$voterId}" class='button' style="float:left;" href="#" title={ts}Vote{/ts} onclick="registerInterview( {$voterId} ); return false;">
+            <a id="interview_voter_button_{$voterId}" class='button' style="float:left;" href="#" title="{ts escape='htmlattribute'}Vote{/ts}" onclick="registerInterview( {$voterId} ); return false;">
               {ts}record response{/ts}
             </a>
             {if $allowAjaxReleaseButton}
-              <a id="release_voter_button_{$voterId}" class='button'  href="#" title={ts}Release{/ts} onclick="releaseOrReserveVoter( {$voterId} ); return false;">
+              <a id="release_voter_button_{$voterId}" class='button'  href="#" title="{ts escape='htmlattribute'}Release{/ts}" onclick="releaseOrReserveVoter( {$voterId} ); return false;">
                 {ts}release{/ts}
               </a>
             {/if}
@@ -295,7 +278,9 @@ function registerInterview( voterId ) {
     if (fldId.indexOf('_custom_') == -1 &&
       fldId.indexOf('_result') == -1  &&
       fldId.indexOf('_note') == -1 ) {
-      data[fldId] = CRM.$(this).val( );
+      data[fldId] = CRM.$(this).prop('type') == 'checkbox' ?
+        (CRM.$(this).is(':checked') ? '1' : '0') :
+        CRM.$(this).val();
     }
   });
 
@@ -328,7 +313,7 @@ var surveyActivityIds = {/literal}{$surveyActivityIds}{literal};
         if (interview.errors[error]) errorList =  errorList + '<li>' + interview.errors[error] + '</li>';
       }
       if ( errorList ) {
-        var allErrors = '<i class="crm-i fa-exclamation-triangle crm-i-red"></i> ' + ts('Please correct the following errors in the survey fields below:') + '<ul>' + errorList + '</ul>';
+        var allErrors = '<i class="crm-i fa-exclamation-triangle crm-i-red" role="img" aria-hidden="true"></i> {/literal}{ts escape='js'}Please correct the following errors in the survey fields below:{/ts}{literal}<ul>' + errorList + '</ul>';
         CRM.$('#responseErrors').show( ).html(allErrors);
       }
     }

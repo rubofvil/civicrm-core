@@ -4,18 +4,20 @@
  * Generate configuration files
  */
 class CRM_Core_CodeGen_Config extends CRM_Core_CodeGen_BaseTask {
+
   public function run() {
     $this->setupCms();
   }
 
   public function setupCms() {
-    if (!in_array($this->config->cms, array(
+    if (!in_array($this->config->cms, [
       'backdrop',
       'drupal',
       'drupal8',
       'joomla',
       'wordpress',
-    ))) {
+      'standalone',
+    ])) {
       echo "Config file for '{$this->config->cms}' not known.";
       exit();
     }
@@ -38,7 +40,11 @@ class CRM_Core_CodeGen_Config extends CRM_Core_CodeGen_BaseTask {
    *   path to config template
    */
   public function findConfigTemplate($cms) {
-    $candidates = array();
+    if (getenv('GENCODE_CONFIG_TEMPLATE')) {
+      return getenv('GENCODE_CONFIG_TEMPLATE');
+    }
+
+    $candidates = [];
     switch ($cms) {
       case 'backdrop':
         // FIXME!!!!
@@ -56,6 +62,11 @@ class CRM_Core_CodeGen_Config extends CRM_Core_CodeGen_BaseTask {
       case 'drupal8':
         $candidates[] = "../../modules/civicrm/civicrm.config.php.drupal";
         $candidates[] = "../../../modules/civicrm/civicrm.config.php.drupal";
+        $candidates[] = "../../../modules/civicrm-drupal/civicrm.config.php.drupal";
+        break;
+
+      case 'standalone':
+        $candidates[] = "../../../../civicrm.config.php.standalone";
         break;
 
       case 'wordpress':

@@ -1,46 +1,35 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
+
+use Civi\Import\MembershipParser;
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
- * $Id$
- *
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
  * This class gets the name of the file to upload
  */
-class CRM_Member_Import_Form_DataSource extends CRM_Import_Form_DataSource {
+class CRM_Member_Import_Form_DataSource extends CRM_CiviImport_Form_DataSource {
 
-  const PATH = 'civicrm/member/import';
-
-  const IMPORT_ENTITY = 'Membership';
+  /**
+   * Get the name of the type to be stored in civicrm_user_job.type_id.
+   *
+   * @return string
+   */
+  public function getUserJobType(): string {
+    return 'membership_import';
+  }
 
   /**
    * Build the form object.
@@ -50,38 +39,22 @@ class CRM_Member_Import_Form_DataSource extends CRM_Import_Form_DataSource {
   public function buildQuickForm() {
     parent::buildQuickForm();
 
-    $duplicateOptions = array();
-    $duplicateOptions[] = $this->createElement('radio',
-      NULL, NULL, ts('Insert new Membership'), CRM_Import_Parser::DUPLICATE_SKIP
-    );
-    $duplicateOptions[] = $this->createElement('radio',
-      NULL, NULL, ts('Update existing Membership'), CRM_Import_Parser::DUPLICATE_UPDATE
-    );
-
-    $this->addGroup($duplicateOptions, 'onDuplicate',
-      ts('Import mode')
-    );
-    $this->setDefaults(array(
-      'onDuplicate' => CRM_Import_Parser::DUPLICATE_SKIP,
-    ));
-
-    $this->addContactTypeSelector();
+    $this->addRadio('onDuplicate', ts('Import mode'), [
+      CRM_Import_Parser::DUPLICATE_SKIP => ts('Insert new Membership'),
+      CRM_Import_Parser::DUPLICATE_UPDATE => ts('Update existing Membership'),
+    ]);
   }
 
   /**
-   * Process the uploaded file.
-   *
-   * @return void
+   * @return \Civi\Import\MembershipParser
    */
-  public function postProcess() {
-    $this->storeFormValues(array(
-      'onDuplicate',
-      'contactType',
-      'dateFormats',
-      'savedMapping',
-    ));
-
-    $this->submitFileForMapping('CRM_Member_Import_Parser_Membership');
+  protected function getParser(): MembershipParser {
+    if (!$this->parser) {
+      $this->parser = new MembershipParser();
+      $this->parser->setUserJobID($this->getUserJobID());
+      $this->parser->init();
+    }
+    return $this->parser;
   }
 
 }

@@ -1,49 +1,32 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
- * $Id$
- *
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
  * BAO object for crm_log table
  */
 class CRM_Core_BAO_Log extends CRM_Core_DAO_Log {
-  static $_processed = NULL;
+  public static $_processed = NULL;
 
   /**
    * @param int $id
    * @param string $table
    *
    * @return array|null
+   *
    */
   public static function &lastModified($id, $table = 'civicrm_contact') {
 
@@ -53,15 +36,17 @@ class CRM_Core_BAO_Log extends CRM_Core_DAO_Log {
     $log->entity_id = $id;
     $log->orderBy('modified_date desc');
     $log->limit(1);
-    $result = CRM_Core_DAO::$_nullObject;
+    $displayName = $result = $contactImage = NULL;
     if ($log->find(TRUE)) {
-      list($displayName, $contactImage) = CRM_Contact_BAO_Contact::getDisplayAndImage($log->modified_id);
-      $result = array(
+      if ($log->modified_id) {
+        [$displayName, $contactImage] = CRM_Contact_BAO_Contact::getDisplayAndImage($log->modified_id);
+      }
+      $result = [
         'id' => $log->modified_id,
         'name' => $displayName,
         'image' => $contactImage,
         'date' => $log->modified_date,
-      );
+      ];
     }
     return $result;
   }
@@ -71,13 +56,13 @@ class CRM_Core_BAO_Log extends CRM_Core_DAO_Log {
    *
    * @param array $params
    *   Array of name-value pairs of log table.
-   *
+   * @return CRM_Core_DAO_Log
    */
   public static function add(&$params) {
-
     $log = new CRM_Core_DAO_Log();
     $log->copyValues($params);
     $log->save();
+    return $log;
   }
 
   /**
@@ -85,6 +70,8 @@ class CRM_Core_BAO_Log extends CRM_Core_DAO_Log {
    * @param string $tableName
    * @param int $tableID
    * @param int $userID
+   *
+   * @throws \CRM_Core_Exception
    */
   public static function register(
     $contactID,
@@ -93,7 +80,7 @@ class CRM_Core_BAO_Log extends CRM_Core_DAO_Log {
     $userID = NULL
   ) {
     if (!self::$_processed) {
-      self::$_processed = array();
+      self::$_processed = [];
     }
 
     if (!$userID) {
@@ -102,9 +89,9 @@ class CRM_Core_BAO_Log extends CRM_Core_DAO_Log {
     }
 
     if (!$userID) {
-      $api_key = CRM_Utils_Request::retrieve('api_key', 'String', $store, FALSE, NULL, 'REQUEST');
+      $api_key = CRM_Utils_Request::retrieve('api_key', 'String');
 
-      if ($api_key && strtolower($api_key) != 'null') {
+      if ($api_key && strtolower($api_key) !== 'null') {
         $userID = CRM_Core_DAO::getFieldValue('CRM_Contact_DAO_Contact', $api_key, 'id', 'api_key');
       }
     }
@@ -127,7 +114,7 @@ class CRM_Core_BAO_Log extends CRM_Core_DAO_Log {
       self::$_processed[$contactID][$userID] = 1;
     }
     else {
-      self::$_processed[$contactID] = array($userID => 1);
+      self::$_processed[$contactID] = [$userID => 1];
     }
 
     $logData = "$tableName,$tableID";
@@ -166,36 +153,30 @@ UPDATE civicrm_log
   }
 
   /**
-   * Function for find out whether to use logging schema entries for contact.
-   * summary, instead of normal log entries.
+   * Get the id of the report to use to display the change log.
    *
-   * @return int
-   *   report id of Contact Logging Report (Summary) / false
+   * If logging is not enabled a return value of FALSE means to use the
+   * basic change log view.
+   *
+   * @return int|false
+   *   report id of Contact Logging Report (Summary)
    */
   public static function useLoggingReport() {
-    // first check if logging is enabled
-    $config = CRM_Core_Config::singleton();
-    if (!$config->logging) {
+    $loggingSchema = new CRM_Logging_Schema();
+    if (!$loggingSchema->isEnabled()) {
       return FALSE;
     }
-
-    $loggingSchema = new CRM_Logging_Schema();
-
-    if ($loggingSchema->isEnabled()) {
-      $params = array('report_id' => 'logging/contact/summary');
-      $instance = array();
-      CRM_Report_BAO_ReportInstance::retrieve($params, $instance);
-
-      if (!empty($instance) &&
-        (empty($instance['permission']) ||
-          (!empty($instance['permission']) && CRM_Core_Permission::check($instance['permission']))
-        )
-      ) {
-        return $instance['id'];
-      }
+    try {
+      // Use civicrm_api4 wrapper as it will exception rather than fatal if civi-report disabled.
+      return civicrm_api4('ReportInstance', 'get', [
+        'where' => [['report_id', '=', 'logging/contact/summary']],
+      ])->first()['id'] ?? FALSE;
     }
-
-    return FALSE;
+    catch (CRM_Core_Exception $e) {
+      // Either CiviReport is disabled or the contact does not have permission to
+      // view the summary report. Return FALSE to use the basic log.
+      return FALSE;
+    }
   }
 
 }

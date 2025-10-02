@@ -1,36 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
- * $Id$
- *
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -43,23 +25,21 @@ class CRM_Member_Page_UserDashboard extends CRM_Contact_Page_View_UserDashBoard 
    *
    */
   public function listMemberships() {
-    $membership = array();
+    $membership = [];
     $dao = new CRM_Member_DAO_Membership();
     $dao->contact_id = $this->_contactId;
     $dao->is_test = 0;
+    $dao->orderBy('end_date DESC');
     $dao->find();
 
     while ($dao->fetch()) {
-      $membership[$dao->id] = array();
+      $membership[$dao->id] = [];
       CRM_Core_DAO::storeValues($dao, $membership[$dao->id]);
 
       //get the membership status and type values.
       $statusANDType = CRM_Member_BAO_Membership::getStatusANDTypeValues($dao->id);
-      foreach (array(
-        'status',
-        'membership_type',
-      ) as $fld) {
-        $membership[$dao->id][$fld] = CRM_Utils_Array::value($fld, $statusANDType[$dao->id]);
+      foreach (['status', 'membership_type'] as $fld) {
+        $membership[$dao->id][$fld] = $statusANDType[$dao->id][$fld] ?? NULL;
       }
       if (!empty($statusANDType[$dao->id]['is_current_member'])) {
         $membership[$dao->id]['active'] = TRUE;
@@ -85,8 +65,54 @@ class CRM_Member_Page_UserDashboard extends CRM_Contact_Page_View_UserDashBoard 
     $activeMembers = CRM_Member_BAO_Membership::activeMembers($membership);
     $inActiveMembers = CRM_Member_BAO_Membership::activeMembers($membership, 'inactive');
 
+    // Add Recurring Links (if allowed)
+    $this->buildMemberLinks($activeMembers);
+    $this->buildMemberLinks($inActiveMembers);
+
     $this->assign('activeMembers', $activeMembers);
     $this->assign('inActiveMembers', $inActiveMembers);
+
+  }
+
+  /**
+   * Helper function to build appropriate Member links
+   */
+  public function buildMemberLinks(&$members) {
+    if (!empty($members)) {
+      foreach ($members as $id => &$member) {
+        if (empty($member['contribution_recur_id'])) {
+          continue;
+        }
+
+        $paymentProcessor = NULL;
+        try {
+          $contributionRecur = \Civi\Api4\ContributionRecur::get(FALSE)
+            ->addSelect('payment_processor_id')
+            ->addWhere('id', '=', $member['contribution_recur_id'])
+            ->execute()
+            ->first();
+
+          if (!empty($contributionRecur['payment_processor_id'])) {
+            $paymentProcessor = \Civi\Api4\PaymentProcessor::get(FALSE)
+              ->addWhere('id', '=', $contributionRecur['payment_processor_id'])
+              ->execute()
+              ->first();
+          }
+        }
+        catch (Exception $e) {
+          Civi::log()->warning('Member/UserDashboard: Unable to retrieve recur information ' . $e->getMessage());
+          continue;
+        }
+
+        if (!empty($paymentProcessor)) {
+          $paymentObject = Civi\Payment\System::singleton()->getByProcessor($paymentProcessor);
+          $member['cancelSubscriptionUrl'] = $paymentObject->subscriptionURL($member['membership_id'], 'membership', 'cancel');
+          $member['updateSubscriptionBillingUrl'] = $paymentObject->subscriptionURL($member['membership_id'], 'membership', 'billing');
+          $member['updateSubscriptionUrl'] = $paymentObject->subscriptionURL($member['membership_id'], 'membership', 'update');
+        }
+      }
+    }
+
   }
 
   /**

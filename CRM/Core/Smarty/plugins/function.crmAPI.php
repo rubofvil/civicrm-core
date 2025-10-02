@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -29,7 +13,6 @@
  *
  * @package CRM
  * @copyright TTTP
- * $Id$
  *
  */
 
@@ -39,27 +22,23 @@
  * @return string|void
  */
 function smarty_function_crmAPI($params, &$smarty) {
+  CRM_Core_Smarty_UserContentPolicy::assertTagAllowed('crmAPI');
+
   if (!array_key_exists('entity', $params)) {
-    $smarty->trigger_error("assign: missing 'entity' parameter");
+    trigger_error('crmAPI: missing &#039;entity&#039; parameter', E_USER_ERROR);
     return "crmAPI: missing 'entity' parameter";
   }
-  $errorScope = CRM_Core_TemporaryErrorScope::create(array('CRM_Utils_REST', 'fatal'));
   $entity = $params['entity'];
-  $action = CRM_Utils_Array::value('action', $params, 'get');
-  $params['sequential'] = CRM_Utils_Array::value('sequential', $params, 1);
-  $var = CRM_Utils_Array::value('var', $params);
+  $action = $params['action'] ?? 'get';
+  $params['sequential'] = $params['sequential'] ?? 1;
+  $var = $params['var'] ?? NULL;
   CRM_Utils_Array::remove($params, 'entity', 'action', 'var');
-  $params['version'] = 3;
-  require_once 'api/api.php';
-  $result = civicrm_api($entity, $action, $params);
-  unset($errorScope);
-  if ($result === FALSE) {
-    $smarty->trigger_error("Unknown error");
-    return;
+  try {
+    $result = civicrm_api3($entity, $action, $params);
   }
-
-  if (!empty($result['is_error'])) {
-    $smarty->trigger_error("{crmAPI} " . $result["error_message"]);
+  catch (Exception $e) {
+    trigger_error('{crmAPI} ' . htmlentities($e->getMessage()), E_USER_ERROR);
+    return NULL;
   }
 
   if (!$var) {

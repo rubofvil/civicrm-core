@@ -1,35 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
- *
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -42,6 +25,7 @@ class CRM_Custom_Page_AJAX {
    * @deprecated
    */
   public static function getOptionList() {
+    CRM_Core_Page_AJAX::validateAjaxRequestMethod();
     $params = $_REQUEST;
 
     $sEcho = CRM_Utils_Type::escape($_REQUEST['sEcho'], 'Integer');
@@ -54,14 +38,15 @@ class CRM_Custom_Page_AJAX {
     $options = CRM_Core_BAO_CustomOption::getOptionListSelector($params);
 
     $iFilteredTotal = $iTotal = $params['total'];
-    $selectorElements = array(
+    $selectorElements = [
       'label',
       'value',
+      'description',
       'is_default',
       'is_active',
       'links',
       'class',
-    );
+    ];
 
     CRM_Utils_System::setHttpHeader('Content-Type', 'application/json');
     echo CRM_Utils_JSON::encodeDataTableSelector($options, $sEcho, $iTotal, $iFilteredTotal, $selectorElements);
@@ -73,13 +58,14 @@ class CRM_Custom_Page_AJAX {
    *
    */
   public static function fixOrdering() {
+    CRM_Core_Page_AJAX::validateAjaxRequestMethod();
     $params = $_REQUEST;
 
-    $queryParams = array(
-      1 => array($params['start'], 'Integer'),
-      2 => array($params['end'], 'Integer'),
-      3 => array($params['gid'], 'Integer'),
-    );
+    $queryParams = [
+      1 => [$params['start'], 'Integer'],
+      2 => [$params['end'], 'Integer'],
+      3 => [$params['gid'], 'Integer'],
+    ];
     $dao = "SELECT id FROM civicrm_option_value WHERE weight = %1 AND option_group_id = %3";
     $startid = CRM_Core_DAO::singleValueQuery($dao, $queryParams);
 
@@ -108,13 +94,19 @@ class CRM_Custom_Page_AJAX {
 
   /**
    * Get list of Multi Record Fields.
-   *
    */
-  public static function getMultiRecordFieldList() {
+  public static function getMultiRecordFieldList(): void {
+    CRM_Core_Page_AJAX::validateAjaxRequestMethod();
 
     $params = CRM_Core_Page_AJAX::defaultSortAndPagerParams(0, 10);
     $params['cid'] = CRM_Utils_Type::escape($_GET['cid'], 'Integer');
     $params['cgid'] = CRM_Utils_Type::escape($_GET['cgid'], 'Integer');
+
+    if (!CRM_Core_BAO_CustomGroup::checkGroupAccess($params['cgid'], CRM_Core_Permission::VIEW) ||
+      !CRM_Contact_BAO_Contact_Permission::allow($params['cid'], CRM_Core_Permission::VIEW)
+    ) {
+      CRM_Utils_System::permissionDenied();
+    }
 
     $contactType = CRM_Contact_BAO_Contact::getContactType($params['cid']);
 
@@ -129,34 +121,28 @@ class CRM_Custom_Page_AJAX {
       $obj->_DTparams['sort'] = $params['sortBy'];
     }
 
-    list($fields, $attributes) = $obj->browse();
+    [$fields, $attributes] = $obj->browse();
 
     // format params and add class attributes
-    $fieldList = array();
+    $fieldList = [];
     foreach ($fields as $id => $value) {
-      $field = array();
       foreach ($value as $fieldId => &$fieldName) {
         if (!empty($attributes[$fieldId][$id]['class'])) {
-          $fieldName = array('data' => $fieldName, 'cellClass' => $attributes[$fieldId][$id]['class']);
+          $fieldName = ['data' => $fieldName, 'cellClass' => $attributes[$fieldId][$id]['class']];
         }
         if (is_numeric($fieldId)) {
           $fName = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_CustomField', $fieldId, 'column_name');
           CRM_Utils_Array::crmReplaceKey($value, $fieldId, $fName);
         }
       }
-      $field = $value;
-      array_push($fieldList, $field);
+      array_push($fieldList, $value);
     }
     $totalRecords = !empty($obj->_total) ? $obj->_total : 0;
 
-    $multiRecordFields = array();
+    $multiRecordFields = [];
     $multiRecordFields['data'] = $fieldList;
     $multiRecordFields['recordsTotal'] = $totalRecords;
     $multiRecordFields['recordsFiltered'] = $totalRecords;
-
-    if (!empty($_GET['is_unit_test'])) {
-      return $multiRecordFields;
-    }
 
     CRM_Utils_JSON::output($multiRecordFields);
   }

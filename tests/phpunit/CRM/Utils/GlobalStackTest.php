@@ -6,11 +6,16 @@
  */
 class CRM_Utils_GlobalStackTest extends CiviUnitTestCase {
 
+  public function setUp(): void {
+    parent::setUp();
+    $this->useTransaction();
+  }
+
   /**
    * Temporarily override global variables and ensure that the variable data.
    * is set as expected (before/during/after the override).
    */
-  public function testPushPop() {
+  public function testPushPop(): void {
     global $_FOO, $_EXTRA;
 
     $_FOO['bar'] = 1;
@@ -22,13 +27,13 @@ class CRM_Utils_GlobalStackTest extends CiviUnitTestCase {
     $this->assertFalse(isset($_FOO['bang']));
     $this->assertEquals(1, $_EXTRA);
 
-    CRM_Utils_GlobalStack::singleton()->push(array(
-      '_FOO' => array(
+    CRM_Utils_GlobalStack::singleton()->push([
+      '_FOO' => [
         'bar' => 2,
         'bang' => 2,
-      ),
+      ],
       '_EXTRA' => 2,
-    ));
+    ]);
 
     $this->assertEquals(2, $_FOO['bar']);
     $this->assertEquals(1, $_FOO['whiz']);

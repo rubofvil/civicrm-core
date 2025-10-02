@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -29,7 +13,7 @@
  * Redefine the display action.
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 class CRM_Core_QuickForm_Action_Display extends CRM_Core_QuickForm_Action {
 
@@ -37,13 +21,13 @@ class CRM_Core_QuickForm_Action_Display extends CRM_Core_QuickForm_Action {
    * The template to display the required "red" asterick.
    * @var string
    */
-  static $_requiredTemplate = NULL;
+  public static $_requiredTemplate = NULL;
 
   /**
    * The template to display error messages inline with the form element.
    * @var string
    */
-  static $_errorTemplate = NULL;
+  public static $_errorTemplate = NULL;
 
   /**
    * Class constructor.
@@ -72,7 +56,7 @@ class CRM_Core_QuickForm_Action_Display extends CRM_Core_QuickForm_Action {
 
     // If the original action was 'display' and we have values in container then we load them
     // BTW, if the page was invalid, we should later call validate() to get the errors
-    list(, $oldName) = $page->controller->getActionName();
+    [, $oldName] = $page->controller->getActionName();
     if ('display' == $oldName) {
       // If the controller is "modal" we should not allow direct access to a page
       // unless all previous pages are valid (see also bug #2323)
@@ -111,7 +95,7 @@ class CRM_Core_QuickForm_Action_Display extends CRM_Core_QuickForm_Action {
     $form = $page->toSmarty();
 
     // Deprecated - use snippet=6 instead of json=1
-    $json = CRM_Utils_Request::retrieve('json', 'Boolean', CRM_Core_DAO::$_nullObject);
+    $json = CRM_Utils_Request::retrieve('json', 'Boolean');
     if ($json) {
       CRM_Utils_JSON::output($form);
     }
@@ -132,9 +116,6 @@ class CRM_Core_QuickForm_Action_Display extends CRM_Core_QuickForm_Action {
 
     $content = $template->fetch($controller->getTemplateFile());
 
-    if (!defined('CIVICRM_UF_HEAD') && $region = CRM_Core_Region::instance('html-header', FALSE)) {
-      CRM_Utils_System::addHTMLHead($region->render(''));
-    }
     CRM_Utils_System::appendTPLFile($pageTemplateFile,
       $content,
       $page->overrideExtraTemplateFileName()
@@ -152,7 +133,7 @@ class CRM_Core_QuickForm_Action_Display extends CRM_Core_QuickForm_Action {
     }
 
     if ($controller->_QFResponseType == 'json') {
-      $response = array('content' => $html);
+      $response = ['content' => $html];
       if (!empty($page->ajaxResponse)) {
         $response += $page->ajaxResponse;
       }
@@ -169,7 +150,7 @@ class CRM_Core_QuickForm_Action_Display extends CRM_Core_QuickForm_Action {
           $content,
           "{$page->_name}.pdf",
           FALSE,
-          array('paper_size' => 'a3', 'orientation' => 'landscape')
+          ['paper_size' => 'a3', 'orientation' => 'landscape']
         );
       }
       else {

@@ -1,40 +1,26 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
  * Dummy page for details of Email.
  */
 class CRM_Contact_Page_Inline_Email extends CRM_Core_Page {
+
+  use CRM_Custom_Page_CustomDataTrait;
 
   /**
    * Run the page.
@@ -43,22 +29,23 @@ class CRM_Contact_Page_Inline_Email extends CRM_Core_Page {
    */
   public function run() {
     // get the emails for this contact
-    $contactId = CRM_Utils_Request::retrieve('cid', 'Positive', CRM_Core_DAO::$_nullObject, TRUE, NULL, $_REQUEST);
+    $contactId = CRM_Utils_Request::retrieve('cid', 'Positive', NULL, TRUE);
 
-    $locationTypes = CRM_Core_PseudoConstant::get('CRM_Core_DAO_Address', 'location_type_id', array('labelColumn' => 'display_name'));
+    $locationTypes = CRM_Core_BAO_Address::buildOptions('location_type_id');
 
-    $entityBlock = array('contact_id' => $contactId);
+    $entityBlock = ['contact_id' => $contactId];
     $emails = CRM_Core_BAO_Email::getValues($entityBlock);
     if (!empty($emails)) {
-      foreach ($emails as $key => & $value) {
+      foreach ($emails as &$value) {
         $value['location_type'] = $locationTypes[$value['location_type_id']];
+        $value['custom'] = $this->getCustomDataFieldsForEntityDisplay('Email', $value['id']);
       }
     }
 
     $contact = new CRM_Contact_BAO_Contact();
     $contact->id = $contactId;
     $contact->find(TRUE);
-    $privacy = array();
+    $privacy = [];
     foreach (CRM_Contact_BAO_Contact::$_commPrefs as $name) {
       if (isset($contact->$name)) {
         $privacy[$name] = $contact->$name;

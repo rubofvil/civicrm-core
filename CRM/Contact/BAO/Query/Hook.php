@@ -1,34 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -37,7 +21,9 @@
 class CRM_Contact_BAO_Query_Hook {
 
   /**
-   * @var array of CRM_Contact_BAO_Query_Interface objects
+   * Query objects.
+   *
+   * @var CRM_Contact_BAO_Query_Interface[]
    */
   protected $_queryObjects = NULL;
 
@@ -57,12 +43,11 @@ class CRM_Contact_BAO_Query_Hook {
   /**
    * Get or build the list of search objects (via hook).
    *
-   * @return array
-   *   Array of CRM_Contact_BAO_Query_Interface objects
+   * @return CRM_Contact_BAO_Query_Interface[]
    */
   public function getSearchQueryObjects() {
     if ($this->_queryObjects === NULL) {
-      $this->_queryObjects = array();
+      $this->_queryObjects = [];
       CRM_Utils_Hook::queryObjects($this->_queryObjects, 'Contact');
     }
     return $this->_queryObjects;
@@ -72,10 +57,27 @@ class CRM_Contact_BAO_Query_Hook {
    * @return array
    */
   public function &getFields() {
-    $extFields = array();
+    $extFields = [];
     foreach (self::getSearchQueryObjects() as $obj) {
       $flds = $obj->getFields();
       $extFields = array_merge($extFields, $flds);
+    }
+    return $extFields;
+  }
+
+  /**
+   * Get the fields that are available in the 'contact context'.
+   *
+   * For example exporting contacts should not include fields for grants etc.
+   *
+   * @return array
+   */
+  public function getContactFields(): array {
+    $extFields = [];
+    foreach ($this->getSearchQueryObjects() as $obj) {
+      // Get Fields is ambiguous about the
+      $fields = method_exists($obj, 'getContactFields') ? $obj->getContactFields() : $obj->getFields();
+      $extFields = array_merge($extFields, $fields);
     }
     return $extFields;
   }
@@ -162,6 +164,28 @@ class CRM_Contact_BAO_Query_Hook {
     foreach (self::getSearchQueryObjects() as $obj) {
       $obj->setAdvancedSearchPaneTemplatePath($paneTemplatePathArray, $type);
     }
+  }
+
+  /**
+   * This gives the opportunity for a single hook to return default fields.
+   *
+   * It only runs if no core components have defaults for this $mode.
+   * The expectation is that only one hook will handle this mode, so just
+   * the first one to return a value is used.
+   *
+   * @param $mode
+   * @return array|null
+   */
+  public function getDefaultReturnProperties($mode) {
+    foreach ($this->getSearchQueryObjects() as $obj) {
+      if (method_exists($obj, 'defaultReturnProperties')) {
+        $properties = $obj::defaultReturnProperties($mode);
+        if ($properties) {
+          return $properties;
+        }
+      }
+    }
+    return NULL;
   }
 
 }

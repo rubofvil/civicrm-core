@@ -1,36 +1,21 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 class CRM_Campaign_Page_Petition_ThankYou extends CRM_Core_Page {
+
   /**
    * Run page.
    *
@@ -40,15 +25,15 @@ class CRM_Campaign_Page_Petition_ThankYou extends CRM_Core_Page {
     $id = CRM_Utils_Request::retrieve('id', 'Positive', $this);
     $petition_id = CRM_Utils_Request::retrieve('pid', 'Positive', $this);
     $params['id'] = $petition_id;
-    $this->petition = array();
-    CRM_Campaign_BAO_Survey::retrieve($params, $this->petition);
-    $this->assign('petitionTitle', $this->petition['title']);
-    $this->assign('thankyou_title', CRM_Utils_Array::value('thankyou_title', $this->petition));
-    $this->assign('thankyou_text', CRM_Utils_Array::value('thankyou_text', $this->petition));
+    $petition = [];
+    CRM_Campaign_BAO_Survey::retrieve($params, $petition);
+    $this->assign('petitionTitle', $petition['title']);
+    $this->assign('thankyou_title', $petition['thankyou_title'] ?? NULL);
+    $this->assign('thankyou_text', $petition['thankyou_text'] ?? NULL);
     $this->assign('survey_id', $petition_id);
     $this->assign('status_id', $id);
-    $this->assign('is_share', CRM_Utils_Array::value('is_share', $this->petition));
-    CRM_Utils_System::setTitle(CRM_Utils_Array::value('thankyou_title', $this->petition));
+    $this->assign('is_share', $petition['is_share'] ?? NULL);
+    CRM_Utils_System::setTitle($petition['thankyou_title'] ?? NULL);
 
     // send thank you or email verification emails
     /*

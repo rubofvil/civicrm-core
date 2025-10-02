@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | Use of this source code is governed by the AGPL license with some  |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -31,131 +15,176 @@
  */
 class CRM_Contribute_Page_AjaxTest extends CiviUnitTestCase {
 
-  protected $_params = array();
-
-  public function setUp() {
+  /**
+   * Setup for test.
+   */
+  public function setUp(): void {
     parent::setUp();
-
-    $this->_fields = array('amount', 'sct_label');
-
-    $this->_params = array(
+    $this->_params = [
       'page' => 1,
       'rp' => 50,
       'offset' => 0,
       'rowCount' => 50,
       'sort' => NULL,
-      'is_unit_test' => TRUE,
-    );
-    $softContactParams = array(
+    ];
+    $softContactParams = [
       'first_name' => 'soft',
       'last_name' => 'Contact',
-    );
-    $this->_softContactId = $this->individualCreate($softContactParams);
+    ];
+    $this->ids['Contact']['SoftCredit'] = $this->individualCreate($softContactParams);
 
-    //create three sample contacts
-    foreach (array(0, 1, 2) as $seq) {
-      $this->_primaryContacts[] = $this->individualCreate(array(), $seq);
+    // Create three sample contacts.
+    foreach ([0, 1, 2] as $seq) {
+      $this->individualCreate([], 'individual_' . $seq);
     }
+    $_SERVER['HTTP_X_REQUESTED_WITH'] = 'XMLHttpRequest';
   }
 
   /**
-   * Test retrieve Soft Contribution through AJAX
+   * Cleanup after test.
    */
-  public function testGetSoftContributionSelector() {
-    $softTypes = array(3, 2, 5);
-    $amounts = array('100', '600', '150');
+  public function tearDown(): void {
+    $this->quickCleanUpFinancialEntities();
+    parent::tearDown();
+  }
 
-    // create sample soft contribution for contact
-    foreach ($this->_primaryContacts as $seq => $contactId) {
-      $this->callAPISuccess('Contribution', 'create', array(
-        'contact_id' => $contactId,
-        'receive_date' => date('Ymd'),
-        'total_amount' => $amounts[$seq],
-        'financial_type_id' => 1,
-        'non_deductible_amount' => '10',
-        'contribution_status_id' => 1,
-        'soft_credit' => array(
-          '1' => array(
-            'contact_id' => $this->_softContactId,
-            'amount' => $amounts[$seq],
-            'soft_credit_type_id' => $softTypes[$seq],
-          ),
-        ),
-      ));
-    }
+  /**
+   * Test retrieve Soft Contribution through AJAX.
+   */
+  public function testGetSoftContributionSelector(): void {
+    $softCreditList = $amountSortedList = $softTypeSortedList = [];
+    $this->createThreeSoftCredits();
 
     $_GET = array_merge($this->_params,
-      array(
-        'cid' => $this->_softContactId,
+      [
+        'cid' => $this->ids['Contact']['SoftCredit'],
         'context' => 'contribution',
-      )
+      ]
     );
-    $softCreditList = CRM_Contribute_Page_AJAX::getSoftContributionRows();
-
-    foreach ($this->_fields as $columnName) {
-      $_GET['columns'][] = array(
-        'data' => $columnName,
-      );
+    try {
+      CRM_Contribute_Page_AJAX::getSoftContributionRows();
     }
+    catch (CRM_Core_Exception_PrematureExitException $e) {
+      $softCreditList = $e->errorData;
+    }
+
+    $_GET['columns'] = [['data' => 'amount'], ['data' => 'sct_label']];
     // get the results in descending order
-    $_GET['order'] = array(
-      '0' => array(
+    $_GET['order'] = [
+      '0' => [
         'column' => 0,
         'dir' => 'desc',
-      ),
-    );
-    $amountSortedList = CRM_Contribute_Page_AJAX::getSoftContributionRows();
+      ],
+    ];
+    try {
+      CRM_Contribute_Page_AJAX::getSoftContributionRows();
+    }
+    catch (CRM_Core_Exception_PrematureExitException $e) {
+      $amountSortedList = $e->errorData;
+    }
 
     $this->assertEquals(3, $softCreditList['recordsTotal']);
     $this->assertEquals(3, $amountSortedList['recordsTotal']);
-    rsort($amounts);
-    foreach ($amounts as $key => $amount) {
-      $amount = CRM_Utils_Money::format($amount, 'USD');
-      $this->assertEquals($amount, $amountSortedList['data'][$key]['amount']);
-    }
+
+    $this->assertEquals('$600.00', $amountSortedList['data'][0]['amount']);
+    $this->assertEquals('$150.00', $amountSortedList['data'][1]['amount']);
+    $this->assertEquals('$100.00', $amountSortedList['data'][2]['amount']);
 
     // sort with soft credit types
     $_GET['order'][0]['column'] = 1;
-    foreach ($softTypes as $id) {
-      $softLabels[] = CRM_Core_PseudoConstant::getLabel('CRM_Contribute_BAO_ContributionSoft', 'soft_credit_type_id', $id);
+    try {
+      CRM_Contribute_Page_AJAX::getSoftContributionRows();
     }
-    rsort($softLabels);
-    $softTypeSortedList = CRM_Contribute_Page_AJAX::getSoftContributionRows();
-    foreach ($softLabels as $key => $labels) {
-      $this->assertEquals($labels, $softTypeSortedList['data'][$key]['sct_label']);
+    catch (CRM_Core_Exception_PrematureExitException $e) {
+      $softTypeSortedList = $e->errorData;
     }
+
+    $this->assertEquals('Workplace Giving', $softTypeSortedList['data'][0]['sct_label']);
+    $this->assertEquals('Solicited', $softTypeSortedList['data'][1]['sct_label']);
+    $this->assertEquals('In Memory of', $softTypeSortedList['data'][2]['sct_label']);
   }
 
   /**
-   * Test retrieve Soft Contribution For Membership
+   * Test retrieve Soft Contribution For Membership.
    */
-  public function testGetSoftContributionForMembership() {
-    //Check soft credit for membership
-    $memParams = array(
-      'contribution_contact_id' => $this->_primaryContacts[0],
-      'contact_id' => $this->_softContactId,
+  public function testGetSoftContributionForMembership(): void {
+    $softCreditList = [];
+    $this->createThreeSoftCredits();
+    // Check soft credit for membership.
+    $membershipParams = [
+      'contribution_contact_id' => $this->ids['Contact']['individual_0'],
+      'contact_id' => $this->ids['Contact']['SoftCredit'],
       'contribution_status_id' => 1,
       'financial_type_id' => 2,
       'status_id' => 1,
       'total_amount' => 100,
-      'soft_credit' => array(
+      'receive_date' => '2018-06-08',
+      'soft_credit' => [
         'soft_credit_type_id' => 11,
-        'contact_id' => $this->_softContactId,
-      ),
-    );
+        'contact_id' => $this->ids['Contact']['SoftCredit'],
+      ],
+    ];
+    $membershipID = $this->contactMembershipCreate($membershipParams);
     $_GET = array_merge($this->_params,
-      array(
-        'cid' => $this->_softContactId,
+      [
+        'cid' => $this->ids['Contact']['SoftCredit'],
         'context' => 'membership',
-        'entityID' => $this->contactMembershipCreate($memParams),
-      )
+        'entityID' => $membershipID,
+      ]
     );
 
-    $softCreditList = CRM_Contribute_Page_AJAX::getSoftContributionRows();
+    try {
+      CRM_Contribute_Page_AJAX::getSoftContributionRows();
+    }
+    catch (CRM_Core_Exception_PrematureExitException $e) {
+      $softCreditList = $e->errorData;
+    }
     $this->assertEquals(1, $softCreditList['recordsTotal']);
     $this->assertEquals('Gift', $softCreditList['data'][0]['sct_label']);
-    $this->assertEquals('$ 100.00', $softCreditList['data'][0]['amount']);
+    $this->assertEquals('$100.00', $softCreditList['data'][0]['amount']);
     $this->assertEquals('Member Dues', $softCreditList['data'][0]['financial_type']);
+  }
+
+  /**
+   * Create three soft credits against different contacts.
+   */
+  private function createThreeSoftCredits(): void {
+    $credits = [
+      [
+        'contact_id' => $this->ids['Contact']['individual_0'],
+        'soft_credit_type_id' => 3,
+        'amount' => 100,
+      ],
+      [
+        'contact_id' => $this->ids['Contact']['individual_1'],
+        'soft_credit_type_id' => 2,
+        'amount' => 600,
+      ],
+      [
+        'contact_id' => $this->ids['Contact']['individual_2'],
+        'soft_credit_type_id' => 5,
+        'amount' => 150,
+      ],
+    ];
+    // Create sample soft contribution for contact.
+    foreach ($credits as $index => $credit) {
+      $this->callAPISuccess('Contribution', 'create', [
+        'contact_id' => $credit['contact_id'],
+        // The assumption is the last to be created will have a later time.
+        'receive_date' => ' + ' . $index . ' minutes',
+        'total_amount' => $credit['amount'],
+        'financial_type_id' => 1,
+        'non_deductible_amount' => '10',
+        'contribution_status_id' => 1,
+        'soft_credit' => [
+          '1' => [
+            'contact_id' => $this->ids['Contact']['SoftCredit'],
+            'amount' => $credit['amount'],
+            'soft_credit_type_id' => $credit['soft_credit_type_id'],
+          ],
+        ],
+      ]);
+    }
   }
 
 }

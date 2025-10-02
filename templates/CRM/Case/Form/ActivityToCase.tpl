@@ -1,26 +1,10 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 {* CiviCase - assign activity to case form *}
@@ -60,7 +44,7 @@
     }
 
     var dataUrl = {/literal}"{crmURL p='civicrm/case/addToCase' q='reset=1' h=0}"{literal};
-    dataUrl += '&activityId=' + activityID + '&caseId=' + currentCaseId + '&cid=' + {/literal}"{$contactID}"{literal};
+    dataUrl += '&activityId=' + activityID + '&caseId=' + currentCaseId + '&cid=' + {/literal}"{if !empty($contactID)}{$contactID}{/if}"{literal} + '&fileOnCaseAction=' + action;
 
     function save() {
       if (!$("#file_on_case_unclosed_case_id").val()) {
@@ -75,13 +59,13 @@
         subject = $("#file_on_case_activity_subject").val(),
         targetContactId = $("#file_on_case_target_contact_id").val();
 
-      var postUrl = {/literal}"{crmURL p='civicrm/ajax/activity/convert' h=0 }"{literal};
+      var postUrl = {/literal}"{crmURL p='civicrm/ajax/activity/convert' h=0}"{literal};
       $.post( postUrl, { activityID: activityID, caseID: selectedCaseId, contactID: contactId, newSubject: subject, targetContactIds: targetContactId, mode: action, key: {/literal}"{crmKey name='civicrm/ajax/activity/convert'}"{literal} },
         function( values ) {
           if ( values.error_msg ) {
             $().crmError(values.error_msg, "{/literal}{ts escape='js'}Unable to file on case.{/ts}{literal}");
           } else {
-            var destUrl = {/literal}"{crmURL p='civicrm/contact/view/case' q='reset=1&action=view&id=' h=0 }"{literal};
+            var destUrl = {/literal}"{crmURL p='civicrm/contact/view/case' q='reset=1&action=view&id=' h=0}"{literal};
             var context = '';
             {/literal}{if !empty($fulltext)}{literal}
             context = '&context={/literal}{$fulltext}{literal}';
@@ -89,7 +73,7 @@
             var caseUrl = destUrl + selectedCaseId + '&cid=' + contactId + context;
 
             var statusMsg = {/literal}'{ts escape='js' 1='%1'}Activity has been filed to %1 case.{/ts}'{literal};
-            CRM.alert(ts(statusMsg, {1: '<a href="' + caseUrl + '">' + caseTitle + '</a>'}), '{/literal}{ts escape="js"}Saved{/ts}{literal}', 'success');
+            CRM.alert(ts(statusMsg, {1: '<a href="' + caseUrl + '">' + CRM._.escape(caseTitle) + '</a>'}), '{/literal}{ts escape="js"}Saved{/ts}{literal}', 'success', {expires: 10000});
             CRM.refreshParent(a);
           }
         }

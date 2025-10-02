@@ -1,30 +1,14 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 <div class="messages status no-popup">
-  <div class="icon inform-icon"></div>
+  {icon icon="fa-info-circle"}{/icon}
       {include file="CRM/Contribute/Form/Task.tpl"}
 </div>
 <div class="help">
@@ -35,14 +19,15 @@
   <tr>
     <td>{$form.output.email_receipt.html}</td>
   </tr>
-  <tr id="selectEmailFrom" style="display: none">
-    <td>{$form.fromEmailAddress.label}: {$form.fromEmailAddress.html}</td>
+  <tr id="selectEmailFrom" style="display: none" class="crm-contactEmail-form-block-fromEmailAddress crm-email-element">
+    <td class="label">{$form.from_email_address.label}</td>
+    <td>{$form.from_email_address.html}  {help id="from_email_address" file="CRM/Contact/Form/Task/Help/Email/id-from_email.hlp"}</td>
   </tr>
   <tr>
     <td>{$form.output.pdf_receipt.html}</td>
   </tr>
   <tr id="selectPdfFormat" style="display: none;">
-    <td>{$form.pdf_format_id.html} {$form.pdf_format_id.label} {help id="id-contribution-receipt" file="CRM/Contact/Form/Task/PDFLetterCommon.hlp"}</td>
+    <td>{$form.pdf_format_id.html} {$form.pdf_format_id.label} {help id="pdf_format_id" file="CRM/Contact/Form/Task/PDFLetterCommon.hlp"}</td>
   </tr>
   <tr>
     <td>{$form.receipt_update.html} {$form.receipt_update.label}</td>

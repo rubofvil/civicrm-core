@@ -1,36 +1,19 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  * @copyright David Strauss <david@fourkitchens.com> (c) 2007
- * $Id$
  *
  * (Note: This has been considerably rewritten; the interface is preserved
  * for backward compatibility.)
@@ -44,7 +27,7 @@
  *
  * Examples:
  *
- * @code
+ * ```
  * // Some business logic using the helper functions
  * function my_business_logic() {
  *   CRM_Core_Transaction::create()->run(function($tx) {
@@ -76,7 +59,7 @@
  *   }
  * }
  *
- * @endcode
+ * ```
  *
  * Note: As of 4.6, the transaction manager supports both reference-counting and nested
  * transactions (SAVEPOINTs). In the past, it only supported reference-counting. The two cases
@@ -95,6 +78,7 @@ class CRM_Core_Transaction {
   /**
    * Whether commit() has been called on this instance
    * of CRM_Core_Transaction
+   * @var bool
    */
   private $_pseudoCommitted = FALSE;
 
@@ -147,7 +131,7 @@ class CRM_Core_Transaction {
   /**
    * @param $flag
    */
-  static public function rollbackIfFalse($flag) {
+  public static function rollbackIfFalse($flag) {
     $frame = \Civi\Core\Transaction\Manager::singleton()->getFrame();
     if ($flag === FALSE && $frame !== NULL) {
       $frame->setRollbackOnly();
@@ -175,8 +159,8 @@ class CRM_Core_Transaction {
    * After calling run(), the CRM_Core_Transaction object is "used up"; do not
    * use it again.
    *
-   * @param string $callable
-   *   Should exception one parameter (CRM_Core_Transaction $tx).
+   * @param callable $callable
+   *   Should expect one parameter (CRM_Core_Transaction).
    * @return CRM_Core_Transaction
    * @throws Exception
    */
@@ -203,7 +187,7 @@ class CRM_Core_Transaction {
    * callstack will not wind-down normally -- e.g. before
    * a call to exit().
    */
-  static public function forceRollbackIfEnabled() {
+  public static function forceRollbackIfEnabled() {
     if (\Civi\Core\Transaction\Manager::singleton()->getFrame() !== NULL) {
       \Civi\Core\Transaction\Manager::singleton()->forceRollback();
     }
@@ -212,7 +196,7 @@ class CRM_Core_Transaction {
   /**
    * @return bool
    */
-  static public function willCommit() {
+  public static function willCommit() {
     $frame = \Civi\Core\Transaction\Manager::singleton()->getFrame();
     return ($frame === NULL) ? TRUE : !$frame->isRollbackOnly();
   }
@@ -220,7 +204,7 @@ class CRM_Core_Transaction {
   /**
    * Determine whether there is a pending transaction.
    */
-  static public function isActive() {
+  public static function isActive() {
     $frame = \Civi\Core\Transaction\Manager::singleton()->getFrame();
     return ($frame !== NULL);
   }
@@ -239,16 +223,36 @@ class CRM_Core_Transaction {
    *
    * @param int $phase
    *   A constant; one of: self::PHASE_{PRE,POST}_{COMMIT,ROLLBACK}.
-   * @param string $callback
+   * @param callable $callback
    *   A PHP callback.
    * @param mixed $params
    *   Optional values to pass to callback.
    *          See php manual call_user_func_array for details.
-   * @param int $id
+   * @param string|int|null $id
    */
-  static public function addCallback($phase, $callback, $params = NULL, $id = NULL) {
+  public static function addCallback($phase, $callback, $params = NULL, $id = NULL) {
     $frame = \Civi\Core\Transaction\Manager::singleton()->getBaseFrame();
     $frame->addCallback($phase, $callback, $params, $id);
+  }
+
+  /**
+   * Whenever hook_civicrm_post fires, schedule an equivalent
+   * call to hook_civicrm_postCommit.
+   *
+   * @param \Civi\Core\Event\PostEvent $e
+   * @see CRM_Utils_Hook::post
+   */
+  public static function addPostCommit($e) {
+    // Do we want to dedupe post-commit hooks for the same txn? Setting an ID
+    // would allow this.
+    // $id = $e->entity . chr(0) . $e->action . chr(0) . $e->id;
+    $frame = \Civi\Core\Transaction\Manager::singleton()->getBaseFrame();
+    if ($frame) {
+      $frame->addCallback(self::PHASE_POST_COMMIT, ['CRM_Utils_Hook', 'postCommit'], [$e->action, $e->entity, $e->id, $e->object]);
+    }
+    else {
+      \CRM_Utils_Hook::postCommit($e->action, $e->entity, $e->id, $e->object);
+    }
   }
 
 }

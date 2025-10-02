@@ -1,42 +1,25 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
- * $Id$
- *
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
  * Helper authentication class for unit tests
  */
 class CRM_Utils_System_UnitTests extends CRM_Utils_System_Base {
+
   /**
    */
   public function __construct() {
@@ -44,26 +27,79 @@ class CRM_Utils_System_UnitTests extends CRM_Utils_System_Base {
     $this->supports_form_extensions = FALSE;
   }
 
+  public function initialize() {
+    parent::initialize();
+    $test = $GLOBALS['CIVICRM_TEST_CASE'] ?? NULL;
+    if ($test && $test instanceof \Civi\Test\HeadlessInterface) {
+      $listenerMap = \Civi\Core\Event\EventScanner::findListeners($test);
+      \Civi::dispatcher()->addListenerMap($test, $listenerMap);
+    }
+    \Civi\Test::eventChecker()->addListeners();
+  }
+
+  /**
+   * @internal
+   * @return bool
+   */
+  public function isLoaded(): bool {
+    return TRUE;
+  }
+
+  /**
+   * Send an HTTP Response base on PSR HTTP RespnseInterface response.
+   *
+   * @param \Psr\Http\Message\ResponseInterface $response
+   */
+  public function sendResponse(\Psr\Http\Message\ResponseInterface $response) {
+    // We'll if the simple version passes. If not, then we might need to enable `setHttpHeader()`.
+    // foreach ($response->getHeaders() as $name => $values) {
+    //   CRM_Utils_System::setHttpHeader($name, implode(', ', (array) $values));
+    // }
+    CRM_Utils_System::civiExit(0, ['response' => $response]);
+  }
+
+  /**
+   * @param string $name
+   * @param string $value
+   */
+  public function setHttpHeader($name, $value) {
+    Civi::$statics[__CLASS__]['header'][] = ("$name: $value");
+  }
+
   /**
    * @inheritDoc
    */
   public function authenticate($name, $password, $loadCMSBootstrap = FALSE, $realPath = NULL) {
-    $retVal = array(1, 1, 12345);
+    $retVal = [1, 1, 12345];
     return $retVal;
   }
 
   /**
    * Bootstrap the phony CMS.
-   *
-   * @param string $name
-   *   Optional username for login.
-   * @param string $pass
-   *   Optional password for login.
-   *
-   * @return bool
    */
-  public function loadBootStrap($name = NULL, $pass = NULL) {
+  public function loadBootStrap($params = [], $loadUser = TRUE, $throwError = TRUE, $realPath = NULL) {
     return TRUE;
+  }
+
+  public function cmsRootPath() {
+    // There's no particularly sensible value here. We just want to avoid crashes in some tests.
+    return sys_get_temp_dir() . '/UnitTests';
+  }
+
+  /**
+   * @inheritdoc
+   */
+  public function getCiviSourceStorage(): array {
+    global $civicrm_root;
+
+    if (!defined('CIVICRM_UF_BASEURL')) {
+      throw new RuntimeException('Undefined constant: CIVICRM_UF_BASEURL');
+    }
+
+    return [
+      'url' => CRM_Utils_File::addTrailingSlash('', '/'),
+      'path' => CRM_Utils_File::addTrailingSlash($civicrm_root),
+    ];
   }
 
   /**
@@ -71,7 +107,7 @@ class CRM_Utils_System_UnitTests extends CRM_Utils_System_Base {
    */
   public function mapConfigToSSL() {
     global $base_url;
-    $base_url = str_replace('http://', 'https://', $base_url);
+    $base_url = str_replace('http://', 'https://', (string) $base_url);
   }
 
   /**
@@ -89,7 +125,6 @@ class CRM_Utils_System_UnitTests extends CRM_Utils_System_Base {
     $query = NULL,
     $absolute = FALSE,
     $fragment = NULL,
-    $htmlize = TRUE,
     $frontend = FALSE,
     $forceBackend = FALSE
   ) {
@@ -106,19 +141,17 @@ class CRM_Utils_System_UnitTests extends CRM_Utils_System_Base {
     }
     $base = $absolute ? $config->userFrameworkBaseURL : $config->useFrameworkRelativeBase;
 
-    $separator = $htmlize ? '&amp;' : '&';
-
     if (!$config->cleanURL) {
-      if (isset($path)) {
-        if (isset($query)) {
-          return $base . $script . '?q=' . $path . $separator . $query . $fragment;
+      if ($path !== NULL && $path !== '' && $path !== FALSE) {
+        if ($query !== NULL && $query !== '' && $query !== FALSE) {
+          return $base . $script . '?q=' . $path . '&' . $query . $fragment;
         }
         else {
           return $base . $script . '?q=' . $path . $fragment;
         }
       }
       else {
-        if (isset($query)) {
+        if ($query !== NULL && $query !== '' && $query !== FALSE) {
           return $base . $script . '?' . $query . $fragment;
         }
         else {
@@ -170,6 +203,19 @@ class CRM_Utils_System_UnitTests extends CRM_Utils_System_Base {
    */
   public function getLoginURL($destination = '') {
     throw new Exception("Method not implemented: getLoginURL");
+  }
+
+  /**
+   * @inheritdoc
+   */
+  public function mailingWorkflowIsEnabled():bool {
+    $enableWorkflow = Civi::settings()->get('civimail_workflow');
+    return (bool) $enableWorkflow;
+  }
+
+  public function ipAddress(): ?string {
+    // Placeholder address for unit testing
+    return '127.0.0.1';
   }
 
 }

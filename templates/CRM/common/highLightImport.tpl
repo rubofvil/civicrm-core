@@ -1,37 +1,22 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 {* Highlight the required field during import (included within a <script>)*}
 {literal}
 CRM.$(function($) {
-  var highlightedFields = ["{/literal}{'","'|implode:$highlightedFields}{literal}"];
+  var highlightedFields = {/literal}{$highlightedFields}{literal};
   $.each(highlightedFields, function() {
+    // This addition of color by css appears to have stopped working along the way although the append works.
     $('select[id^="mapper"][id$="_0"] option[value='+ this + ']').append(' *').css({"color":"#FF0000"});
   });
-  {/literal}{if $relationship}{literal}
-  var highlightedRelFields = {/literal}{$highlightedRelFields|@json_encode}{literal};
+  {/literal}{if $highlightedRelFields}{literal}
+  var highlightedRelFields = {/literal}{$highlightedRelFields}{literal};
   function highlight() {
     var select, fields = highlightedRelFields[$(this).val()];
     if (fields) {

@@ -6,37 +6,44 @@ require_once 'CRM/Core/Page.php';
  * An example page which queues several tasks and then executes them
  */
 class CRM_Demoqueue_Page_DemoQueue extends CRM_Core_Page {
-  const QUEUE_NAME = 'demo-queue';
 
   function run() {
-    $queue = CRM_Queue_Service::singleton()->create(array(
+    $queueName = 'demoqueue_' . time();
+
+    $queue = Civi::queue($queueName, [
       'type' => 'Sql',
-      'name' => self::QUEUE_NAME,
-      'reset' => TRUE,
-    ));
+      'runner' => 'task',
+      'error' => 'abort',
+    ]);
 
     for ($i = 0; $i < 5; $i++) {
       $queue->createItem(new CRM_Queue_Task(
-        array('CRM_Demoqueue_Page_DemoQueue', 'doMyWork'), // callback
-        array($i, "Task $i takes $i second(s)"), // arguments
+        ['CRM_Demoqueue_Page_DemoQueue', 'doMyWork'], // callback
+        [$i, "Task $i takes $i second(s)"], // arguments
         "Task $i" // title
       ));
       if ($i == 2) {
         $queue->createItem(new CRM_Queue_Task(
-          array('CRM_Demoqueue_Page_DemoQueue', 'addMoreWork'), // callback
-          array(), // arguments
+          ['CRM_Demoqueue_Page_DemoQueue', 'addMoreWork'], // callback
+          [], // arguments
           "Add More Work" // title
         ));
       }
     }
 
-    $runner = new CRM_Queue_Runner(array(
+    \Civi\Api4\UserJob::create()->setValues([
+      'job_type' => 'contact_import',
+      'status_id:name' => 'in_progress',
+      'queue_id.name' => $queue->getName(),
+    ])->execute();
+
+    $runner = new CRM_Queue_Runner([
       'title' => ts('Demo Queue Runner'),
       'queue' => $queue,
-      'onEnd' => array('CRM_Demoqueue_Page_DemoQueue', 'onEnd'),
+      // Deprecated; only works on AJAX runner // 'onEnd' => ['CRM_Demoqueue_Page_DemoQueue', 'onEnd'],
       'onEndUrl' => CRM_Utils_System::url('civicrm/demo-queue/done'),
-    ));
-    $runner->runAllViaWeb(); // does not return
+    ]);
+    $runner->runAllInteractive(); // does not return
   }
 
   /**
@@ -65,12 +72,12 @@ class CRM_Demoqueue_Page_DemoQueue extends CRM_Core_Page {
     sleep(1);
     for ($i = 0; $i < 5; $i++) {
       $ctx->queue->createItem(new CRM_Queue_Task(
-        array('CRM_Demoqueue_Page_DemoQueue', 'doMyWork'), // callback
-        array($i, "Extra task $i takes $i second(s)"), // arguments
+        ['CRM_Demoqueue_Page_DemoQueue', 'doMyWork'], // callback
+        [$i, "Extra task $i takes $i second(s)"], // arguments
         "Extra Task $i" // title
-      ), array(
+      ), [
         'weight' => -1,
-      ));
+      ]);
     }
     return TRUE; // success
   }

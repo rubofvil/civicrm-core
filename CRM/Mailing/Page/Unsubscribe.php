@@ -1,36 +1,20 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
-class CRM_Mailing_Page_Unsubscribe extends CRM_Mailing_Page_Common {
+class CRM_Mailing_Page_Unsubscribe extends CRM_Core_Page {
 
   /**
    * Run page.
@@ -41,8 +25,40 @@ class CRM_Mailing_Page_Unsubscribe extends CRM_Mailing_Page_Common {
    * @throws Exception
    */
   public function run() {
-    $this->_type = 'unsubscribe';
-    return parent::run();
+    $isOneClick = ($_SERVER['REQUEST_METHOD'] === 'POST' && CRM_Utils_Request::retrieve('List-Unsubscribe', 'String') === 'One-Click');
+    if ($isOneClick) {
+      $this->handleOneClick();
+      return NULL;
+    }
+
+    $wrapper = new CRM_Utils_Wrapper();
+    return $wrapper->run('CRM_Mailing_Form_Unsubscribe', $this->_title);
+  }
+
+  /**
+   *
+   * Pre-condition: Validated the _job_id, _queue_id, _hash.
+   * Post-condition: Unsubscribed
+   *
+   * @link https://datatracker.ietf.org/doc/html/rfc8058
+   * @return void
+   */
+  public function handleOneClick(): void {
+    $jobId = CRM_Utils_Request::retrieve('jid', 'Integer');
+    $queueId = CRM_Utils_Request::retrieve('qid', 'Integer');
+    $hash = CRM_Utils_Request::retrieve('h', 'String');
+
+    $q = CRM_Mailing_Event_BAO_MailingEventQueue::verify(NULL, $queueId, $hash);
+    if (!$q) {
+      CRM_Utils_System::sendInvalidRequestResponse(ts("Invalid request: bad parameters"));
+    }
+
+    $groups = CRM_Mailing_Event_BAO_MailingEventUnsubscribe::unsub_from_mailing(NULL, $queueId, $hash);
+    if (!empty($groups)) {
+      CRM_Mailing_Event_BAO_MailingEventUnsubscribe::send_unsub_response($queueId, $groups, FALSE, $jobId);
+    }
+
+    CRM_Utils_System::sendOkRequestResponse();
   }
 
 }

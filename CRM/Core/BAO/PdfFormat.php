@@ -1,35 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright (C) 2011 Marty Wright                                    |
- | Licensed to CiviCRM under the Academic Free License version 3.0.   |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -39,58 +22,60 @@ class CRM_Core_BAO_PdfFormat extends CRM_Core_DAO_OptionValue {
 
   /**
    * Static holder for the PDF Page Formats Option Group ID.
+   * @var int
    */
   private static $_gid = NULL;
 
   /**
    * PDF Page Format fields stored in the 'value' field of the Option Value table.
+   * @var array
    */
-  private static $optionValueFields = array(
-    'paper_size' => array(
+  private static $optionValueFields = [
+    'paper_size' => [
       'name' => 'paper_size',
       'type' => CRM_Utils_Type::T_STRING,
       'default' => 'letter',
-    ),
-    'stationery' => array(
+    ],
+    'stationery' => [
       'name' => 'stationery',
       'type' => CRM_Utils_Type::T_STRING,
       'default' => '',
-    ),
-    'orientation' => array(
+    ],
+    'orientation' => [
       'name' => 'orientation',
       'type' => CRM_Utils_Type::T_STRING,
       'default' => 'portrait',
-    ),
-    'metric' => array(
+    ],
+    'metric' => [
       'name' => 'metric',
       'type' => CRM_Utils_Type::T_STRING,
       'default' => 'in',
-    ),
-    'margin_top' => array(
+    ],
+    'margin_top' => [
       'name' => 'margin_top',
       'type' => CRM_Utils_Type::T_FLOAT,
       'metric' => TRUE,
       'default' => 0.75,
-    ),
-    'margin_bottom' => array(
+    ],
+    'margin_bottom' => [
       'name' => 'margin_bottom',
       'type' => CRM_Utils_Type::T_FLOAT,
       'metric' => TRUE,
       'default' => 0.75,
-    ),
-    'margin_left' => array(
+    ],
+    'margin_left' => [
       'name' => 'margin_left',
       'type' => CRM_Utils_Type::T_FLOAT,
       'metric' => TRUE,
       'default' => 0.75,
-    ),
-    'margin_right' => array(
+    ],
+    'margin_right' => [
       'name' => 'margin_right',
       'type' => CRM_Utils_Type::T_FLOAT,
       'metric' => TRUE,
       'default' => 0.75,
-    ),
-  );
+    ],
+  ];
 
   /**
    * Get page orientations recognized by the DOMPDF package used to create PDF letters.
@@ -99,10 +84,10 @@ class CRM_Core_BAO_PdfFormat extends CRM_Core_DAO_OptionValue {
    *   array of page orientations
    */
   public static function getPageOrientations() {
-    return array(
+    return [
       'portrait' => ts('Portrait'),
       'landscape' => ts('Landscape'),
-    );
+    ];
   }
 
   /**
@@ -111,13 +96,8 @@ class CRM_Core_BAO_PdfFormat extends CRM_Core_DAO_OptionValue {
    * @return array
    *   array of measurement units
    */
-  public static function getUnits() {
-    return array(
-      'in' => ts('Inches'),
-      'cm' => ts('Centimeters'),
-      'mm' => ts('Millimeters'),
-      'pt' => ts('Points'),
-    );
+  public static function getUnits(): array {
+    return CRM_Core_SelectValues::getLayoutUnits();
   }
 
   /**
@@ -125,12 +105,13 @@ class CRM_Core_BAO_PdfFormat extends CRM_Core_DAO_OptionValue {
    *
    * @return int
    *   Group ID (null if Group ID doesn't exist)
+   * @throws CRM_Core_Exception
    */
   private static function _getGid() {
     if (!self::$_gid) {
       self::$_gid = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_OptionGroup', 'pdf_format', 'id', 'name');
       if (!self::$_gid) {
-        CRM_Core_Error::fatal(ts('PDF Format Option Group not found in database.'));
+        throw new CRM_Core_Exception(ts('PDF Format Option Group not found in database.'));
       }
     }
     return self::$_gid;
@@ -139,7 +120,7 @@ class CRM_Core_BAO_PdfFormat extends CRM_Core_DAO_OptionValue {
   /**
    * Add ordering fields to Page Format list.
    *
-   * @param array (reference) $list List of PDF Page Formats
+   * @param array $list List of PDF Page Formats
    * @param string $returnURL
    *   URL of page calling this function.
    */
@@ -158,7 +139,7 @@ class CRM_Core_BAO_PdfFormat extends CRM_Core_DAO_OptionValue {
    *   (reference)   PDF Page Format list
    */
   public static function &getList($namesOnly = FALSE) {
-    static $list = array();
+    static $list = [];
     if (self::_getGid()) {
       // get saved PDF Page Formats from Option Value table
       $dao = new CRM_Core_DAO_OptionValue();
@@ -185,13 +166,13 @@ class CRM_Core_BAO_PdfFormat extends CRM_Core_DAO_OptionValue {
    *   Name/value pairs containing the default PDF Page Format values.
    */
   public static function &getDefaultValues() {
-    $params = array('is_active' => 1, 'is_default' => 1);
-    $defaults = array();
+    $params = ['is_active' => 1, 'is_default' => 1];
+    $defaults = [];
     if (!self::retrieve($params, $defaults)) {
       foreach (self::$optionValueFields as $name => $field) {
         $defaults[$name] = $field['default'];
       }
-      $filter = array('option_group_id' => self::_getGid());
+      $filter = ['option_group_id' => self::_getGid()];
       $defaults['weight'] = CRM_Utils_Weight::getDefaultWeight('CRM_Core_DAO_OptionValue', $filter);
 
       // also set the id to avoid NOTICES, CRM-8454
@@ -212,8 +193,8 @@ class CRM_Core_BAO_PdfFormat extends CRM_Core_DAO_OptionValue {
    *   (reference) associative array of name/value pairs
    */
   public static function &getPdfFormat($field, $val) {
-    $params = array('is_active' => 1, $field => $val);
-    $pdfFormat = array();
+    $params = ['is_active' => 1, $field => $val];
+    $pdfFormat = [];
     if (self::retrieve($params, $pdfFormat)) {
       return $pdfFormat;
     }
@@ -232,6 +213,7 @@ class CRM_Core_BAO_PdfFormat extends CRM_Core_DAO_OptionValue {
    *   (reference) associative array of name/value pairs
    */
   public static function &getByName($name) {
+    CRM_Core_Error::deprecatedFunctionWarning('none');
     return self::getPdfFormat('name', $name);
   }
 
@@ -253,18 +235,18 @@ class CRM_Core_BAO_PdfFormat extends CRM_Core_DAO_OptionValue {
    *
    * @param string $field
    *   Name of a PDF Page Format field.
-   * @param array (reference) $values associative array of name/value pairs containing
+   * @param array $values associative array of name/value pairs containing
    *                                           PDF Page Format field selections
    *
    * @param null $default
    *
-   * @return value
+   * @return mixed
    */
-  public static function getValue($field, &$values, $default = NULL) {
+  public static function getValue($field, $values, $default = NULL) {
     if (array_key_exists($field, self::$optionValueFields)) {
       switch (self::$optionValueFields[$field]['type']) {
         case CRM_Utils_Type::T_INT:
-          return (int) CRM_Utils_Array::value($field, $values, $default);
+          return (int) ($values[$field] ?? $default);
 
         case CRM_Utils_Type::T_FLOAT:
           // Round float values to three decimal places and trim trailing zeros.
@@ -274,7 +256,7 @@ class CRM_Core_BAO_PdfFormat extends CRM_Core_DAO_OptionValue {
           $f = rtrim($f, '.');
           return (float) (empty($f) ? '0' : $f);
       }
-      return CRM_Utils_Array::value($field, $values, $default);
+      return $values[$field] ?? $default;
     }
     return $default;
   }
@@ -323,8 +305,9 @@ class CRM_Core_BAO_PdfFormat extends CRM_Core_DAO_OptionValue {
    * @param array $values associative array of name/value pairs
    * @param int $id
    *   Id of the database record (null = new record).
+   * @throws CRM_Core_Exception
    */
-  public function savePdfFormat(&$values, $id = NULL) {
+  public function savePdfFormat($values, $id = NULL) {
     // get the Option Group ID for PDF Page Formats (create one if it doesn't exist)
     $group_id = self::_getGid();
 
@@ -342,7 +325,7 @@ class CRM_Core_BAO_PdfFormat extends CRM_Core_DAO_OptionValue {
     }
     // copy the supplied form values to the corresponding Option Value fields in the base class
     foreach ($this->fields() as $name => $field) {
-      $this->$name = trim(CRM_Utils_Array::value($name, $values, $this->$name));
+      $this->$name = trim($values[$name] ?? $this->$name);
       if (empty($this->$name)) {
         $this->$name = 'null';
       }
@@ -355,19 +338,19 @@ class CRM_Core_BAO_PdfFormat extends CRM_Core_DAO_OptionValue {
     // serialize PDF Page Format fields into a single string to store in the 'value' column of the Option Value table
     $v = json_decode($this->value, TRUE);
     foreach (self::$optionValueFields as $name => $field) {
-      $v[$name] = self::getValue($name, $values, CRM_Utils_Array::value($name, $v));
+      $v[$name] = self::getValue($name, $values, $v[$name] ?? NULL);
     }
     $this->value = json_encode($v);
 
     // make sure serialized array will fit in the 'value' column
     $attribute = CRM_Core_DAO::getAttribute('CRM_Core_BAO_PdfFormat', 'value');
     if (strlen($this->value) > $attribute['maxlength']) {
-      CRM_Core_Error::fatal(ts('PDF Page Format does not fit in database.'));
+      throw new CRM_Core_Exception(ts('PDF Page Format does not fit in database.'));
     }
     $this->save();
 
     // fix duplicate weights
-    $filter = array('option_group_id' => self::_getGid());
+    $filter = ['option_group_id' => self::_getGid()];
     CRM_Utils_Weight::correctDuplicateWeights('CRM_Core_DAO_OptionValue', $filter);
   }
 
@@ -376,7 +359,7 @@ class CRM_Core_BAO_PdfFormat extends CRM_Core_DAO_OptionValue {
    *
    * @param int $id
    *   ID of the PDF Page Format to be deleted.
-   *
+   * @throws CRM_Core_Exception
    */
   public static function del($id) {
     if ($id) {
@@ -384,14 +367,14 @@ class CRM_Core_BAO_PdfFormat extends CRM_Core_DAO_OptionValue {
       $dao->id = $id;
       if ($dao->find(TRUE)) {
         if ($dao->option_group_id == self::_getGid()) {
-          $filter = array('option_group_id' => self::_getGid());
+          $filter = ['option_group_id' => self::_getGid()];
           CRM_Utils_Weight::delWeight('CRM_Core_DAO_OptionValue', $id, $filter);
           $dao->delete();
           return;
         }
       }
     }
-    CRM_Core_Error::fatal(ts('Invalid value passed to delete function.'));
+    throw new CRM_Core_Exception(ts('Invalid value passed to delete function.'));
   }
 
 }

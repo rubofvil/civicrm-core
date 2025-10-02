@@ -1,26 +1,10 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 {literal}
@@ -33,10 +17,15 @@
      * @return void
      */
     function copyFieldValues( fname ) {
-      // this is the most common pattern for elements, so first check if it exits
-      // this check field starting with "field[" and contains [fname] and is not
-      // hidden ( for checkbox hidden element is created )
-      var elementId    = $('.crm-copy-fields [name^="field["][name*="[' + fname +']"][type!=hidden]');
+      if (fname === 'soft_credit_type') {
+        var elementId    = $('.crm-copy-fields [name^="soft_credit_type[');
+      }
+      else {
+        // this is the most common pattern for elements, so first check if it exits
+        // this check field starting with "field[" and contains [fname] and is not
+        // hidden ( for checkbox hidden element is created )
+        var elementId = $('.crm-copy-fields [name^="field["][name*="[' + fname + ']"][type!=hidden]');
+      }
 
       // get the first element and it's value
       var firstElement = elementId.eq(0);
@@ -52,8 +41,15 @@
       // select, checkbox, radio, date fields, text, textarea, multi-select
       // wysiwyg editor, advanced multi-select ( to do )
       if ( elementType == 'radio' ) {
-        firstElementValue = elementId.filter(':checked').eq(0).val();
-        elementId.filter("[value=" + firstElementValue + "]").prop("checked",true).change();
+        var firstElementId    = $('.crm-copy-fields tr:first-child [name^="field["][name*="[' + fname +']"][type!=hidden]');
+        firstElementValue = firstElementId.filter(':checked').eq(0).val();
+        // if radio button is uncheck then unset all the fields.
+        if (typeof firstElementValue == 'undefined') {
+          elementId.prop("checked", false).change().siblings('a.crm-clear-link').trigger('click');
+        }
+        else {
+          elementId.filter("[value='" + firstElementValue + "']").prop("checked", true).change();
+        }
       }
       else if ( elementType == 'checkbox' ) {
         // handle checkbox
@@ -98,7 +94,7 @@
         });
       }
       else {
-        if (elementId.is('select') === true && firstElement.parent().find(':input').select().index() >= 1 && firstElement.parent().find('select').select().index < 1) {
+        if (elementId.is('select') === true && firstElement.parent().find(':input').select().index() >= 1 && firstElement.parent().find('select').select().length > 1) {
           // its a multiselect case
           firstElement.parent().find(':input').select().each( function(count) {
             var firstElementValue = $(this).val();

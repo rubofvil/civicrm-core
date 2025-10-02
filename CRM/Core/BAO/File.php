@@ -1,87 +1,87 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
- * $Id$
- *
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
+
+use Civi\Api4\Utils\CoreUtil;
 
 /**
  * BAO object for crm_log table
  */
-class CRM_Core_BAO_File extends CRM_Core_DAO_File {
+class CRM_Core_BAO_File extends CRM_Core_DAO_File implements \Civi\Core\HookInterface {
 
-  static $_signableFields = array('entityTable', 'entityID', 'fileID');
+  public static $_signableFields = ['entityTable', 'entityID', 'fileID'];
+
+  /**
+   * If there is no setting configured on the admin screens, maximum number
+   * of attachments to try to process when given a list of attachments to
+   * process.
+   */
+  const DEFAULT_MAX_ATTACHMENTS_BACKEND = 100;
+
+  /**
+   * @param array $params
+   * @deprecated
+   * @return CRM_Core_BAO_File
+   */
+  public static function create($params) {
+    return self::writeRecord($params);
+  }
+
+  /**
+   * Event fired before an action is taken on a File record.
+   * @param \Civi\Core\Event\PreEvent $event
+   */
+  public static function self_hook_civicrm_pre(\Civi\Core\Event\PreEvent $event) {
+    if ($event->action === 'create') {
+      if (empty($event->params['created_id'])) {
+        $event->params['created_id'] = CRM_Core_Session::getLoggedInContactID();
+      }
+    }
+  }
 
   /**
    * @param int $fileID
-   * @param int $entityID
-   * @param null $entityTable
    *
    * @return array
    */
-  public static function path($fileID, $entityID, $entityTable = NULL) {
-    $entityFileDAO = new CRM_Core_DAO_EntityFile();
-    if ($entityTable) {
-      $entityFileDAO->entity_table = $entityTable;
-    }
-    $entityFileDAO->entity_id = $entityID;
-    $entityFileDAO->file_id = $fileID;
+  public static function path($fileID): array {
+    $fileDAO = new CRM_Core_DAO_File();
+    $fileDAO->id = $fileID;
+    if ($fileDAO->find(TRUE)) {
+      $config = CRM_Core_Config::singleton();
+      $path = $config->customFileUploadDir . $fileDAO->uri;
 
-    if ($entityFileDAO->find(TRUE)) {
-      $fileDAO = new CRM_Core_DAO_File();
-      $fileDAO->id = $fileID;
-      if ($fileDAO->find(TRUE)) {
-        $config = CRM_Core_Config::singleton();
-        $path = $config->customFileUploadDir . $fileDAO->uri;
-
-        if (file_exists($path) && is_readable($path)) {
-          return array($path, $fileDAO->mime_type);
-        }
+      if (file_exists($path) && is_readable($path)) {
+        return [$path, $fileDAO->mime_type];
       }
     }
 
-    return array(NULL, NULL);
+    return [NULL, NULL];
   }
 
-
   /**
-   * @param $data
+   * @param string $data
    * @param int $fileTypeID
-   * @param $entityTable
+   * @param string $entityTable
    * @param int $entityID
-   * @param $entitySubtype
+   * @param string|false $entitySubtype
    * @param bool $overwrite
    * @param null|array $fileParams
    * @param string $uploadName
-   * @param null $mimeType
+   * @param string $mimeType
    *
    * @throws Exception
    */
@@ -90,14 +90,14 @@ class CRM_Core_BAO_File extends CRM_Core_DAO_File {
     $fileTypeID,
     $entityTable,
     $entityID,
-    $entitySubtype,
+    $entitySubtype = FALSE,
     $overwrite = TRUE,
     $fileParams = NULL,
     $uploadName = 'uploadFile',
     $mimeType = NULL
   ) {
     if (!$mimeType) {
-      CRM_Core_Error::fatal(ts('Mime Type is now a required parameter'));
+      CRM_Core_Error::statusBounce(ts('Mime Type is now a required parameter for file upload'));
     }
 
     $config = CRM_Core_Config::singleton();
@@ -116,15 +116,15 @@ class CRM_Core_BAO_File extends CRM_Core_DAO_File {
     CRM_Utils_File::createDir($directoryName);
 
     if (!rename($data, $directoryName . DIRECTORY_SEPARATOR . $filename)) {
-      CRM_Core_Error::fatal(ts('Could not move custom file to custom upload directory'));
+      CRM_Core_Error::statusBounce(ts('Could not move custom file to custom upload directory'));
     }
 
     // to get id's
     if ($overwrite && $fileTypeID) {
-      list($sql, $params) = self::sql($entityTable, $entityID, $fileTypeID);
+      [$sql, $params] = self::sql($entityTable, $entityID, $fileTypeID);
     }
     else {
-      list($sql, $params) = self::sql($entityTable, $entityID, 0);
+      [$sql, $params] = self::sql($entityTable, $entityID, 0);
     }
 
     $dao = CRM_Core_DAO::executeQuery($sql, $params);
@@ -136,6 +136,9 @@ class CRM_Core_BAO_File extends CRM_Core_DAO_File {
       $op = 'edit';
       $fileDAO->id = $dao->cfID;
       unlink($directoryName . DIRECTORY_SEPARATOR . $dao->uri);
+    }
+    elseif (empty($fileParams['created_id'])) {
+      $fileDAO->created_id = CRM_Core_Session::getLoggedInContactID();
     }
 
     if (!empty($fileParams)) {
@@ -160,12 +163,12 @@ class CRM_Core_BAO_File extends CRM_Core_DAO_File {
 
     //save static tags
     if (!empty($fileParams['tag'])) {
-      CRM_Core_BAO_EntityTag::create($fileParams['tag'], 'civicrm_file', $entityFileDAO->id);
+      CRM_Core_BAO_EntityTag::create($fileParams['tag'], 'civicrm_file', $fileDAO->id);
     }
 
     //save free tags
     if (isset($fileParams['attachment_taglist']) && !empty($fileParams['attachment_taglist'])) {
-      CRM_Core_Form_Tag::postProcess($fileParams['attachment_taglist'], $entityFileDAO->id, 'civicrm_file', CRM_Core_DAO::$_nullObject);
+      CRM_Core_Form_Tag::postProcess($fileParams['attachment_taglist'], $fileDAO->id, 'civicrm_file');
     }
 
     // lets call the post hook here so attachments code can do the right stuff
@@ -187,7 +190,7 @@ class CRM_Core_BAO_File extends CRM_Core_DAO_File {
     $fileDAO = new CRM_Core_DAO_File();
     $fileDAO->id = $fileID;
     if (!$fileDAO->find(TRUE)) {
-      CRM_Core_Error::fatal();
+      throw new CRM_Core_Exception(ts('File not found'));
     }
 
     // lets call a pre hook before the delete, so attachments hooks can get the info before things
@@ -195,7 +198,7 @@ class CRM_Core_BAO_File extends CRM_Core_DAO_File {
     CRM_Utils_Hook::pre('delete', 'File', $fileID, $fileDAO);
 
     // get the table and column name
-    list($tableName, $columnName, $groupID) = CRM_Core_BAO_CustomField::getTableColumnGroup($fieldID);
+    [$tableName, $columnName, $groupID] = CRM_Core_BAO_CustomField::getTableColumnGroup($fieldID);
 
     $entityFileDAO = new CRM_Core_DAO_EntityFile();
     $entityFileDAO->file_id = $fileID;
@@ -203,7 +206,7 @@ class CRM_Core_BAO_File extends CRM_Core_DAO_File {
     $entityFileDAO->entity_table = $tableName;
 
     if (!$entityFileDAO->find(TRUE)) {
-      CRM_Core_Error::fatal();
+      throw new CRM_Core_Exception(sprintf('No record found for given file ID - %d and entity ID - %d', $fileID, $entityID));
     }
 
     $entityFileDAO->delete();
@@ -211,7 +214,7 @@ class CRM_Core_BAO_File extends CRM_Core_DAO_File {
 
     // also set the value to null of the table and column
     $query = "UPDATE $tableName SET $columnName = null WHERE $columnName = %1";
-    $params = array(1 => array($fileID, 'Integer'));
+    $params = [1 => [$fileID, 'Integer']];
     CRM_Core_DAO::executeQuery($query, $params);
   }
 
@@ -219,7 +222,7 @@ class CRM_Core_BAO_File extends CRM_Core_DAO_File {
    * The $useWhere is used so that the signature matches the parent class
    *
    * public function delete($useWhere = FALSE) {
-   * list($fileID, $entityID, $fieldID) = func_get_args();
+   * [$fileID, $entityID, $fieldID] = func_get_args();
    *
    * self::deleteFileReferences($fileID, $entityID, $fieldID);
    * } */
@@ -243,48 +246,28 @@ class CRM_Core_BAO_File extends CRM_Core_DAO_File {
 
     $config = CRM_Core_Config::singleton();
 
-    list($sql, $params) = self::sql($entityTable, $entityID, $fileTypeID, $fileID);
+    [$sql, $params] = self::sql($entityTable, $entityID, $fileTypeID, $fileID);
     $dao = CRM_Core_DAO::executeQuery($sql, $params);
 
-    $cfIDs = array();
-    $cefIDs = array();
+    $cfIDs = $cefIDs = [];
     while ($dao->fetch()) {
       $cfIDs[$dao->cfID] = $dao->uri;
-      $cefIDs[] = $dao->cefID;
-    }
-
-    if (!empty($cefIDs)) {
-      $cefIDs = implode(',', $cefIDs);
-      $sql = "DELETE FROM civicrm_entity_file where id IN ( $cefIDs )";
-      CRM_Core_DAO::executeQuery($sql);
-      $isDeleted = TRUE;
+      $cefIDs[$dao->cfID] = $dao->cefID;
     }
 
     if (!empty($cfIDs)) {
-      // Delete file only if there no any entity using this file.
-      $deleteFiles = array();
-      foreach ($cfIDs as $fId => $fUri) {
-        //delete tags from entity tag table
-        $tagParams = array(
-          'entity_table' => 'civicrm_file',
-          'entity_id' => $fId,
-        );
-
-        CRM_Core_BAO_EntityTag::del($tagParams);
-
-        if (!CRM_Core_DAO::getFieldValue('CRM_Core_DAO_EntityFile', $fId, 'id', 'file_id')) {
-          unlink($config->customFileUploadDir . DIRECTORY_SEPARATOR . $fUri);
-          $deleteFiles[$fId] = $fId;
+      foreach ($cfIDs as $fileID => $fUri) {
+        // sequentially deletes EntityFile entry and then deletes File record
+        CRM_Core_DAO_EntityFile::deleteRecord(['id' => $cefIDs[$fileID]]);
+        // Delete file only if there are no longer any entities using this file.
+        if (!CoreUtil::getRefCountTotal('File', $fileID)) {
+          self::deleteRecord(['id' => $fileID]);
+          unlink($config->customFileUploadDir . $fUri);
         }
-      }
-
-      if (!empty($deleteFiles)) {
-        $deleteFiles = implode(',', $deleteFiles);
-        $sql = "DELETE FROM civicrm_file where id IN ( $deleteFiles )";
-        CRM_Core_DAO::executeQuery($sql);
       }
       $isDeleted = TRUE;
     }
+
     return $isDeleted;
   }
 
@@ -305,20 +288,22 @@ class CRM_Core_BAO_File extends CRM_Core_DAO_File {
 
     $config = CRM_Core_Config::singleton();
 
-    list($sql, $params) = self::sql($entityTable, $entityID, NULL);
+    [$sql, $params] = self::sql($entityTable, $entityID);
     $dao = CRM_Core_DAO::executeQuery($sql, $params);
-    $results = array();
+    $results = [];
     while ($dao->fetch()) {
+      $fileHash = self::generateFileHash(NULL, $dao->cfID);
       $result['fileID'] = $dao->cfID;
       $result['entityID'] = $dao->cefID;
       $result['mime_type'] = $dao->mime_type;
       $result['fileName'] = $dao->uri;
       $result['description'] = $dao->description;
       $result['cleanName'] = CRM_Utils_File::cleanFileName($dao->uri);
-      $result['fullPath'] = $config->customFileUploadDir . DIRECTORY_SEPARATOR . $dao->uri;
-      $result['url'] = CRM_Utils_System::url('civicrm/file', "reset=1&id={$dao->cfID}&eid={$dao->entity_id}");
+      $result['fullPath'] = $config->customFileUploadDir . $dao->uri;
+      $result['url'] = CRM_Utils_System::url('civicrm/file', "reset=1&id={$dao->cfID}&fcs={$fileHash}");
       $result['href'] = "<a href=\"{$result['url']}\">{$result['cleanName']}</a>";
       $result['tag'] = CRM_Core_BAO_EntityTag::getTag($dao->cfID, 'civicrm_file');
+      $result['icon'] = CRM_Utils_File::getIconFromMimeType($dao->mime_type ?? '');
       if ($addDeleteArgs) {
         $result['deleteURLArgs'] = self::deleteURLArgs($dao->entity_table, $dao->entity_id, $dao->cfID);
       }
@@ -326,11 +311,11 @@ class CRM_Core_BAO_File extends CRM_Core_DAO_File {
     }
 
     //fix tag names
-    $tags = CRM_Core_PseudoConstant::get('CRM_Core_DAO_EntityTag', 'tag_id', array('onlyActive' => FALSE));
+    $tags = CRM_Core_DAO_EntityTag::buildOptions('tag_id', 'get');
 
     foreach ($results as &$values) {
       if (!empty($values['tag'])) {
-        $tagNames = array();
+        $tagNames = [];
         foreach ($values['tag'] as $tid) {
           $tagNames[] = $tags[$tid];
         }
@@ -341,7 +326,6 @@ class CRM_Core_BAO_File extends CRM_Core_DAO_File {
       }
     }
 
-    $dao->free();
     return $results;
   }
 
@@ -385,22 +369,22 @@ WHERE     CEF.entity_table = %1
 AND       CEF.entity_id    = %2";
     }
 
-    $params = array(
-      1 => array($entityTable, 'String'),
-      2 => array($entityID, 'Integer'),
-    );
+    $params = [
+      1 => [$entityTable, 'String'],
+      2 => [$entityID, 'Integer'],
+    ];
 
     if ($fileTypeID !== NULL) {
       $sql .= " AND CF.file_type_id = %3";
-      $params[3] = array($fileTypeID, 'Integer');
+      $params[3] = [$fileTypeID, 'Integer'];
     }
 
     if ($fileID !== NULL) {
       $sql .= " AND CF.id = %4";
-      $params[4] = array($fileID, 'Integer');
+      $params[4] = [$fileID, 'Integer'];
     }
 
-    return array($sql, $params);
+    return [$sql, $params];
   }
 
   /**
@@ -409,6 +393,8 @@ AND       CEF.entity_id    = %2";
    * @param int $entityID
    * @param null $numAttachments
    * @param bool $ajaxDelete
+   *
+   * @throws \CRM_Core_Exception
    */
   public static function buildAttachment(&$form, $entityTable, $entityID = NULL, $numAttachments = NULL, $ajaxDelete = FALSE) {
 
@@ -418,20 +404,15 @@ AND       CEF.entity_id    = %2";
     // Assign maxAttachments count to template for help message
     $form->assign('maxAttachments', $numAttachments);
 
-    $config = CRM_Core_Config::singleton();
     // set default max file size as 2MB
-    $maxFileSize = $config->maxFileSize ? $config->maxFileSize : 2;
+    $maxFileSize = \Civi::settings()->get('maxFileSize') ?: 2;
 
     $currentAttachmentInfo = self::getEntityFile($entityTable, $entityID, TRUE);
-    $totalAttachments = 0;
+    $totalAttachments = $currentAttachmentInfo ? count($currentAttachmentInfo) : 0;
     if ($currentAttachmentInfo) {
-      $totalAttachments = count($currentAttachmentInfo);
       $form->add('checkbox', 'is_delete_attachment', ts('Delete All Attachment(s)'));
-      $form->assign('currentAttachmentInfo', $currentAttachmentInfo);
     }
-    else {
-      $form->assign('currentAttachmentInfo', NULL);
-    }
+    $form->assign('currentAttachmentInfo', $currentAttachmentInfo);
 
     if ($totalAttachments) {
       if ($totalAttachments >= $numAttachments) {
@@ -452,39 +433,44 @@ AND       CEF.entity_id    = %2";
 
     // add attachments
     for ($i = 1; $i <= $numAttachments; $i++) {
-      $form->addElement('file', "attachFile_$i", ts('Attach File'), 'size=30 maxlength=60');
+      $form->addElement('file', "attachFile_$i", ts('Attach File'), 'size=30 maxlength=221');
       $form->addUploadElement("attachFile_$i");
       $form->setMaxFileSize($maxFileSize * 1024 * 1024);
       $form->addRule("attachFile_$i",
         ts('File size should be less than %1 MByte(s)',
-          array(1 => $maxFileSize)
+          [1 => $maxFileSize]
         ),
         'maxfilesize',
         $maxFileSize * 1024 * 1024
       );
-      $form->addElement('text', "attachDesc_$i", NULL, array(
+      $form->addElement('text', "attachDesc_$i", NULL, [
         'size' => 40,
         'maxlength' => 255,
         'placeholder' => ts('Description'),
-      ));
+      ]);
 
+      $tagField = "tag_$i";
       if (!empty($tags)) {
-        $form->add('select', "tag_$i", ts('Tags'), $tags, FALSE,
-          array(
+        $form->add('select', $tagField, ts('Tags'), $tags, FALSE,
+          [
             'id' => "tags_$i",
             'multiple' => 'multiple',
             'class' => 'huge crm-select2',
             'placeholder' => ts('- none -'),
-          )
+          ]
         );
+      }
+      else {
+        $form->addOptionalQuickFormElement($tagField);
       }
       CRM_Core_Form_Tag::buildQuickForm($form, $parentNames, 'civicrm_file', NULL, FALSE, TRUE, "file_taglist_$i");
     }
   }
 
   /**
-   * Return a clean url string and the number of attachment for a
-   * given entityTable, entityID
+   * Return a HTML string, separated by $separator,
+   * where each item is an anchor link to the file,
+   * with the filename as the link text.
    *
    * @param string $entityTable
    *   The entityTable to which the file is attached.
@@ -493,8 +479,8 @@ AND       CEF.entity_id    = %2";
    * @param string $separator
    *   The string separator where to implode the urls.
    *
-   * @return array
-   *   An array with 2 elements. The string and the number of attachments
+   * @return string|null
+   *   HTML list of attachment links, or null if no attachments
    */
   public static function attachmentInfo($entityTable, $entityID, $separator = '<br />') {
     if (!$entityID) {
@@ -503,7 +489,7 @@ AND       CEF.entity_id    = %2";
 
     $currentAttachments = self::getEntityFile($entityTable, $entityID);
     if (!empty($currentAttachments)) {
-      $currentAttachmentURL = array();
+      $currentAttachmentURL = [];
       foreach ($currentAttachments as $fileID => $attach) {
         $currentAttachmentURL[] = $attach['href'];
       }
@@ -540,7 +526,7 @@ AND       CEF.entity_id    = %2";
       $attachFreeTags = "file_taglist_$i";
       if (isset($formValues[$attachName]) && !empty($formValues[$attachName])) {
         // add static tags if selects
-        $tagParams = array();
+        $tagParams = [];
         if (!empty($formValues[$attachTags])) {
           foreach ($formValues[$attachTags] as $tag) {
             $tagParams[$tag] = 1;
@@ -549,16 +535,16 @@ AND       CEF.entity_id    = %2";
 
         // we dont care if the file is empty or not
         // CRM-7448
-        $extraParams = array(
+        $extraParams = [
           'description' => $formValues[$attachDesc],
           'tag' => $tagParams,
-          'attachment_taglist' => CRM_Utils_Array::value($attachFreeTags, $formValues, array()),
-        );
+          'attachment_taglist' => $formValues[$attachFreeTags] ?? [],
+        ];
 
         CRM_Utils_File::formatFile($formValues, $attachName, $extraParams);
 
-        // set the formatted attachment attributes to $params, later used by
-        // CRM_Activity_BAO_Activity::sendEmail(...) to send mail with desired attachments
+        // set the formatted attachment attributes to $params, later used
+        // to send mail with desired attachments
         if (!empty($formValues[$attachName])) {
           $params[$attachName] = $formValues[$attachName];
         }
@@ -572,24 +558,37 @@ AND       CEF.entity_id    = %2";
    * @param int $entityID
    */
   public static function processAttachment(&$params, $entityTable, $entityID) {
-    $numAttachments = Civi::settings()->get('max_attachments');
+    $numAttachments = Civi::settings()->get('max_attachments_backend') ?? self::DEFAULT_MAX_ATTACHMENTS_BACKEND;
 
     for ($i = 1; $i <= $numAttachments; $i++) {
-      if (
-        isset($params["attachFile_$i"]) &&
-        is_array($params["attachFile_$i"])
-      ) {
-        self::filePostProcess(
-          $params["attachFile_$i"]['location'],
-          NULL,
-          $entityTable,
-          $entityID,
-          NULL,
-          TRUE,
-          $params["attachFile_$i"],
-          "attachFile_$i",
-          $params["attachFile_$i"]['type']
-        );
+      if (isset($params["attachFile_$i"])) {
+        /**
+         * Moved the second condition into its own if block to avoid changing
+         * how it works if there happens to be an entry that is not an array,
+         * since we now might exit loop early via newly added break below.
+         */
+        if (is_array($params["attachFile_$i"])) {
+          self::filePostProcess(
+            $params["attachFile_$i"]['location'],
+            NULL,
+            $entityTable,
+            $entityID,
+            NULL,
+            TRUE,
+            $params["attachFile_$i"],
+            "attachFile_$i",
+            $params["attachFile_$i"]['type']
+          );
+        }
+      }
+      else {
+        /**
+         * No point looping 100 times if there aren't any more.
+         * This assumes the array is continuous and doesn't skip array keys,
+         * but (a) where would it be doing that, and (b) it would have caused
+         * problems before anyway if there were skipped keys.
+         */
+        break;
       }
     }
   }
@@ -600,7 +599,7 @@ AND       CEF.entity_id    = %2";
   public static function uploadNames() {
     $numAttachments = Civi::settings()->get('max_attachments');
 
-    $names = array();
+    $names = [];
     for ($i = 1; $i <= $numAttachments; $i++) {
       $names[] = "attachFile_{$i}";
     }
@@ -633,16 +632,18 @@ AND       CEF.entity_id    = %2";
   }
 
   /**
-   * @param $entityTable
+   * @param string $entityTable
    * @param int $entityID
    * @param int $fileID
+   * @param int|null $customField
    *
    * @return string
    */
-  public static function deleteURLArgs($entityTable, $entityID, $fileID) {
+  public static function deleteURLArgs($entityTable, $entityID, $fileID, $customField = NULL) {
     $params['entityTable'] = $entityTable;
     $params['entityID'] = $entityID;
     $params['fileID'] = $fileID;
+    $params['customField'] = $customField;
 
     $signer = new CRM_Utils_Signer(CRM_Core_Key::privateKey(), self::$_signableFields);
     $params['_sgn'] = $signer->sign($params);
@@ -651,24 +652,50 @@ AND       CEF.entity_id    = %2";
 
   /**
    * Delete a file attachment from an entity table / entity ID
-   *
+   * @throws CRM_Core_Exception
    */
   public static function deleteAttachment() {
-    $params = array();
-    $params['entityTable'] = CRM_Utils_Request::retrieve('entityTable', 'String', CRM_Core_DAO::$_nullObject, TRUE);
-    $params['entityID'] = CRM_Utils_Request::retrieve('entityID', 'Positive', CRM_Core_DAO::$_nullObject, TRUE);
-    $params['fileID'] = CRM_Utils_Request::retrieve('fileID', 'Positive', CRM_Core_DAO::$_nullObject, TRUE);
+    $params = [];
+    $params['entityTable'] = CRM_Utils_Request::retrieve('entityTable', 'String', NULL, TRUE);
+    $params['entityID'] = CRM_Utils_Request::retrieve('entityID', 'Positive', NULL, TRUE);
+    $params['fileID'] = CRM_Utils_Request::retrieve('fileID', 'Positive', NULL, TRUE);
+    $params['customField'] = CRM_Utils_Request::retrieve('customField', 'Positive');
 
-    $signature = CRM_Utils_Request::retrieve('_sgn', 'String', CRM_Core_DAO::$_nullObject, TRUE);
+    $signature = CRM_Utils_Request::retrieve('_sgn', 'String', NULL, TRUE);
 
     $signer = new CRM_Utils_Signer(CRM_Core_Key::privateKey(), self::$_signableFields);
     if (!$signer->validate($signature, $params)) {
-      CRM_Core_Error::fatal('Request signature is invalid');
+      throw new CRM_Core_Exception('Request signature is invalid');
     }
 
-    CRM_Core_BAO_File::deleteEntityFile($params['entityTable'], $params['entityID'], NULL, $params['fileID']);
+    // Attachment - need to delete entityFile record
+    if (!$params['customField']) {
+      self::deleteEntityFile($params['entityTable'], $params['entityID'], NULL, $params['fileID']);
+      return;
+    }
+    // Custom file field - set the custom value to NULL
+    $customGroup = CRM_Core_BAO_CustomGroup::getGroup(['table_name' => $params['entityTable']]);
+    $customField = $customGroup['fields'][$params['customField']] ?? NULL;
+    // Api4 will also delete the file from disk if there are no other references to it
+    if ($customField && !$customGroup['is_multiple']) {
+      $entityName = $customGroup['extends'] ?? NULL;
+      $fieldName = CRM_Core_BAO_CustomField::getLongNameFromShortName('custom_' . $params['customField']);
+      civicrm_api4($entityName, 'update', [
+        'values' => [$fieldName => NULL, 'id' => $params['entityID']],
+        'where' => [
+          ['id', '=', $params['entityID']],
+          [$fieldName, '=', $params['fileID']],
+        ],
+      ]);
+    }
+    if ($customField && $customGroup['is_multiple']) {
+      \Civi\Api4\CustomValue::update($customGroup['name'])
+        ->addWhere('entity_id', '=', $params['entityID'])
+        ->addWhere($customField['name'], '=', $params['fileID'])
+        ->addValue($customField['name'], NULL)
+        ->execute();
+    }
   }
-
 
   /**
    * Display paper icon for a file attachment -- CRM-13624
@@ -701,17 +728,19 @@ AND       CEF.entity_id    = %2";
           $fileType == 'image/x-png' ||
           $fileType == 'image/png'
         ) {
-          $file_url[$fileID] = "
-              <a href='$url' class='crm-image-popup' title='$title'>
-                <i class='crm-i fa-file-image-o'></i>
-              </a>";
+          $file_url[$fileID] = <<<HEREDOC
+              <a href="$url" class="crm-image-popup" title="$title">
+                <i class="crm-i fa-file-image-o" role="img" aria-hidden="true"></i>
+              </a>
+HEREDOC;
         }
         // for non image files
         else {
-          $file_url[$fileID] = "
-              <a href='$url' title='$title'>
-                <i class='crm-i fa-paperclip'></i>
-              </a>";
+          $file_url[$fileID] = <<<HEREDOC
+              <a href="$url" title="$title">
+                <i class="crm-i fa-paperclip" role="img" aria-hidden="true"></i>
+              </a>
+HEREDOC;
         }
       }
     }
@@ -727,18 +756,104 @@ AND       CEF.entity_id    = %2";
   /**
    * Get a reference to the file-search service (if one is available).
    *
-   * @return CRM_Core_FileSearchInterface|NULL
+   * @return CRM_Core_FileSearchInterface|null
    */
   public static function getSearchService() {
-    $fileSearches = array();
+    $fileSearches = [];
     CRM_Utils_Hook::fileSearches($fileSearches);
 
     // use the first available search
+    /** @var CRM_Core_FileSearchInterface $fileSearch */
     foreach ($fileSearches as $fileSearch) {
-      /** @var $fileSearch CRM_Core_FileSearchInterface */
       return $fileSearch;
     }
     return NULL;
+  }
+
+  public static function getFileUrl(int $fileId, string $cmsEnd = 'current', ?string $flags = NULL): \Civi\Core\Url {
+    $fileHash = self::generateFileHash(NULL, $fileId);
+    return Civi::url("$cmsEnd://civicrm/file?reset=1&id=$fileId&fcs=$fileHash", $flags);
+  }
+
+  /**
+   * Generates an access-token for downloading a specific file.
+   *
+   * @param null $entityId deprecated unused param
+   * @param int $fileId file ID
+   * @param int $genTs
+   * @param int $life
+   * @return string
+   */
+  public static function generateFileHash($entityId = NULL, $fileId = NULL, $genTs = NULL, $life = NULL) {
+    if (!$genTs) {
+      $genTs = CRM_Utils_Time::time();
+    }
+    if (!$life) {
+      $days = Civi::settings()->get('checksum_timeout');
+      $life = 24 * $days;
+    }
+    return Civi::service('crypto.jwt')->encode([
+      'exp' => $genTs + ($life * 60 * 60),
+      'civi.file' => $fileId,
+    ], ['SIGN', 'WEAK_SIGN']);
+  }
+
+  /**
+   * Validate a file access token.
+   *
+   * @param string $hash
+   * @param null $entityId deprecated unused param
+   * @param int $fileId File Id
+   * @return bool
+   */
+  public static function validateFileHash($hash, $entityId, $fileId) {
+    try {
+      $payload = Civi::service('crypto.jwt')->decode($hash, ['SIGN', 'WEAK_SIGN']);
+      return $payload && $payload['civi.file'] == $fileId;
+    }
+    catch (\Civi\Crypto\Exception\CryptoException $e) {
+      return FALSE;
+    }
+  }
+
+  /**
+   * @param string|null $entityName
+   * @param int|null $userId
+   * @param array $conditions
+   * @inheritDoc
+   */
+  public function addSelectWhereClause(?string $entityName = NULL, ?int $userId = NULL, array $conditions = []): array {
+    // TODO: This seemded like a good idea... piggybacking off the ACL clause of EntityFile
+    // however that's too restrictive because entityFile ACLs are limited to just attachments,
+    // so this would prevent access to other file fields (e.g. custom fields)
+    // Disabling this function for now by calling the parent instead.
+    return parent::addSelectWhereClause('File', $userId, $conditions);
+    //  $clauses = [
+    //    'id' => [],
+    //  ];
+    //  // File ACLs are driven by the EntityFile table
+    //  $entityFileClause = CRM_Core_DAO_EntityFile::getDynamicFkAclClauses();
+    //  if ($entityFileClause) {
+    //    $clauses['id'] = 'IN (SELECT file_id FROM `civicrm_entity_file` WHERE (' . implode(') OR (', $entityFileClause) . '))';
+    //  }
+    //  CRM_Utils_Hook::selectWhereClause($this, $clauses, $userId, $conditions);
+    //  return $clauses;
+  }
+
+  /**
+   * List of entities that can have file attachments.
+   *
+   * TODO: Make this extensible.
+   *
+   * @return array
+   */
+  public static function getEntityTables(): array {
+    return [
+      'civicrm_activity' => ts('Activity'),
+      'civicrm_case' => ts('Case'),
+      'civicrm_note' => ts('Note'),
+      'civicrm_saved_search' => ts('Saved Search'),
+    ];
   }
 
 }

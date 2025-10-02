@@ -33,7 +33,7 @@
   var miniForms = {
     '#manageTagsDialog': {
       post: function(data) {
-        var tagsChecked = $("#tags", this) ? $("#tags", this).select2('val').join(',') : '',
+        var tagsChecked = $("#tags", this) ? $("#tags", this).val() : '',
           tagList = {},
           url = CRM.url('civicrm/case/ajax/processtags');
         $("input[name^=case_taglist]", this).each(function() {
@@ -73,29 +73,12 @@
             var val = $(this).val();
             $contactField.val('').change().prop('disabled', !val);
             if (val) {
-              var
-                pieces = val.split('_'),
-                rType = pieces[0],
-                target = pieces[2], // b or a
-                contact_type = CRM.vars.relationshipTypes[rType]['contact_type_' + target],
-                contact_sub_type = CRM.vars.relationshipTypes[rType]['contact_sub_type_' + target],
-                api = {params: {}};
-              if (contact_type) {
-                api.params.contact_type = contact_type;
-              }
-              if (contact_sub_type) {
-                api.params.contact_sub_type = contact_sub_type;
-              }
-              $contactField
-                .data('api-params', api)
-                .data('user-filter', {})
-                .attr('placeholder', CRM.vars.relationshipTypes[rType]['placeholder_' + target])
-                .change();
+              prepareRelationshipField(val, $contactField);
             }
           })
           .val('')
           .change();
-        $contactField.val('').crmEntityRef({create: true, api: {params: {contact_type: 'Individual'}}});
+        $contactField.val('').crmEntityRef();
       },
       post: function(data) {
         var contactID = $('[name=add_role_contact_id]', this).val(),
@@ -114,11 +97,9 @@
     },
     '#editCaseRoleDialog': {
       pre: function(data) {
-        var params = {create: true};
-        if (data.contact_type) {
-          params.api = {params: {contact_type: data.contact_type}};
-        }
-        $('[name=edit_role_contact_id]', this).val('').crmEntityRef(params);
+        // Clear stale value since this form can be reused multiple times
+        $('[name=edit_role_contact_id]', this).val('');
+        prepareRelationshipField(data.rel_type, $('[name=edit_role_contact_id]', this));
       },
       post: function(data) {
         data.rel_contact = $('[name=edit_role_contact_id]', this).val();
@@ -164,11 +145,42 @@
   },
     detached = {};
 
+  function prepareRelationshipField(relType, $contactField) {
+    var
+      pieces = relType.split('_'),
+      rType = pieces[0],
+      target = pieces[2], // b or a
+      relationshipType = CRM.vars.relationshipTypes[rType],
+      api = {params: {}};
+    if (relationshipType['contact_type_' + target]) {
+      api.params.contact_type = relationshipType['contact_type_' + target];
+    }
+    if (relationshipType['contact_sub_type_' + target]) {
+      api.params.contact_sub_type = relationshipType['contact_sub_type_' + target];
+    }
+    if (relationshipType['group_' + target]) {
+      api.params.group = {IN: relationshipType['group_' + target]};
+    }
+    $contactField
+      .data('create-links', !relationshipType['group_' + target])
+      .data('api-params', api)
+      .data('user-filter', {})
+      .attr('placeholder', relationshipType['placeholder_' + target])
+      .change()
+      .crmEntityRef();
+  }
+
   function detachMiniForms() {
     detached = {};
     $.each(miniForms, function(selector) {
       detached[selector] = $(selector).detach().removeClass('hiddenElement');
     });
+  }
+
+  function showHideInactiveRoles() {
+    let showInactive = $('#role_inactive').prop('checked');
+    $('[id^=caseRoles-selector] tbody tr').not('.disabled').toggle(!showInactive);
+    $('[id^=caseRoles-selector] tbody tr.disabled').toggle(showInactive);
   }
 
   $('#crm-container').on('crmLoad', '#crm-main-content-wrapper', detachMiniForms);
@@ -206,6 +218,21 @@
           $(this).select2('val', '');
         }
       })
+      // When changing case subject, record an activity
+      .on('crmFormSuccess', '[data-field=subject]', function(e, value) {
+        var id = caseId();
+        CRM.api3('Activity', 'create', {
+          case_id: id,
+          activity_type_id: 'Change Case Subject',
+          subject: value,
+          status_id: 'Completed'
+        }).done(function() {
+          $('#case_id_' + id).dataTable().api().draw();
+        });
+      })
+      // Toggle to show/hide inactive case roles
+      .on('crmLoad', 'table#caseRoles-selector-' + caseId(), showHideInactiveRoles)
+      .on('change', '#role_inactive', showHideInactiveRoles)
       .on('click', 'a.case-miniform', function(e) {
         var dialog,
           $el = $(this),
@@ -258,16 +285,21 @@
       .on('crmBeforeLoad', function(e) {
         if ($(e.target).is(this)) {
           accordionStates = [];
-          $('.crm-accordion-wrapper', this).each(function() {
-            accordionStates.push($(this).hasClass('collapsed'));
+          $('details', this).each(function() {
+            accordionStates.push($(this).prop('open') ? true : false);
           });
         }
       })
       .on('crmLoad', function(e) {
         if ($(e.target).is(this)) {
-          var $targets = $('.crm-accordion-wrapper', this);
-          $.each(accordionStates, function(i, isCollapsed) {
-            $targets.eq(i).toggleClass('collapsed', isCollapsed);
+          var $targets = $('details', this);
+          $.each(accordionStates, function(i, isOpen) {
+            if (isOpen) {
+              $targets.eq(i).prop('open', true);
+            }
+            else {
+              $targets.eq(i).removeProp('open');
+            }
           });
         }
       });

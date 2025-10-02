@@ -1,34 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 class CRM_Core_OptionValue {
 
@@ -37,21 +21,21 @@ class CRM_Core_OptionValue {
    *
    * @var array
    */
-  static $_exportableFields = NULL;
+  public static $_exportableFields = NULL;
 
   /**
    * Static field for all the option value information that we can potentially export.
    *
    * @var array
    */
-  static $_importableFields = NULL;
+  public static $_importableFields = NULL;
 
   /**
    * Static field for all the option value information that we can potentially export.
    *
    * @var array
    */
-  static $_fields = NULL;
+  public static $_fields = NULL;
 
   /**
    * Return option-values of a particular group
@@ -71,22 +55,22 @@ class CRM_Core_OptionValue {
    *
    */
   public static function getRows($groupParams, $links, $orderBy = 'weight', $skipEmptyComponents = TRUE) {
-    $optionValue = array();
-
+    $optionValue = [];
     $optionGroupID = NULL;
+    $isGroupLocked = FALSE;
+
     if (!isset($groupParams['id']) || !$groupParams['id']) {
       if ($groupParams['name']) {
-        $config = CRM_Core_Config::singleton();
-
         $optionGroup = CRM_Core_BAO_OptionGroup::retrieve($groupParams, $dnc);
         $optionGroupID = $optionGroup->id;
+        $isGroupLocked = (bool) $optionGroup->is_locked;
       }
     }
     else {
       $optionGroupID = $groupParams['id'];
     }
 
-    $groupName = CRM_Utils_Array::value('name', $groupParams);
+    $groupName = $groupParams['name'] ?? NULL;
     if (!$groupName && $optionGroupID) {
       $groupName = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_OptionGroup',
         $optionGroupID, 'name', 'id'
@@ -97,10 +81,6 @@ class CRM_Core_OptionValue {
 
     if ($optionGroupID) {
       $dao->option_group_id = $optionGroupID;
-
-      if (in_array($groupName, CRM_Core_OptionGroup::$_domainIDGroups)) {
-        $dao->domain_id = CRM_Core_Config::domainID();
-      }
 
       $dao->orderBy($orderBy);
       $dao->find();
@@ -116,7 +96,7 @@ class CRM_Core_OptionValue {
     $componentNames = CRM_Core_Component::getNames();
     $visibilityLabels = CRM_Core_PseudoConstant::visibility();
     while ($dao->fetch()) {
-      $optionValue[$dao->id] = array();
+      $optionValue[$dao->id] = [];
       CRM_Core_DAO::storeValues($dao, $optionValue[$dao->id]);
       if (!empty($optionValue[$dao->id]['component_id']) &&
         empty($componentNames[$optionValue[$dao->id]['component_id']]) &&
@@ -146,14 +126,20 @@ class CRM_Core_OptionValue {
         }
       }
 
+      // disallow deletion of option values for locked groups
+      if (($action & CRM_Core_Action::DELETE) && $isGroupLocked) {
+        $action -= CRM_Core_Action::DELETE;
+      }
+
       $optionValue[$dao->id]['label'] = htmlspecialchars($optionValue[$dao->id]['label']);
       $optionValue[$dao->id]['order'] = $optionValue[$dao->id]['weight'];
+      $optionValue[$dao->id]['icon'] = $optionValue[$dao->id]['icon'] ?? '';
       $optionValue[$dao->id]['action'] = CRM_Core_Action::formLink($links, $action,
-        array(
+        [
           'id' => $dao->id,
           'gid' => $optionGroupID,
           'value' => $dao->value,
-        ),
+        ],
         ts('more'),
         FALSE,
         'optionValue.row.actions',
@@ -181,7 +167,7 @@ class CRM_Core_OptionValue {
    *
    * @param array $params
    *   Array containing exported values from the invoking form.
-   * @param array $groupParams
+   * @param string $optionGroupName
    *   Array containing group fields whose option-values is to retrieved/saved.
    * @param $action
    * @param int $optionValueID Has the id of the optionValue being edited, disabled ..etc.
@@ -190,23 +176,17 @@ class CRM_Core_OptionValue {
    * @return CRM_Core_DAO_OptionValue
    *
    */
-  public static function addOptionValue(&$params, &$groupParams, &$action, &$optionValueID) {
-    $ids = array();
-    $params['is_active'] = CRM_Utils_Array::value('is_active', $params, FALSE);
+  public static function addOptionValue(&$params, $optionGroupName, $action, $optionValueID) {
+    $params['is_active'] ??= FALSE;
     // checking if the group name with the given id or name (in $groupParams) exists
-    if (!empty($groupParams)) {
-      $config = CRM_Core_Config::singleton();
-      $groupParams['is_active'] = 1;
-      $optionGroup = CRM_Core_BAO_OptionGroup::retrieve($groupParams, $defaults);
-    }
+    $groupParams = ['name' => $optionGroupName, 'is_active' => 1];
+    $optionGroup = CRM_Core_BAO_OptionGroup::retrieve($groupParams, $defaults);
 
-    // if the corresponding group doesn't exist, create one, provided $groupParams has 'name' in it.
+    // if the corresponding group doesn't exist, create one.
     if (!$optionGroup->id) {
-      if ($groupParams['name']) {
-        $newOptionGroup = CRM_Core_BAO_OptionGroup::add($groupParams, $defaults);
-        $params['weight'] = 1;
-        $optionGroupID = $newOptionGroup->id;
-      }
+      $newOptionGroup = CRM_Core_BAO_OptionGroup::add($groupParams);
+      $params['weight'] = 1;
+      $optionGroupID = $newOptionGroup->id;
     }
     else {
       $optionGroupID = $optionGroup->id;
@@ -214,13 +194,13 @@ class CRM_Core_OptionValue {
       if ($optionValueID) {
         $oldWeight = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_OptionValue', $optionValueID, 'weight', 'id');
       }
-      $fieldValues = array('option_group_id' => $optionGroupID);
-      $params['weight'] = CRM_Utils_Weight::updateOtherWeights('CRM_Core_DAO_OptionValue', $oldWeight, CRM_Utils_Array::value('weight', $params), $fieldValues);
+      $fieldValues = ['option_group_id' => $optionGroupID];
+      $params['weight'] = CRM_Utils_Weight::updateOtherWeights('CRM_Core_DAO_OptionValue', $oldWeight, $params['weight'] ?? NULL, $fieldValues);
     }
     $params['option_group_id'] = $optionGroupID;
 
-    if (($action & CRM_Core_Action::ADD) && empty($params['value'])) {
-      $fieldValues = array('option_group_id' => $optionGroupID);
+    if (($action & CRM_Core_Action::ADD) && !isset($params['value'])) {
+      $fieldValues = ['option_group_id' => $optionGroupID];
       // use the next available value
       /* CONVERT(value, DECIMAL) is used to convert varchar
       field 'value' to decimal->integer                    */
@@ -239,9 +219,9 @@ class CRM_Core_OptionValue {
       $params['name'] = $params['label'];
     }
     if ($action & CRM_Core_Action::UPDATE) {
-      $ids['optionValue'] = $optionValueID;
+      $params['id'] = $optionValueID;
     }
-    $optionValue = CRM_Core_BAO_OptionValue::add($params, $ids);
+    $optionValue = CRM_Core_BAO_OptionValue::add($params);
     return $optionValue;
   }
 
@@ -262,13 +242,13 @@ class CRM_Core_OptionValue {
    * @return bool
    *   true if object exists
    */
-  public static function optionExists($value, $daoName, $daoID, $optionGroupID, $fieldName = 'name') {
+  public static function optionExists($value, $daoName, $daoID, $optionGroupID, $fieldName) {
     $object = new $daoName();
     $object->$fieldName = $value;
     $object->option_group_id = $optionGroupID;
 
     if ($object->find(TRUE)) {
-      return ($daoID && $object->id == $daoID) ? TRUE : FALSE;
+      return $daoID && $object->id == $daoID;
     }
     else {
       return TRUE;
@@ -286,7 +266,7 @@ class CRM_Core_OptionValue {
   public static function getFields($mode = '', $contactType = 'Individual') {
     $key = "$mode $contactType";
     if (empty(self::$_fields[$key]) || !self::$_fields[$key]) {
-      self::$_fields[$key] = array();
+      self::$_fields[$key] = [];
 
       $option = CRM_Core_DAO_OptionValue::import();
 
@@ -294,44 +274,45 @@ class CRM_Core_OptionValue {
         $optionName = $option[$id];
       }
 
-      $nameTitle = array();
+      $nameTitle = [];
       if ($mode == 'contribute') {
-        $nameTitle = array(
-          'payment_instrument' => array(
+        // @todo - remove this - the only code place that calls
+        // this function in a way that would hit this is commented 'remove this'
+        // This is part of a move towards standardising option values but we
+        // should derive them from the fields array so am deprecating it again...
+        // note that the reason this was needed was that payment_instrument_id was
+        // not set to exportable.
+        $nameTitle = [
+          'payment_instrument' => [
             'name' => 'payment_instrument',
             'title' => ts('Payment Method'),
             'headerPattern' => '/^payment|(p(ayment\s)?instrument)$/i',
-          ),
-        );
+          ],
+        ];
       }
       elseif ($mode == '') {
         //the fields email greeting and postal greeting are meant only for Individual and Household
         //the field addressee is meant for all contact types, CRM-4575
-        if (in_array($contactType, array(
-          'Individual',
-          'Household',
-          'Organization',
-          'All',
-        ))) {
-          $nameTitle = array(
-            'addressee' => array(
+        if (in_array($contactType, ['Individual', 'Household', 'Organization', 'All'])) {
+          $nameTitle = [
+            'addressee' => [
               'name' => 'addressee',
               'title' => ts('Addressee'),
               'headerPattern' => '/^addressee$/i',
-            ),
-          );
-          $title = array(
-            'email_greeting' => array(
+            ],
+          ];
+          $title = [
+            'email_greeting' => [
               'name' => 'email_greeting',
               'title' => ts('Email Greeting'),
               'headerPattern' => '/^email_greeting$/i',
-            ),
-            'postal_greeting' => array(
+            ],
+            'postal_greeting' => [
               'name' => 'postal_greeting',
               'title' => ts('Postal Greeting'),
               'headerPattern' => '/^postal_greeting$/i',
-            ),
-          );
+            ],
+          ];
           $nameTitle = array_merge($nameTitle, $title);
         }
       }
@@ -339,7 +320,7 @@ class CRM_Core_OptionValue {
       if (is_array($nameTitle)) {
         foreach ($nameTitle as $name => $attribs) {
           self::$_fields[$key][$name] = $optionName;
-          list($tableName, $fieldName) = explode('.', $optionName['where']);
+          [$tableName, $fieldName] = explode('.', $optionName['where']);
           self::$_fields[$key][$name]['where'] = "{$name}.label";
           foreach ($attribs as $k => $val) {
             self::$_fields[$key][$name][$k] = $val;
@@ -354,7 +335,7 @@ class CRM_Core_OptionValue {
   /**
    * Build select query in case of option-values
    *
-   * @param $query
+   * @param CRM_Contact_BAO_Query $query
    */
   public static function select(&$query) {
     if (!empty($query->_params) || !empty($query->_returnProperties)) {
@@ -363,7 +344,7 @@ class CRM_Core_OptionValue {
         if (!empty($values['pseudoconstant'])) {
           continue;
         }
-        list($tableName, $fieldName) = explode('.', $values['where']);
+        [$tableName, $fieldName] = explode('.', $values['where']);
         if (!empty($query->_returnProperties[$name])) {
           $query->_select["{$name}_id"] = "{$name}.value as {$name}_id";
           $query->_element["{$name}_id"] = 1;
@@ -393,7 +374,7 @@ class CRM_Core_OptionValue {
    *   Array of option-values
    *
    */
-  public static function getValues($groupParams, &$values, $orderBy = 'weight', $isActive = FALSE) {
+  public static function getValues($groupParams, &$values = [], $orderBy = 'weight', $isActive = FALSE) {
     if (empty($groupParams)) {
       return NULL;
     }
@@ -406,6 +387,8 @@ SELECT
    option_value.description as description,
    option_value.weight      as weight,
    option_value.is_active   as is_active,
+   option_value.icon        as icon,
+   option_value.color       as color,
    option_value.is_default  as is_default";
 
     $from = "
@@ -421,12 +404,12 @@ FROM
 
     $order = " ORDER BY " . $orderBy;
 
-    $groupId = CRM_Utils_Array::value('id', $groupParams);
-    $groupName = CRM_Utils_Array::value('name', $groupParams);
+    $groupId = $groupParams['id'] ?? NULL;
+    $groupName = $groupParams['name'] ?? NULL;
 
     if ($groupId) {
       $where .= " AND option_group.id = %1";
-      $params[1] = array($groupId, 'Integer');
+      $params[1] = [$groupId, 'Integer'];
       if (!$groupName) {
         $groupName = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_OptionGroup',
           $groupId, 'name', 'id'
@@ -436,11 +419,7 @@ FROM
 
     if ($groupName) {
       $where .= " AND option_group.name = %2";
-      $params[2] = array($groupName, 'String');
-    }
-
-    if (in_array($groupName, CRM_Core_OptionGroup::$_domainIDGroups)) {
-      $where .= " AND option_value.domain_id = " . CRM_Core_Config::domainID();
+      $params[2] = [$groupName, 'String'];
     }
 
     $query = $select . $from . $where . $order;
@@ -448,7 +427,7 @@ FROM
     $dao = CRM_Core_DAO::executeQuery($query, $params);
 
     while ($dao->fetch()) {
-      $values[$dao->id] = array(
+      $values[$dao->id] = [
         'id' => $dao->id,
         'label' => $dao->label,
         'value' => $dao->value,
@@ -457,8 +436,11 @@ FROM
         'weight' => $dao->weight,
         'is_active' => $dao->is_active,
         'is_default' => $dao->is_default,
-      );
+        'icon' => $dao->icon,
+        'color' => $dao->color,
+      ];
     }
+    return $values;
   }
 
 }

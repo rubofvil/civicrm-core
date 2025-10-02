@@ -7,29 +7,24 @@
 <body>
 
 {capture assign=headerStyle}colspan="2" style="text-align: left; padding: 4px; border-bottom: 1px solid #999; background-color: #eee;"{/capture}
-{capture assign=labelStyle }style="padding: 4px; border-bottom: 1px solid #999; background-color: #f7f7f7;"{/capture}
-{capture assign=valueStyle }style="padding: 4px; border-bottom: 1px solid #999;"{/capture}
-
-<center>
- <table width="620" border="0" cellpadding="0" cellspacing="0" id="crm-event_receipt" style="font-family: Arial, Verdana, sans-serif; text-align: left;">
+{capture assign=labelStyle}style="padding: 4px; border-bottom: 1px solid #999; background-color: #f7f7f7;"{/capture}
+{capture assign=valueStyle}style="padding: 4px; border-bottom: 1px solid #999;"{/capture}
 
   <!-- BEGIN HEADER -->
-  <!-- You can add table row(s) here with logo or other header elements -->
+    {* To modify content in this section, you can edit the Custom Token named "Message Header". See also: https://docs.civicrm.org/user/en/latest/email/message-templates/#modifying-system-workflow-message-templates *}
+    {site.message_header}
   <!-- END HEADER -->
 
   <!-- BEGIN CONTENT -->
 
+  <table id="crm-event_receipt" style="font-family: Arial, Verdana, sans-serif; text-align: left; width:100%; max-width:700px; padding:0; margin:0; border:0px;">
   <tr>
    <td>
-
-    {if $formValues.receipt_text}
-     <p>{$formValues.receipt_text|htmlize}</p>
-    {else}
-     <p>{ts}Thank you for your support.{/ts}</p>
-    {/if}
-
-    <p>{ts}Please print this receipt for your records.{/ts}</p>
-
+    {assign var="greeting" value="{contact.email_greeting_display}"}{if $greeting}<p>{$greeting},</p>{/if}
+      <p>
+        {if {contribution.contribution_page_id.receipt_text|boolean}}{contribution.contribution_page_id.receipt_text}
+        {elseif {contribution.paid_amount|boolean}}{ts}Below you will find a receipt for this contribution.{/ts}{/if}
+      </p>
    </td>
   </tr>
   <tr>
@@ -42,50 +37,48 @@
      </tr>
      <tr>
       <td {$labelStyle}>
-       {ts}Financial Type{/ts}
+       {ts}Contributor Name{/ts}
       </td>
       <td {$valueStyle}>
-       {$formValues.contributionType_name}
+       {contact.display_name}
       </td>
      </tr>
-
-     {if $lineItem and !$is_quick_config}
-      {foreach from=$lineItem item=value key=priceset}
+     {if $isShowLineItems}
        <tr>
         <td colspan="2" {$valueStyle}>
-         <table> {* FIXME: style this table so that it looks like the text version (justification, etc.) *}
+         <table>
           <tr>
            <th>{ts}Item{/ts}</th>
            <th>{ts}Qty{/ts}</th>
            <th>{ts}Each{/ts}</th>
-           {if $getTaxDetails}
+           {if $isShowTax && {contribution.tax_amount|boolean}}
              <th>{ts}Subtotal{/ts}</th>
              <th>{ts}Tax Rate{/ts}</th>
              <th>{ts}Tax Amount{/ts}</th>
            {/if}
            <th>{ts}Total{/ts}</th>
           </tr>
-          {foreach from=$value item=line}
+          {foreach from=$lineItems item=line}
            <tr>
             <td>
-            {if $line.html_type eq 'Text'}{$line.label}{else}{$line.field_title} - {$line.label}{/if} {if $line.description}<div>{$line.description|truncate:30:"..."}</div>{/if}
+              {$line.title}
             </td>
             <td>
              {$line.qty}
             </td>
             <td>
-             {$line.unit_price|crmMoney:$currency}
+             {$line.unit_price|crmMoney:'{contribution.currency}'}
             </td>
-            {if $getTaxDetails}
+            {if $isShowTax && {contribution.tax_amount|boolean}}
               <td>
-                {$line.unit_price*$line.qty|crmMoney:$currency}
+                {$line.line_total|crmMoney:'{contribution.currency}'}
               </td>
-              {if $line.tax_rate != "" || $line.tax_amount != ""}
+              {if $line.tax_rate || $line.tax_amount != ""}
                 <td>
                   {$line.tax_rate|string_format:"%.2f"}%
                 </td>
                 <td>
-                  {$line.tax_amount|crmMoney:$currency}
+                  {$line.tax_amount|crmMoney:'{contribution.currency}'}
                 </td>
               {else}
                 <td></td>
@@ -93,45 +86,40 @@
               {/if}
             {/if}
             <td>
-             {$line.line_total+$line.tax_amount|crmMoney:$currency}
+             {$line.line_total_inclusive|crmMoney:'{contribution.currency}'}
             </td>
            </tr>
           {/foreach}
          </table>
         </td>
        </tr>
-      {/foreach}
+
      {/if}
-     {if $getTaxDetails && $dataArray}
+     {if $isShowTax && {contribution.tax_amount|boolean}}
        <tr>
          <td {$labelStyle}>
            {ts} Amount before Tax : {/ts}
          </td>
          <td {$valueStyle}>
-           {$formValues.total_amount-$totalTaxAmount|crmMoney:$currency}
+           {contribution.tax_exclusive_amount}
          </td>
        </tr>
 
-      {foreach from=$dataArray item=value key=priceset}
-        <tr>
-        {if $priceset ||  $priceset == 0 || $value != ''}
-          <td>&nbsp;{$taxTerm} {$priceset|string_format:"%.2f"}%</td>
-          <td>&nbsp;{$value|crmMoney:$currency}</td>
-        {else}
-          <td>&nbsp;{ts}No{/ts} {$taxTerm}</td>
-          <td>&nbsp;{$value|crmMoney:$currency}</td>
-        {/if}
+       {foreach from=$taxRateBreakdown item=taxDetail key=taxRate}
+         <tr>
+          <td>{if $taxRate == 0}{ts}No{/ts} {$taxTerm}{else}{$taxTerm} {$taxDetail.percentage}%{/if}</td>
+          <td>{$taxDetail.amount|crmMoney:'{contribution.currency}'}</td>
         </tr>
       {/foreach}
      {/if}
 
-     {if isset($totalTaxAmount) && $totalTaxAmount !== 'null'}
+     {if $isShowTax}
       <tr>
         <td {$labelStyle}>
           {ts}Total Tax Amount{/ts}
         </td>
         <td {$valueStyle}>
-          {$totalTaxAmount|crmMoney:$currency}
+          {contribution.tax_amount}
         </td>
       </tr>
      {/if}
@@ -141,74 +129,74 @@
        {ts}Total Amount{/ts}
       </td>
       <td {$valueStyle}>
-       {$formValues.total_amount|crmMoney:$currency}
+        {contribution.total_amount}
       </td>
      </tr>
 
-     {if $receive_date}
-      <tr>
+     {if '{contribution.receive_date}'}
+       <tr>
        <td {$labelStyle}>
-        {ts}Date Received{/ts}
+        {ts}Contribution Date{/ts}
        </td>
        <td {$valueStyle}>
-        {$receive_date|truncate:10:''|crmDate}
+         {contribution.receive_date|crmDate:"shortdate"}
        </td>
       </tr>
      {/if}
 
-      {if $receipt_date}
+      {if '{contribution.receipt_date}'}
       <tr>
        <td {$labelStyle}>
         {ts}Receipt Date{/ts}
        </td>
        <td {$valueStyle}>
-        {$receipt_date|truncate:10:''|crmDate}
+         {contribution.receipt_date|crmDate:"shortdate"}
        </td>
       </tr>
      {/if}
 
-     {if $formValues.paidBy and !$formValues.hidden_CreditCard}
+     {if {contribution.payment_instrument_id|boolean} && {contribution.paid_amount|boolean}}
       <tr>
        <td {$labelStyle}>
         {ts}Paid By{/ts}
        </td>
        <td {$valueStyle}>
-        {$formValues.paidBy}
+         {contribution.payment_instrument_id:label}
        </td>
       </tr>
-      {if $formValues.check_number}
+      {if '{contribution.check_number}'}
        <tr>
         <td {$labelStyle}>
          {ts}Check Number{/ts}
         </td>
         <td {$valueStyle}>
-         {$formValues.check_number}
+          {contribution.check_number}
         </td>
        </tr>
       {/if}
      {/if}
 
-     {if $formValues.trxn_id}
+     {if '{contribution.trxn_id}'}
       <tr>
        <td {$labelStyle}>
         {ts}Transaction ID{/ts}
        </td>
        <td {$valueStyle}>
-        {$formValues.trxn_id}
+         {contribution.trxn_id}
        </td>
       </tr>
      {/if}
 
-     {if $ccContribution}
+      {if {contribution.address_id.display|boolean}}
       <tr>
        <th {$headerStyle}>
-        {ts}Billing Name and Address{/ts}
+        {ts}Billing Address{/ts}
        </th>
       </tr>
       <tr>
        <td colspan="2" {$valueStyle}>
-        {$billingName}<br />
-        {$address|nl2br}
+         {contribution.address_id.name}<br/>
+         {contribution.address_id.display}
        </td>
       </tr>
       <tr>
@@ -225,7 +213,7 @@
       </tr>
      {/if}
 
-     {if $softCreditTypes and $softCredits}
+     {if !empty($softCreditTypes) and !empty($softCredits)}
       {foreach from=$softCreditTypes item=softCreditType key=n}
        <tr>
         <th {$headerStyle}>
@@ -245,7 +233,7 @@
        {/foreach}
      {/if}
 
-     {if $customGroup}
+     {if !empty($customGroup)}
       {foreach from=$customGroup item=value key=customName}
        <tr>
         <th {$headerStyle}>
@@ -265,7 +253,7 @@
       {/foreach}
      {/if}
 
-     {if $formValues.product_name}
+     {if !empty($formValues.product_name)}
       <tr>
        <th {$headerStyle}>
         {ts}Premium Information{/ts}
@@ -296,7 +284,7 @@
         </td>
        </tr>
       {/if}
-      {if $fulfilled_date}
+      {if !empty($fulfilled_date)}
        <tr>
         <td {$labelStyle}>
          {ts}Sent{/ts}
@@ -313,7 +301,6 @@
   </tr>
 
  </table>
-</center>
 
 </body>
 </html>

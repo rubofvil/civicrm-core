@@ -1,49 +1,38 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
-{if $pager and $pager->_response}
-    {if $pager->_response.numPages > 1}
-        <div class="crm-pager">
-            <span class="element-right">
-            {if $location eq 'top'}
-              {$pager->_response.titleTop}
-            {else}
-              {$pager->_response.titleBottom}
-            {/if}
-            </span>
-          </span>
+{if $pager && $pager->_response}
+  {if $pager->_response.numPages > 1}
+    <div class="crm-pager">
+      {if $location eq 'top'}
+        <span class="element-right">
           <span class="crm-pager-nav">
-          {$pager->_response.first}&nbsp;
-          {$pager->_response.back}&nbsp;
-          {$pager->_response.next}&nbsp;
-          {$pager->_response.last}&nbsp;
-          {$pager->_response.status}
+            {$pager->_response.back nofilter}
+            {$pager->_response.next nofilter}
           </span>
-
-        </div>
-    {/if}
+        </span>
+        <span class="crm-pager-nav">
+          {$pager->_response.status}
+        </span>
+      {else}
+        <span class="element-right">
+          {$pager->_response.titleBottom nofilter}
+        </span>
+        <span class="crm-pager-nav">
+          {$pager->_response.first nofilter}&nbsp;
+          {$pager->_response.back nofilter}&nbsp;
+          {$pager->_response.next nofilter}&nbsp;
+          {$pager->_response.last nofilter}&nbsp;
+        </span>
+      {/if}
+    </div>
+  {/if}
 
     {* Controller for 'Rows Per Page' *}
     {if $location eq 'bottom' and $pager->_totalItems > 25}
@@ -64,7 +53,7 @@
             numPages = {$pager->_response.numPages},
             currentPage = {$pager->_response.currentPage},
             perPageCount = {$pager->_perPage},
-            currentLocation = {$pager->_response.currentLocation|json_encode},
+            currentLocation = {$pager->_response.currentLocation|json_encode nofilter},
             spinning = null,
             refreshing = false;
           {literal}

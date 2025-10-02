@@ -1,85 +1,41 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
+use Civi\Api4\Event\AuthorizeRecordEvent;
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
  * Business object for Saved searches.
  */
-class CRM_Contact_BAO_SavedSearch extends CRM_Contact_DAO_SavedSearch {
+class CRM_Contact_BAO_SavedSearch extends CRM_Contact_DAO_SavedSearch implements \Civi\Core\HookInterface {
 
   /**
-   * Class constructor.
-   */
-  public function __construct() {
-    parent::__construct();
-  }
-
-  /**
-   * Query the db for all saved searches.
-   *
-   * @return array
-   *   contains the search name as value and and id as key
-   */
-  public function getAll() {
-    $savedSearch = new CRM_Contact_DAO_SavedSearch();
-    $savedSearch->selectAdd();
-    $savedSearch->selectAdd('id, name');
-    $savedSearch->find();
-    while ($savedSearch->fetch()) {
-      $aSavedSearch[$savedSearch->id] = $savedSearch->name;
-    }
-    return $aSavedSearch;
-  }
-
-  /**
-   * Retrieve DB object based on input parameters.
-   *
-   * It also stores all the retrieved values in the default array.
+   * Retrieve DB object and copy to defaults array.
    *
    * @param array $params
-   *   (reference ) an assoc array of name/value pairs.
+   *   Array of criteria values.
    * @param array $defaults
-   *   (reference ) an assoc array to hold the flattened values.
+   *   Array to be populated with found values.
    *
-   * @return CRM_Contact_BAO_SavedSearch
+   * @return self|null
+   *   The DAO object, if found.
+   *
+   * @deprecated
    */
-  public static function retrieve(&$params, &$defaults) {
-    $savedSearch = new CRM_Contact_DAO_SavedSearch();
-    $savedSearch->copyValues($params);
-    if ($savedSearch->find(TRUE)) {
-      CRM_Core_DAO::storeValues($savedSearch, $defaults);
-      return $savedSearch;
-    }
-    return NULL;
+  public static function retrieve($params, &$defaults = []) {
+    return self::commonRetrieve(self::class, $params, $defaults);
   }
 
   /**
@@ -90,36 +46,65 @@ class CRM_Contact_BAO_SavedSearch extends CRM_Contact_DAO_SavedSearch {
    *
    * @return array
    *   the values of the posted saved search used as default values in various Search Form
+   *
+   * @throws \CRM_Core_Exception
    */
   public static function getFormValues($id) {
+    $specialDateFields = [
+      'event_start_date_low' => 'event_date_low',
+      'event_end_date_high' => 'event_date_high',
+    ];
+
     $fv = CRM_Core_DAO::getFieldValue('CRM_Contact_DAO_SavedSearch', $id, 'form_values');
-    $result = NULL;
+    $result = [];
     if ($fv) {
-      // make sure u unserialize - since it's stored in serialized form
-      $result = unserialize($fv);
+      // make sure u CRM_Utils_String::unserialize - since it's stored in serialized form
+      $result = CRM_Utils_String::unserialize($fv);
+      if ($result === FALSE) {
+        // See https://github.com/civicrm/civicrm-core/pull/33638
+        Civi::log()->error("Invalid saved_search.form_values for search ID $id. Failed to unserialize. Risk of unexpected search results.");
+        return [];
+      }
     }
 
-    //CRM-19250: fetch the default date format to format mysql value as per CRM_Core_Error::addDate()
-    $dateFormat = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_PreferencesDate', 'searchDate', 'date_format', 'name');
-    $dateFormat = empty($dateFormat) ? CRM_Core_Config::singleton()->dateInputFormat : $dateFormat;
-    $dateFormat = CRM_Utils_Array::value($dateFormat, CRM_Core_SelectValues::datePluginToPHPFormats());
-
-    $specialFields = array('contact_type', 'group', 'contact_tags', 'member_membership_type_id', 'member_status_id');
+    $specialFields = ['contact_type', 'group', 'contact_tags', 'member_membership_type_id', 'member_status_id'];
     foreach ($result as $element => $value) {
       if (CRM_Contact_BAO_Query::isAlreadyProcessedForQueryFormat($value)) {
-        $id = CRM_Utils_Array::value(0, $value);
-        $value = CRM_Utils_Array::value(2, $value);
+        $id = $value[0] ?? NULL;
+        $value = $value[2] ?? NULL;
         if (is_array($value) && in_array(key($value), CRM_Core_DAO::acceptedSQLOperators(), TRUE)) {
-          $value = CRM_Utils_Array::value(key($value), $value);
-        }
-        if (strpos($id, '_date_low') !== FALSE || strpos($id, '_date_high') !== FALSE) {
-          $entityName = strstr($id, '_date', TRUE);
-          if (!empty($result['relative_dates']) && array_key_exists($entityName, $result['relative_dates'])) {
-            $result["{$entityName}_date_relative"] = $result['relative_dates'][$entityName];
+          $op = key($value);
+          $value = $value[$op] ?? NULL;
+          if (in_array($op, ['BETWEEN', '>=', '<='])) {
+            self::decodeRelativeFields($result, $id, $op, $value);
+            unset($result[$element]);
+            continue;
           }
-          else {
-            $result[$id] = date($dateFormat, strtotime($value));
-            $result["{$entityName}_date_relative"] = 0;
+        }
+        // Check for a date range field, which might be a standard date
+        // range or a relative date.
+        if (str_contains($id, '_date_low') || str_contains($id, '_date_high')) {
+          $entityName = strstr($id, '_date', TRUE);
+
+          // This is the default, for non relative dates. We will overwrite
+          // it if we determine this is a relative date.
+          $result[$id] = $value;
+          $result["{$entityName}_date_relative"] = 0;
+
+          if (!empty($result['relative_dates'])) {
+            if (array_key_exists($entityName, $result['relative_dates'])) {
+              // We have a match from a regular field.
+              $result[$id] = NULL;
+              $result["{$entityName}_date_relative"] = $result['relative_dates'][$entityName];
+            }
+            elseif (!empty($specialDateFields[$id])) {
+              // We may have a match on a special date field.
+              $entityName = strstr($specialDateFields[$id], '_date', TRUE);
+              if (array_key_exists($entityName, $result['relative_dates'])) {
+                $result[$id] = NULL;
+                $result["{$entityName}_relative"] = $result['relative_dates'][$entityName];
+              }
+            }
           }
         }
         else {
@@ -141,20 +126,17 @@ class CRM_Contact_BAO_SavedSearch extends CRM_Contact_DAO_SavedSearch {
         // As per the OK (Operator as Key) value format, value array may contain key
         // as an operator so to ensure the default is always set actual value
         elseif (in_array(key($value), CRM_Core_DAO::acceptedSQLOperators(), TRUE)) {
-          $result[$element] = CRM_Utils_Array::value(key($value), $value);
+          $result[$element] = $value[key($value)] ?? NULL;
           if (is_string($result[$element])) {
             $result[$element] = str_replace("%", '', $result[$element]);
           }
         }
       }
-      if (substr($element, 0, 7) == 'custom_' &&
-        (substr($element, -5, 5) == '_from' || substr($element, -3, 3) == '_to')
-      ) {
-        // Ensure the _relative field is set if from or to are set to ensure custom date
-        // fields with 'from' or 'to' values are displayed when the are set in the smart group
-        // being loaded. (CRM-17116)
-        if (!isset($result[CRM_Contact_BAO_Query::getCustomFieldName($element) . '_relative'])) {
-          $result[CRM_Contact_BAO_Query::getCustomFieldName($element) . '_relative'] = 0;
+      // We should only set the relative key for custom date fields if it is not already set in the array.
+      $realField = str_replace(['_relative', '_low', '_high', '_to', '_high'], '', $element);
+      if (substr($element, 0, 7) == 'custom_' && CRM_Contact_BAO_Query::isCustomDateField($realField)) {
+        if (!isset($result[$realField . '_relative'])) {
+          $result[$realField . '_relative'] = 0;
         }
       }
       // check to see if we need to convert the old privacy array
@@ -170,7 +152,7 @@ class CRM_Contact_BAO_SavedSearch extends CRM_Contact_DAO_SavedSearch {
             unset($result['privacy']['do_not_toggle']);
           }
 
-          $result['privacy_options'] = array();
+          $result['privacy_options'] = [];
           foreach ($result['privacy'] as $name => $val) {
             if ($val) {
               $result['privacy_options'][] = $name;
@@ -190,11 +172,20 @@ class CRM_Contact_BAO_SavedSearch extends CRM_Contact_DAO_SavedSearch {
    * @param int $id
    *
    * @return array
+   *
+   * @throws \CRM_Core_Exception
    */
   public static function getSearchParams($id) {
+    $savedSearch = \Civi\Api4\SavedSearch::get(FALSE)
+      ->addWhere('id', '=', $id)
+      ->execute()
+      ->first();
+    if ($savedSearch['api_entity']) {
+      return $savedSearch;
+    }
     $fv = self::getFormValues($id);
     //check if the saved search has mapping id
-    if (CRM_Core_DAO::getFieldValue('CRM_Contact_DAO_SavedSearch', $id, 'mapping_id')) {
+    if ($savedSearch['mapping_id']) {
       return CRM_Core_BAO_Mapping::formattedFields($fv);
     }
     elseif (!empty($fv['customSearchID'])) {
@@ -232,148 +223,60 @@ class CRM_Contact_BAO_SavedSearch extends CRM_Contact_DAO_SavedSearch {
   }
 
   /**
-   * Contact IDS Sql (whatever that means!).
+   * Deprecated function, gets a value from Group entity
    *
+   * @deprecated
    * @param int $id
-   *
-   * @return string
-   */
-  public static function contactIDsSQL($id) {
-    $params = self::getSearchParams($id);
-    if ($params && !empty($params['customSearchID'])) {
-      return CRM_Contact_BAO_SearchCustom::contactIDSQL(NULL, $id);
-    }
-    else {
-      $tables = $whereTables = array('civicrm_contact' => 1);
-      $where = CRM_Contact_BAO_SavedSearch::whereClause($id, $tables, $whereTables);
-      if (!$where) {
-        $where = '( 1 )';
-      }
-      $from = CRM_Contact_BAO_Query::fromClause($whereTables);
-      return "
-SELECT contact_a.id
-$from
-WHERE  $where";
-    }
-  }
-
-  /**
-   * Get from where email (whatever that means!).
-   *
-   * @param int $id
-   *
-   * @return array
-   */
-  public static function fromWhereEmail($id) {
-    $params = self::getSearchParams($id);
-
-    if ($params) {
-      if (!empty($params['customSearchID'])) {
-        return CRM_Contact_BAO_SearchCustom::fromWhereEmail(NULL, $id);
-      }
-      else {
-        $tables = $whereTables = array('civicrm_contact' => 1, 'civicrm_email' => 1);
-        $where = CRM_Contact_BAO_SavedSearch::whereClause($id, $tables, $whereTables);
-        $from = CRM_Contact_BAO_Query::fromClause($whereTables);
-        return array($from, $where);
-      }
-    }
-    else {
-      // fix for CRM-7240
-      $from = "
-FROM      civicrm_contact contact_a
-LEFT JOIN civicrm_email ON (contact_a.id = civicrm_email.contact_id AND civicrm_email.is_primary = 1)
-";
-      $where = " ( 1 ) ";
-      $tables['civicrm_contact'] = $whereTables['civicrm_contact'] = 1;
-      $tables['civicrm_email'] = $whereTables['civicrm_email'] = 1;
-      return array($from, $where);
-    }
-  }
-
-  /**
-   * Given a saved search compute the clause and the tables and store it for future use.
-   */
-  public function buildClause() {
-    $fv = unserialize($this->form_values);
-
-    if ($this->mapping_id) {
-      $params = CRM_Core_BAO_Mapping::formattedFields($fv);
-    }
-    else {
-      $params = CRM_Contact_BAO_Query::convertFormValues($fv);
-    }
-
-    if (!empty($params)) {
-      $tables = $whereTables = array();
-      $this->where_clause = CRM_Contact_BAO_Query::getWhereClause($params, NULL, $tables, $whereTables);
-      if (!empty($tables)) {
-        $this->select_tables = serialize($tables);
-      }
-      if (!empty($whereTables)) {
-        $this->where_tables = serialize($whereTables);
-      }
-    }
-  }
-
-  /**
-   * Save the search.
-   *
-   * @param bool $hook
-   */
-  public function save($hook = TRUE) {
-    // first build the computed fields
-    $this->buildClause();
-
-    parent::save($hook);
-  }
-
-  /**
-   * Given an id, get the name of the saved search.
-   *
-   * @param int $id
-   *   The id of the saved search.
-   *
    * @param string $value
    *
-   * @return string
-   *   the name of the saved search
+   * @return string|null
    */
   public static function getName($id, $value = 'name') {
-    $group = new CRM_Contact_DAO_Group();
-    $group->saved_search_id = $id;
-    if ($group->find(TRUE)) {
-      return $group->$value;
-    }
-    return NULL;
+    return parent::getFieldValue('CRM_Contact_DAO_Group', $id, $value, 'saved_search_id');
   }
 
   /**
-   * Create a smart group from normalised values.
-   *
+   * @deprecated
    * @param array $params
-   *
-   * @return \CRM_Contact_DAO_SavedSearch
+   * @return CRM_Contact_DAO_SavedSearch
    */
-  public static function create(&$params) {
-    $savedSearch = new CRM_Contact_DAO_SavedSearch();
-    if (isset($params['formValues']) &&
-      !empty($params['formValues'])
-    ) {
-      $savedSearch->form_values = serialize($params['formValues']);
+  public static function create($params) {
+    return self::writeRecord($params);
+  }
+
+  /**
+   * Callback for hook_civicrm_pre().
+   *
+   * @param \Civi\Core\Event\PreEvent $event
+   *
+   * @throws \CRM_Core_Exception
+   */
+  public static function self_hook_civicrm_pre(\Civi\Core\Event\PreEvent $event): void {
+    if ($event->action === 'create' || $event->action === 'edit') {
+      $event->params['modified_id'] ??= CRM_Core_Session::getLoggedInContactID();
+      // Set by mysql
+      unset($event->params['modified_date']);
+
+      // Delete empty form values and save as null if completely empty
+      if (isset($event->params['form_values']) && is_array($event->params['form_values'])) {
+        // Exclude legacy smart groups by checking if api_entity is set
+        if (!empty($event->params['api_entity'])) {
+          foreach ($event->params['form_values'] as $key => $value) {
+            if (is_array($value) && !$value) {
+              unset($event->params['form_values'][$key]);
+            }
+          }
+          if (!$event->params['form_values']) {
+            $event->params['form_values'] = '';
+          }
+        }
+      }
+
+      // Flush angular caches to refresh search displays
+      if (isset($event->params['api_params'])) {
+        Civi::container()->get('angular')->clear();
+      }
     }
-    else {
-      $savedSearch->form_values = NULL;
-    }
-
-    $savedSearch->is_active = CRM_Utils_Array::value('is_active', $params, 1);
-    $savedSearch->mapping_id = CRM_Utils_Array::value('mapping_id', $params, 'null');
-    $savedSearch->custom_search_id = CRM_Utils_Array::value('custom_search_id', $params, 'null');
-    $savedSearch->id = CRM_Utils_Array::value('id', $params, NULL);
-
-    $savedSearch->save();
-
-    return $savedSearch;
   }
 
   /**
@@ -387,7 +290,7 @@ LEFT JOIN civicrm_email ON (contact_a.id = civicrm_email.contact_id AND civicrm_
     if ($fieldName == 'form_values') {
       // A dummy value for form_values.
       $this->{$fieldName} = serialize(
-          array('sort_name' => "SortName{$counter}"));
+          ['sort_name' => "SortName{$counter}"]);
     }
     else {
       parent::assignTestValues($fieldName, $fieldDef, $counter);
@@ -395,22 +298,209 @@ LEFT JOIN civicrm_email ON (contact_a.id = civicrm_email.contact_id AND civicrm_
   }
 
   /**
-   * Store relative dates in separate array format
+   * Store search variables in $queryParams which were skipped while processing query params,
+   * precisely at CRM_Contact_BAO_Query::fixWhereValues(...). But these variable are required in
+   * building smart group criteria otherwise it will cause issues like CRM-18585,CRM-19571
    *
    * @param array $queryParams
    * @param array $formValues
    */
-  public static function saveRelativeDates(&$queryParams, $formValues) {
-    $relativeDates = array('relative_dates' => array());
-    foreach ($formValues as $id => $value) {
-      if (preg_match('/_date_relative$/', $id) && !empty($value)) {
-        $entityName = strstr($id, '_date', TRUE);
-        $relativeDates['relative_dates'][$entityName] = $value;
+  public static function saveSkippedElement(&$queryParams, $formValues) {
+    // these are elements which are skipped in a smart group criteria
+    $specialElements = [
+      'operator',
+      'component_mode',
+      'display_relationship_type',
+      'uf_group_id',
+    ];
+    foreach ($specialElements as $element) {
+      if (!empty($formValues[$element])) {
+        $queryParams[] = [$element, '=', $formValues[$element], 0, 0];
       }
     }
-    // merge with original queryParams if relative date value(s) found
-    if (count($relativeDates['relative_dates'])) {
-      $queryParams = array_merge($queryParams, $relativeDates);
+  }
+
+  /**
+   * Decode relative custom fields (converted by CRM_Contact_BAO_Query->convertCustomRelativeFields(...))
+   *  into desired formValues
+   *
+   * @param array $formValues
+   * @param string $fieldName
+   * @param string $op
+   * @param array|string|int $value
+   *
+   * @throws \CRM_Core_Exception
+   */
+  public static function decodeRelativeFields(&$formValues, $fieldName, $op, $value) {
+    // check if its a custom date field, if yes then 'searchDate' format the value
+    if (CRM_Contact_BAO_Query::isCustomDateField($fieldName)) {
+      return;
+    }
+
+    switch ($op) {
+      case 'BETWEEN':
+        [$formValues[$fieldName . '_from'], $formValues[$fieldName . '_to']] = $value;
+        break;
+
+      case '>=':
+        $formValues[$fieldName . '_from'] = $value;
+        break;
+
+      case '<=':
+        $formValues[$fieldName . '_to'] = $value;
+        break;
+    }
+  }
+
+  /**
+   * Generate a url to the appropriate search form for a given savedSearch
+   *
+   * @param int $id
+   *   Saved search id
+   * @return string
+   */
+  public static function getEditSearchUrl($id) {
+    $savedSearch = self::retrieve(['id' => $id]);
+    // APIv4 search
+    if (!empty($savedSearch->api_entity)) {
+      return CRM_Utils_System::url('civicrm/admin/search', NULL, FALSE, "/edit/$id");
+    }
+    // Classic search builder
+    if (!empty($savedSearch->mapping_id)) {
+      $path = 'civicrm/contact/search/builder';
+    }
+    // Classic custom search
+    elseif (!empty($savedSearch->search_custom_id)) {
+      $path = 'civicrm/contact/search/custom';
+    }
+    // Classic advanced search
+    else {
+      $path = 'civicrm/contact/search/advanced';
+    }
+    return CRM_Utils_System::url($path, ['reset' => 1, 'ssID' => $id]);
+  }
+
+  /**
+   * Retrieve pseudoconstant options for $this->api_entity field
+   * @return array
+   */
+  public static function getApiEntityOptions() {
+    return Civi\Api4\Entity::get(FALSE)
+      ->addSelect('name', 'title_plural')
+      ->addOrderBy('title_plural')
+      ->execute()
+      ->column('title_plural', 'name');
+  }
+
+  /**
+   * Gets all smart groups that filter based on groupID.
+   *
+   * @param int $groupID
+   *     Group Id to search for.
+   * @return array
+   */
+  public static function getSmartGroupsUsingGroup(int $groupID) {
+    $groups = \Civi\Api4\Group::get(FALSE)
+      ->addSelect('id', 'title', 'saved_search_id', 'saved_search_id.form_values')
+      ->addWhere('saved_search_id', 'IS NOT NULL')
+      ->addWhere('saved_search_id.form_values', 'CONTAINS', 'group')
+      ->setLimit(0)
+      ->execute();
+    $smartGroups = [];
+    foreach ($groups as $group) {
+      // Filter out arrays in Form Values which are group searchs.
+      $groupSearches = array_filter(
+        $group['saved_search_id.form_values'] ?: [],
+        function($v) {
+          return ($v[0] == 'group');
+        }
+      );
+      // Check each group search for valid groups.
+      foreach ($groupSearches as $groupSearch) {
+        $groupFormValues = (array) ($groupSearch[2]['IN'] ?? $groupSearch[2] ?? []);
+        if (!empty($groupFormValues) && in_array($groupID, (array) $groupFormValues)) {
+          $smartGroups[$group['id']] = [
+            'title' => $group['title'],
+            'editSearchURL' => self::getEditSearchUrl($group['saved_search_id']),
+          ];
+        }
+      }
+    }
+    return $smartGroups;
+  }
+
+  /**
+   * Check SavedSearch access.
+   * @see \Civi\Api4\Utils\CoreUtil::checkAccessRecord
+   */
+  public static function self_civi_api4_authorizeRecord(AuthorizeRecordEvent $e): void {
+    if (CRM_Core_Permission::check('administer search_kit')) {
+      // User has  access to manage all records.
+      return;
+    }
+
+    $record = $e->getRecord();
+    $action = $e->getActionName();
+    if (!in_array($action, ['delete', 'update'], TRUE)) {
+      // We only care about these actions.
+      return;
+    }
+
+    try {
+      self::checkManageOwnPermission($record, $e->getUserID());
+    }
+    catch (\Civi\API\Exception\UnauthorizedException) {
+      $e->setAuthorized(FALSE);
+    }
+  }
+
+  /**
+   * @inheritDoc
+   */
+  public static function writeRecord(array $record): CRM_Contact_DAO_SavedSearch {
+    if (!empty($record['check_permission']) && !CRM_Core_Permission::check('administer search_kit') && !empty($record['id'])) {
+      self::checkManageOwnPermission($record, CRM_Core_Session::getLoggedInContactID());
+    }
+    return parent::writeRecord($record);
+  }
+
+  /**
+   * @inheritDoc
+   */
+  public static function deleteRecord(array $record): CRM_Contact_DAO_SavedSearch {
+    if (!empty($record['check_permission']) && !CRM_Core_Permission::check('administer search_kit')) {
+      self::checkManageOwnPermission($record, CRM_Core_Session::getLoggedInContactID());
+    }
+    return parent::deleteRecord($record);
+  }
+
+  /**
+   * Ensure that the current user has permission to manage their own SavedSearch records.
+   *
+   * @param array $record The record in which the permission is to be checked.
+   * @param int $userID The user ID to check permissions against.
+   * @return void
+   * @throws CRM_Core_Exception
+   * @throws \Civi\API\Exception\UnauthorizedException
+   */
+  public static function checkManageOwnPermission(array $record, int $userID): void {
+    // If user doesn't have base permission, block action.
+    if (!CRM_Core_Permission::check('manage own search_kit')) {
+      throw new \Civi\API\Exception\UnauthorizedException('You do not have permission to manage this SavedSearch.');
+    }
+
+    $created_id = empty($record['created_id']) ? self::getFieldValue(parent::class, $record['id'], 'created_id') : $record['created_id'];
+    // When we have a created_id, we need to compare against user to see if they are the owner.
+    if (!empty($created_id)) {
+
+      // IDs must match in order to manage.
+      if ($userID !== (int) $created_id) {
+        throw new \Civi\API\Exception\UnauthorizedException('You do not have permission to manage this SavedSearch.');
+      }
+    }
+    else {
+      // No created_id and user can't manage all records, so block access.
+      throw new \Civi\API\Exception\UnauthorizedException('You do not have permission to manage this SavedSearch.');
     }
   }
 

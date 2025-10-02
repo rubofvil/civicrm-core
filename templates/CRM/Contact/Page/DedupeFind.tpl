@@ -1,89 +1,73 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 {if $action eq 2 || $action eq 16}
 <div class="form-item">
-  <div class="crm-accordion-wrapper crm-search_filters-accordion">
-    <div class="crm-accordion-header">
+  <details class="crm-accordion-bold crm-search_filters-accordion" open>
+    <summary>
     {ts}Filter Contacts{/ts}</a>
-    </div><!-- /.crm-accordion-header -->
+    </summary>
     <div class="crm-accordion-body">
       <table class="no-border form-layout-compressed" id="searchOptions" style="width:100%;">
         <tr>
           <td class="crm-contact-form-block-contact1">
             <label for="contact1">{ts}Contact 1{/ts}</label><br />
-            <input type="text" placeholder="Search Contact1" search-column="2" />
+            <input type="text" placeholder="{ts escape='htmlattribute'}Search Contact1{/ts}" search-column="2" id="contact1"/>
           </td>
           <td class="crm-contact-form-block-contact2">
             <label for="contact2">{ts}Contact 2{/ts}</label><br />
-            <input type="text" placeholder="Search Contact2" search-column="4" />
+            <input type="text" placeholder="{ts escape='htmlattribute'}Search Contact2{/ts}" search-column="4" id="contact2"/>
           </td>
           <td class="crm-contact-form-block-email1">
             <label for="email1">{ts}Email 1{/ts}</label><br />
-            <input type="text" placeholder="Search Email1" search-column="5" />
+            <input type="text" placeholder="{ts escape='htmlattribute'}Search Email1{/ts}" search-column="5" id="email1"/>
           </td>
           <td class="crm-contact-form-block-email2">
             <label for="email2">{ts}Email 2{/ts}</label><br />
-            <input type="text" placeholder="Search Email2" search-column="6" />
+            <input type="text" placeholder="{ts escape='htmlattribute'}Search Email2{/ts}" search-column="6" id="email2"/>
           </td>
         </tr>
         <tr>
           <td class="crm-contact-form-block-street-address1">
             <label for="street-adddress1">{ts}Street Address 1{/ts}</label><br />
-            <input type="text" placeholder="Search Street Address1" search-column="7" />
+            <input type="text" placeholder="{ts escape='htmlattribute'}Search Street Address1{/ts}" search-column="7" id="street-adddress1"/>
           </td>
           <td class="crm-contact-form-block-street-address2">
             <label for="street-adddress2">{ts}Street Address 2{/ts}</label><br />
-            <input type="text" placeholder="Search Street Address2" search-column="8" />
+            <input type="text" placeholder="{ts escape='htmlattribute'}Search Street Address2{/ts}" search-column="8" id="street-adddress2"/>
           </td>
           <td class="crm-contact-form-block-postcode1">
             <label for="postcode1">{ts}Postcode 1{/ts}</label><br />
-            <input type="text" placeholder="Search Postcode1" search-column="9" />
+            <input type="text" placeholder="{ts escape='htmlattribute'}Search Postcode1{/ts}" search-column="9" id="postcode1"/>
           </td>
           <td class="crm-contact-form-block-postcode2">
             <label for="postcode2">{ts}Postcode 2{/ts}</label><br />
-            <input type="text" placeholder="Search Postcode2" search-column="10" />
+            <input type="text" placeholder="{ts escape='htmlattribute'}Search Postcode2{/ts}" search-column="10" id="postcode2"/>
           </td>
         </tr>
       </table>
-    </div><!-- /.crm-accordion-body -->
-  </div><!-- /.crm-accordion-wrapper -->
+    </div>
+  </details>
   <div>
-    Show / Hide columns:
-    <input type='checkbox' id ='steet-address' class='toggle-vis' data-column-main="7" data-column-dupe="8" >
+    {ts}Show / Hide columns:{/ts}
+    <input type='checkbox' id='steet-address' class='toggle-vis' data-column-main="7" data-column-dupe="8" >
         <label for="steet-address">{ts}Street Address{/ts}&nbsp;</label>
-    <input type='checkbox' id ='post-code' class='toggle-vis' data-column-main="9" data-column-dupe="10" >
+    <input type='checkbox' id='post-code' class='toggle-vis' data-column-main="9" data-column-dupe="10" >
         <label for="post-code">{ts}Post Code{/ts}&nbsp;</label>
-    <input type='checkbox' id ='conflicts' class='toggle-vis' data-column-main="11"  >
+    <input type='checkbox' id='conflicts' class='toggle-vis' data-column-main="11"  >
         <label for="conflicts">{ts}Conflicts{/ts}&nbsp; </label>
-    <input type='checkbox' id ='threshold' class='toggle-vis' data-column-main="12"  >
+    <input type='checkbox' id='threshold' class='toggle-vis' data-column-main="12"  >
         <label for="threshold">{ts}Threshold{/ts}&nbsp;</label>
   </div><br/>
   <span id="dupePairs_length_selection">
-    <input type='checkbox' id ='crm-dedupe-display-selection' name="display-selection">
-    <label for="display-selection">{ts}Within Selections{/ts}&nbsp;</label>
+    <input type='checkbox' id='crm-dedupe-display-selection' name="display-selection">
+    <label for="crm-dedupe-display-selection">{ts}Within Selections{/ts}&nbsp;</label>
   </span>
 
   <table id="dupePairs"
@@ -116,54 +100,38 @@
     <tbody>
     </tbody>
   </table>
-  {if $cid}
-    <table style="width: 45%; float: left; margin: 10px;">
-      <tr class="columnheader"><th colspan="2">{ts 1=$main_contacts[$cid]}Merge %1 with{/ts}</th></tr>
-      {foreach from=$dupe_contacts[$cid] item=dupe_name key=dupe_id}
-        {if $dupe_name}
-          {capture assign=link}<a href="{crmURL p='civicrm/contact/view' q="reset=1&cid=$dupe_id"}">{$dupe_name}</a>{/capture}
-          {capture assign=merge}<a href="{crmURL p='civicrm/contact/merge' q="reset=1&cid=$cid&oid=$dupe_id"}">{ts}merge{/ts}</a>{/capture}
-          <tr class="{cycle values="odd-row,even-row"}">
-      <td>{$link}</td>
-      <td style="text-align: right">{$merge}</td>
-      <td style="text-align: right"><a class='crm-notDuplicate' href="#" title={ts}not a duplicate{/ts} onClick="processDupes( {$main.srcID}, {$main.dstID}, 'dupe-nondupe' );return false;">{ts}not a duplicate{/ts}</a></td>
-      </tr>
-        {/if}
-      {/foreach}
-    </table>
-  {/if}
 </div>
 
 {if $context eq 'search'}
    {crmButton href=$backURL icon="times"}{ts}Done{/ts}{/crmButton}
 {elseif $context eq 'conflicts'}
-  {if call_user_func(array('CRM_Core_Permission','check'), 'force merge duplicate contacts')}
+  {crmPermission has='force merge duplicate contacts'}
      {capture assign=backURL}{crmURL p="civicrm/contact/dedupemerge" q="`$urlQuery`&action=map&mode=aggressive" a=1}{/capture}
-     <a href="{$backURL}" title="{ts}Force Merge Selected Duplicates{/ts}" onclick="return confirm('{ts escape="js"}This will run the batch merge process on the selected duplicates. The operation will run in force merge mode - all selected duplicates will be merged into main contacts even in case of any conflicts. Click OK to proceed if you are sure you wish to run this operation.{/ts}');" class="button"><span><i class="crm-i fa-bolt"></i> {ts}Force Merge Selected Duplicates{/ts}</span></a>
+     <a href="{$backURL}" title="{ts escape='htmlattribute'}Force Merge Selected Duplicates{/ts}" onclick="return confirm('{ts escape="js"}This will run the batch merge process on the selected duplicates. The operation will run in force merge mode - all selected duplicates will be merged into main contacts even in case of any conflicts. Click OK to proceed if you are sure you wish to run this operation.{/ts}');" class="button"><span><i class="crm-i fa-bolt" role="img" aria-hidden="true"></i> {ts}Force Merge Selected Duplicates{/ts}</span></a>
 
      {capture assign=backURL}{crmURL p="civicrm/contact/dedupemerge" q="`$urlQuery`&action=map" a=1}{/capture}
-     <a href="{$backURL}" title="{ts}Safe Merge Selected Duplicates{/ts}" onclick="return confirm('{ts escape="js"}This will run the batch merge process on the selected duplicates. The operation will run in safe mode - only records with no direct data conflicts will be merged. Click OK to proceed if you are sure you wish to run this operation.{/ts}');" class="button"><span><i class="crm-i fa-compress"></i> {ts}Safe Merge Selected Duplicates{/ts}</span></a>
-  {/if}
+     <a href="{$backURL}" title="{ts escape='htmlattribute'}Safe Merge Selected Duplicates{/ts}" onclick="return confirm('{ts escape="js"}This will run the batch merge process on the selected duplicates. The operation will run in safe mode - only records with no direct data conflicts will be merged. Click OK to proceed if you are sure you wish to run this operation.{/ts}');" class="button"><span><i class="crm-i fa-compress" role="img" aria-hidden="true"></i> {ts}Safe Merge Selected Duplicates{/ts}</span></a>
+  {/crmPermission}
 
-  {capture assign=backURL}{crmURL p="civicrm/contact/dedupefind" q="`$urlQuery`&action=update" a=1}{/capture}
-   <a href="{$backURL}" title="{ts}List All Duplicates{/ts}" class="button"><span><i class="crm-i fa-refresh"></i> {ts}List All Duplicates{/ts}</span></a>
+  {capture assign=backURL}{crmURL p="civicrm/contact/dedupefind" q="`$urlQuery`&action=update&selected=0" a=1}{/capture}
+   <a href="{$backURL}" title="{ts escape='htmlattribute'}List All Duplicates{/ts}" class="button"><span><i class="crm-i fa-refresh" role="img" aria-hidden="true"></i> {ts}List All Duplicates{/ts}</span></a>
 {else}
    {capture assign=backURL}{crmURL p="civicrm/contact/dedupefind" q="`$urlQuery`&action=renew" a=1}{/capture}
-   <a href="{$backURL}" title="{ts}Refresh List of Duplicates{/ts}" onclick="return confirm('{ts escape="js"}This will refresh the duplicates list. Click OK to proceed.{/ts}');" class="button">
-     <span><i class="crm-i fa-refresh"></i> {ts}Refresh Duplicates{/ts}</span>
+   <a href="{$backURL}" title="{ts escape='htmlattribute'}Refresh List of Duplicates{/ts}" onclick="return confirm('{ts escape="js"}This will refresh the duplicates list. Click OK to proceed.{/ts}');" class="button">
+     <span><i class="crm-i fa-refresh" role="img" aria-hidden="true"></i> {ts}Refresh Duplicates{/ts}</span>
    </a>
 
   {capture assign=backURL}{crmURL p="civicrm/contact/dedupemerge" q="`$urlQuery`&action=map" a=1}{/capture}
-   <a href="{$backURL}" title="{ts}Batch Merge Duplicate Contacts{/ts}" onclick="return confirm('{ts escape="js"}This will run the batch merge process on the selected duplicates. The operation will run in safe mode - only records with no direct data conflicts will be merged. Click OK to proceed if you are sure you wish to run this operation.{/ts}');" class="button"><span><i class="crm-i fa-compress"></i> {ts}Batch Merge Selected Duplicates{/ts}</span></a>
+   <a href="{$backURL}" title="{ts escape='htmlattribute'}Batch Merge Duplicate Contacts{/ts}" onclick="return confirm('{ts escape="js"}This will run the batch merge process on the selected duplicates. The operation will run in safe mode - only records with no direct data conflicts will be merged. Click OK to proceed if you are sure you wish to run this operation.{/ts}');" class="button"><span><i class="crm-i fa-compress" role="img" aria-hidden="true"></i> {ts}Batch Merge Selected Duplicates{/ts}</span></a>
 
    {capture assign=backURL}{crmURL p="civicrm/contact/dedupemerge" q=$urlQuery a=1}{/capture}
-   <a href="{$backURL}" title="{ts}Batch Merge Duplicate Contacts{/ts}" onclick="return confirm('{ts escape="js"}This will run the batch merge process on the listed duplicates. The operation will run in safe mode - only records with no direct data conflicts will be merged. Click OK to proceed if you are sure you wish to run this operation.{/ts}');" class="button"><span><i class="crm-i fa-compress"></i> {ts}Batch Merge All Duplicates{/ts}</span></a>
+   <a href="{$backURL}" title="{ts escape='htmlattribute'}Batch Merge Duplicate Contacts{/ts}" onclick="return confirm('{ts escape="js"}This will run the batch merge process on the listed duplicates. The operation will run in safe mode - only records with no direct data conflicts will be merged. Click OK to proceed if you are sure you wish to run this operation.{/ts}');" class="button"><span><i class="crm-i fa-compress" role="img" aria-hidden="true"></i> {ts}Batch Merge All Duplicates{/ts}</span></a>
 
-   <a href='#' title="{ts}Flip Selected Duplicates{/ts}" class="crm-dedupe-flip-selections button"><span><i class="crm-i fa-exchange"></i> {ts}Flip Selected Duplicates{/ts}</span></a>
+   <a href='#' title="{ts escape='htmlattribute'}Flip Selected Duplicates{/ts}" class="crm-dedupe-flip-selections button"><span><i class="crm-i fa-exchange" role="img" aria-hidden="true"></i> {ts}Flip Selected Duplicates{/ts}</span></a>
 
    {capture assign=backURL}{crmURL p="civicrm/contact/deduperules" q="reset=1" a=1}{/capture}
    <a href="{$backURL}" class="button crm-button-type-cancel">
-     <span><i class="crm-i fa-times"></i> {ts}Done{/ts}</span>
+     <span><i class="crm-i fa-times" role="img" aria-hidden="true"></i> {ts}Done{/ts}</span>
    </a>
 {/if}
 <div style="clear: both;"></div>
@@ -178,8 +146,11 @@
   (function($) {
     CRM.$('table#dupePairs').data({
       "ajax": {
-        "url": {/literal}'{$sourceUrl}'{literal}
+        "url": {/literal}'{$sourceUrl}{if $isSelected}&selected=1{/if}'{literal}
       },
+      "retrieve": true,
+      "processing": true,
+      "serverSide": true,
       rowCallback: function (row, data) {
         // Set the checked state of the checkbox in the table
         $('input.crm-dedupe-select', row).prop('checked', data.is_selected == 1);
@@ -188,16 +159,12 @@
         }
         // for action column at the last, set nowrap
         $('td:last', row).attr('nowrap','nowrap');
-        // for conflcts column
+        // for conflicts column
         var col = CRM.$('table#dupePairs thead th.crm-contact-conflicts').index();
         $('td:eq(' + col + ')', row).attr('nowrap','nowrap');
       }
     });
     $(function($) {
-      $('.button').click(function() {
-        // no unsaved changes confirmation dialogs
-        $('[data-warn-changes=true]').attr('data-warn-changes', 'false');
-      });
 
       var sourceUrl = {/literal}'{$sourceUrl}'{literal};
       var context   = {/literal}'{$context}'{literal};
@@ -244,12 +211,9 @@
         }
       });
 
-      // get dataTable
-      var table = CRM.$('table#dupePairs').DataTable();
-
       // apply the search
       $('#searchOptions input').on( 'keyup change', function () {
-        table
+        $('table#dupePairs').DataTable()
           .column($(this).attr('search-column'))
           .search(this.value)
           .draw();
@@ -257,7 +221,7 @@
 
       // show / hide columns
       $('input.toggle-vis').on('click', function (e) {
-        var column = table.column( $(this).attr('data-column-main') );
+        var column = $('table#dupePairs').DataTable().column( $(this).attr('data-column-main') );
         column.visible( ! column.visible() );
 
         // nowrap to conflicts column is applied only during initial rendering
@@ -268,7 +232,7 @@
         }
 
         if ($(this).attr('data-column-dupe')) {
-          column = table.column( $(this).attr('data-column-dupe') );
+          column = $('table#dupePairs').DataTable().column( $(this).attr('data-column-dupe') );
           column.visible( ! column.visible() );
         }
       });
@@ -276,7 +240,7 @@
       // keep the conflicts checkbox checked when context is "conflicts"
       if(context == 'conflicts') {
         $('#conflicts').attr('checked', true);
-        var column = table.column( $('#conflicts').attr('data-column-main') );
+        var column = $('table#dupePairs').DataTable().column( $('#conflicts').attr('data-column-main') );
         column.visible( ! column.visible() );
       }
 
@@ -289,12 +253,12 @@
         var request = $.post(postUrl, {pnid : $el.data('pnid')});
         request.done(function(dt) {
           var mapper = {1:3, 2:4, 5:6, 7:8, 9:10}
-          var idx = table.row($elTr).index();
+          var idx = $('table#dupePairs').DataTable().row($elTr).index();
           $.each(mapper, function(key, val) {
-            var v1  = table.cell(idx, key).data();
-            var v2  = table.cell(idx, val).data();
-            table.cell(idx, key).data(v2);
-            table.cell(idx, val).data(v1);
+            var v1  = $('table#dupePairs').DataTable().cell(idx, key).data();
+            var v2  = $('table#dupePairs').DataTable().cell(idx, val).data();
+            $('table#dupePairs').DataTable().cell(idx, key).data(v2);
+            $('table#dupePairs').DataTable().cell(idx, val).data(v1);
           });
           // keep the checkbox checked if needed
           $('input.crm-dedupe-select', $elTr).prop('checked', $elTr.hasClass('crm-row-selected'));
@@ -302,6 +266,7 @@
       });
 
       $(".crm-dedupe-flip-selections").on('click', function(e) {
+        e.preventDefault();
         var ids = [];
         $('.crm-row-selected').each(function() {
           var ele = CRM.$('input.crm-dedupe-select', this);
@@ -309,20 +274,21 @@
         });
         if (ids.length > 0) {
           var dataUrl = {/literal}"{crmURL p='civicrm/ajax/flipDupePairs' h=0 q='snippet=4'}"{literal};
-          CRM.$.post(dataUrl, {pnid: ids}, function (response) {
+          var request = $.post(dataUrl, {pnid: ids});
+          request.done(function(dt) {
             var mapper = {1:3, 2:4, 5:6, 7:8, 9:10}
             $('.crm-row-selected').each(function() {
-              var idx = table.row(this).index();
+              var idx = $('table#dupePairs').DataTable().row(this).index();
               $.each(mapper, function(key, val) {
-                var v1  = table.cell(idx, key).data();
-                var v2  = table.cell(idx, val).data();
-                table.cell(idx, key).data(v2);
-                table.cell(idx, val).data(v1);
+                var v1  = $('table#dupePairs').DataTable().cell(idx, key).data();
+                var v2  = $('table#dupePairs').DataTable().cell(idx, val).data();
+                $('table#dupePairs').DataTable().cell(idx, key).data(v2);
+                $('table#dupePairs').DataTable().cell(idx, val).data(v1);
               });
               // keep the checkbox checked if needed
               $('input.crm-dedupe-select', this).prop('checked', $(this).hasClass('crm-row-selected'));
             });
-          }, 'json');
+          });
         }
       });
     });
@@ -336,20 +302,19 @@
     else {
       var id = [];
       CRM.$(element).each(function() {
-        var sth = CRM.$('input.crm-dedupe-select', this);
-        id.push(CRM.$(sth).prop('name').substr(5));
+        var pnName = CRM.$('input.crm-dedupe-select', this).prop('name');
+        if (pnName !== undefined) {
+          id.push(pnName.substr(5));
+        }
       });
       var is_selected = CRM.$('.crm-dedupe-select-all').prop('checked') ? 1 : 0;
     }
 
+    var cacheKey = {/literal}'{$cacheKey|escape}'{literal};
+
     var dataUrl = {/literal}"{crmURL p='civicrm/ajax/toggleDedupeSelect' h=0 q='snippet=4'}"{literal};
-    var rgid = {/literal}"{$rgid}"{literal};
-    var gid = {/literal}"{$gid}"{literal};
 
-    rgid = rgid.length > 0 ? rgid : 0;
-    gid  = gid.length > 0 ? gid : 0;
-
-    CRM.$.post(dataUrl, {pnid: id, rgid: rgid, gid: gid, is_selected: is_selected}, function (data) {
+    CRM.$.post(dataUrl, {pnid: id, is_selected: is_selected, cacheKey : cacheKey}, function (data) {
       // nothing to do for now
     }, 'json');
   }

@@ -1,113 +1,111 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
+
+use Civi\Api4\Email;
 
 /**
  * This class contains functions for email handling.
  */
-class CRM_Core_BAO_Email extends CRM_Core_DAO_Email {
+class CRM_Core_BAO_Email extends CRM_Core_DAO_Email implements Civi\Core\HookInterface {
+  use CRM_Contact_AccessTrait;
 
   /**
-   * Create email address.
-   *
-   * Note that the create function calls 'add' but  has more business logic.
+   * @deprecated
    *
    * @param array $params
-   *   Input parameters.
-   *
-   * @return object
+   * @return CRM_Core_BAO_Email
+   * @throws CRM_Core_Exception
    */
   public static function create($params) {
-    // if id is set & is_primary isn't we can assume no change
-    if (is_numeric(CRM_Utils_Array::value('is_primary', $params)) || empty($params['id'])) {
-      CRM_Core_BAO_Block::handlePrimary($params, get_class());
-    }
-
-    $email = CRM_Core_BAO_Email::add($params);
-
-    return $email;
+    // FIXME: switch CRM_Core_BAO_Block::create to call writeRecord (once Address, IM, Phone create functions go through it)
+    // then this can be uncommented:
+    CRM_Core_Error::deprecatedFunctionWarning('writeRecord');
+    return self::writeRecord($params);
   }
 
   /**
-   * Takes an associative array and adds email.
-   *
-   * @param array $params
-   *   (reference ) an assoc array of name/value pairs.
-   *
-   * @return object
-   *   CRM_Core_BAO_Email object on success, null otherwise
+   * Event fired before modifying an Email.
+   * @param \Civi\Core\Event\PreEvent $event
    */
-  public static function add(&$params) {
-    $hook = empty($params['id']) ? 'create' : 'edit';
-    CRM_Utils_Hook::pre($hook, 'Email', CRM_Utils_Array::value('id', $params), $params);
+  public static function self_hook_civicrm_pre(\Civi\Core\Event\PreEvent $event) {
+    if (in_array($event->action, ['create', 'edit'])) {
+      CRM_Core_BAO_Block::handlePrimary($event->params, __CLASS__);
 
-    $email = new CRM_Core_DAO_Email();
-    $email->copyValues($params);
-    if (!empty($email->email)) {
-      // lower case email field to optimize queries
-      $strtolower = function_exists('mb_strtolower') ? 'mb_strtolower' : 'strtolower';
-      $email->email = $strtolower($email->email);
-    }
+      if (!empty($event->params['email'])) {
+        // lower case email field to optimize queries
+        $event->params['email'] = mb_strtolower($event->params['email']);
+      }
 
-    /*
-     * since we're setting bulkmail for 1 of this contact's emails, first reset all their other emails to is_bulkmail false
-     *  We shouldn't not set the current email to false even though we
-     *  are about to reset it to avoid contaminating the changelog if logging is enabled
-     * (only 1 email address can have is_bulkmail = true)
-     */
-    if ($email->is_bulkmail != 'null' && !empty($params['contact_id']) && !self::isMultipleBulkMail()) {
-      $sql = "
+      // Since we're setting bulkmail for 1 of this contact's emails, first reset
+      // all their other emails to is_bulkmail false. We shouldn't set the current
+      // email to false even though we are about to reset it to avoid
+      // contaminating the changelog if logging is enabled.  (only 1 email
+      // address can have is_bulkmail = true)
+      //
+      // Note setting a the is_bulkmail to '' in $params results in $email->is_bulkmail === 'null'.
+      // @see https://lab.civicrm.org/dev/core/-/issues/2254
+      //
+      if (!empty($event->params['is_bulkmail']) && !empty($event->params['contact_id']) && !self::isMultipleBulkMail()) {
+        $sql = "
 UPDATE civicrm_email
 SET    is_bulkmail = 0
-WHERE  contact_id = {$params['contact_id']}
+WHERE  contact_id = {$event->params['contact_id']}
 ";
-      if ($hook == 'edit') {
-        $sql .= " AND id <> {$params['id']}";
+        if ($event->action === 'edit') {
+          $sql .= " AND id <> {$event->params['id']}";
+        }
+        CRM_Core_DAO::executeQuery($sql);
       }
-      CRM_Core_DAO::executeQuery($sql);
+
+      // handle if email is on hold
+      self::holdEmail($event->params);
     }
+  }
 
-    // handle if email is on hold
-    self::holdEmail($email);
-
-    $email->save();
-
-    if ($email->is_primary) {
+  /**
+   * Event fired after modifying an Email.
+   * @param \Civi\Core\Event\PostEvent $event
+   */
+  public static function self_hook_civicrm_post(\Civi\Core\Event\PostEvent $event) {
+    $email = $event->object;
+    if ($event->action !== 'delete' && !empty($email->is_primary) && !empty($email->contact_id)) {
       // update the UF user email if that has changed
       CRM_Core_BAO_UFMatch::updateUFName($email->contact_id);
     }
+    if (in_array($event->action, ['create', 'edit'])) {
+      $contactId = (int) ($email->contact_id ?? CRM_Core_DAO::getFieldValue(__CLASS__, $email->id, 'contact_id'));
+      $isPrimary = ($email->is_primary ?? CRM_Core_DAO::getFieldValue(__CLASS__, $email->id, 'is_primary'));
+      if ($contactId && $isPrimary) {
+        $address = $email->email ?? CRM_Core_DAO::getFieldValue(__CLASS__, $email->id, 'email');
+        self::updateContactName($contactId, $address);
+      }
+    }
+  }
 
-    CRM_Utils_Hook::post($hook, 'Email', $email->id, $email);
-    return $email;
+  /**
+   * @deprecated
+   *
+   * @param array $params
+   * @return CRM_Core_BAO_Email
+   * @throws CRM_Core_Exception
+   */
+  public static function add($params) {
+    CRM_Core_Error::deprecatedFunctionWarning('writeRecord');
+    return self::writeRecord($params);
   }
 
   /**
@@ -117,9 +115,9 @@ WHERE  contact_id = {$params['contact_id']}
    * @param array $entityBlock
    *   Input parameters to find object.
    *
-   * @return bool
+   * @return array
    */
-  public static function &getValues($entityBlock) {
+  public static function getValues($entityBlock) {
     return CRM_Core_BAO_Block::getValues('email', $entityBlock);
   }
 
@@ -151,25 +149,25 @@ LEFT JOIN civicrm_email ON ( civicrm_email.contact_id = civicrm_contact.id )
 LEFT JOIN civicrm_location_type ON ( civicrm_email.location_type_id = civicrm_location_type.id )
 WHERE     civicrm_contact.id = %1
 ORDER BY  civicrm_email.is_primary DESC, email_id ASC ";
-    $params = array(
-      1 => array(
+    $params = [
+      1 => [
         $id,
         'Integer',
-      ),
-    );
+      ],
+    ];
 
-    $emails = $values = array();
+    $emails = $values = [];
     $dao = CRM_Core_DAO::executeQuery($query, $params);
     $count = 1;
     while ($dao->fetch()) {
-      $values = array(
+      $values = [
         'locationType' => $dao->locationType,
         'is_primary' => $dao->is_primary,
         'on_hold' => $dao->on_hold,
         'id' => $dao->email_id,
         'email' => $dao->email,
         'locationTypeId' => $dao->locationTypeId,
-      );
+      ];
 
       if ($updateBlankLocInfo) {
         $emails[$count++] = $values;
@@ -207,40 +205,50 @@ AND   e.id IN (loc.email_id, loc.email_2_id)
 AND   ltype.id = e.location_type_id
 ORDER BY e.is_primary DESC, email_id ASC ";
 
-    $params = array(
-      1 => array(
+    $params = [
+      1 => [
         $entityId,
         'Integer',
-      ),
-    );
+      ],
+    ];
 
-    $emails = array();
+    $emails = [];
     $dao = CRM_Core_DAO::executeQuery($sql, $params);
     while ($dao->fetch()) {
-      $emails[$dao->email_id] = array(
+      $emails[$dao->email_id] = [
         'locationType' => $dao->locationType,
         'is_primary' => $dao->is_primary,
         'on_hold' => $dao->on_hold,
         'id' => $dao->email_id,
         'email' => $dao->email,
         'locationTypeId' => $dao->locationTypeId,
-      );
+      ];
     }
 
     return $emails;
   }
 
   /**
-   * Set / reset hold status for an email
+   * Set / reset hold status for an email prior to saving
    *
-   * @param object $email
-   *   Email object.
+   * @param array $email
+   *   Email params to be saved.
    */
-  public static function holdEmail(&$email) {
+  public static function holdEmail(array &$email) {
+    if (!empty($email['id']) && !isset($email['on_hold'])) {
+      // email is being updated but no change to on_hold.
+      return;
+    }
+    if (!isset($email['on_hold']) || $email['on_hold'] === 'null') {
+      // legacy handling, deprecated.
+      $email['on_hold'] = 0;
+    }
+    $email['on_hold'] = (int) $email['on_hold'];
+
     //check for update mode
-    if ($email->id) {
-      $params = array(1 => array($email->id, 'Integer'));
-      if ($email->on_hold && $email->on_hold != 'null') {
+    if (!empty($email['id'])) {
+      $params = [1 => [$email['id'], 'Integer']];
+      if ($email['on_hold']) {
         $sql = "
 SELECT id
 FROM   civicrm_email
@@ -248,11 +256,12 @@ WHERE  id = %1
 AND    hold_date IS NULL
 ";
         if (CRM_Core_DAO::singleValueQuery($sql, $params)) {
-          $email->hold_date = date('YmdHis');
-          $email->reset_date = 'null';
+          $email['hold_date'] = date('YmdHis');
+          $email['reset_date'] = 'null';
         }
       }
-      elseif ($email->on_hold == 'null') {
+      elseif ($email['on_hold'] === 0) {
+        // we do this lookup to see if reset_date should be changed.
         $sql = "
 SELECT id
 FROM   civicrm_email
@@ -262,17 +271,35 @@ AND    reset_date IS NULL
 ";
         if (CRM_Core_DAO::singleValueQuery($sql, $params)) {
           //set reset date only if it is not set and if hold date is set
-          $email->on_hold = FALSE;
-          $email->hold_date = 'null';
-          $email->reset_date = date('YmdHis');
+          $email['on_hold'] = FALSE;
+          $email['hold_date'] = 'null';
+          $email['reset_date'] = date('YmdHis');
         }
       }
     }
-    else {
-      if (($email->on_hold != 'null') && $email->on_hold) {
-        $email->hold_date = date('YmdHis');
-      }
+    elseif ($email['on_hold']) {
+      $email['hold_date'] = date('YmdHis');
     }
+  }
+
+  /**
+   * Generate an array of Domain email addresses.
+   * @return array $domainEmails;
+   */
+  public static function domainEmails() {
+    $domainEmails = [];
+    $domainFrom = \Civi\Api4\SiteEmailAddress::get(FALSE)
+      ->addSelect('display_name', 'email')
+      ->addWhere('domain_id', '=', 'current_domain')
+      ->addWhere('is_active', '=', TRUE)
+      ->addOrderBy('is_default', 'DESC')
+      ->addOrderBy('display_name')
+      ->execute();
+    foreach ($domainFrom as $address) {
+      $domainEmail = CRM_Utils_Mail::formatFromAddress($address);
+      $domainEmails[$domainEmail] = htmlspecialchars($domainEmail);
+    }
+    return $domainEmails;
   }
 
   /**
@@ -283,21 +310,19 @@ AND    reset_date IS NULL
    *   an array of email ids
    */
   public static function getFromEmail() {
-    $session = CRM_Core_Session::singleton();
-    $contactID = $session->get('userID');
-    $fromEmailValues = array();
+    // add all configured site email addresses
+    $fromEmailValues = self::domainEmails();
 
-    // add all configured FROM email addresses
-    $domainFrom = CRM_Core_OptionGroup::values('from_email_address');
-    foreach (array_keys($domainFrom) as $k) {
-      $domainEmail = $domainFrom[$k];
-      $fromEmailValues[$domainEmail] = htmlspecialchars($domainEmail);
+    if (!Civi::settings()->get('allow_mail_from_logged_in_contact')) {
+      return $fromEmailValues;
     }
 
+    $contactFromEmails = [];
     // add logged in user's active email ids
+    $contactID = CRM_Core_Session::getLoggedInContactID();
     if ($contactID) {
       $contactEmails = self::allEmails($contactID);
-      $fromDisplayName = CRM_Core_DAO::getFieldValue('CRM_Contact_DAO_Contact', $contactID, 'display_name');
+      $fromDisplayName  = CRM_Core_Session::singleton()->getLoggedInContactDisplayName();
 
       foreach ($contactEmails as $emailId => $emailVal) {
         $email = trim($emailVal['email']);
@@ -310,10 +335,10 @@ AND    reset_date IS NULL
         if (!empty($emailVal['is_primary'])) {
           $fromEmailHtml .= ' ' . ts('(preferred)');
         }
-        $fromEmailValues[$fromEmail] = $fromEmailHtml;
+        $contactFromEmails[$emailId] = $fromEmailHtml;
       }
     }
-    return $fromEmailValues;
+    return CRM_Utils_Array::crmArrayMerge($contactFromEmails, $fromEmailValues);
   }
 
   /**
@@ -326,12 +351,71 @@ AND    reset_date IS NULL
   /**
    * Call common delete function.
    *
-   * @param int $id
+   * @see \CRM_Contact_BAO_Contact::on_hook_civicrm_post
    *
+   * @param int $id
+   * @deprecated
    * @return bool
    */
   public static function del($id) {
-    return CRM_Contact_BAO_Contact::deleteObjectWithPrimary('Email', $id);
+    CRM_Core_Error::deprecatedFunctionWarning('deleteRecord');
+    return (bool) self::deleteRecord(['id' => $id]);
+  }
+
+  /**
+   * Get filters for entity reference fields.
+   *
+   * @return array
+   */
+  public static function getEntityRefFilters() {
+    $contactFields = CRM_Contact_BAO_Contact::getEntityRefFilters();
+    foreach ($contactFields as $index => &$contactField) {
+      if (!empty($contactField['entity'])) {
+        // For now email_getlist can't parse state, country etc.
+        unset($contactFields[$index]);
+      }
+      elseif ($contactField['key'] !== 'contact_id') {
+        $contactField['entity'] = 'Contact';
+        $contactField['key'] = 'contact_id.' . $contactField['key'];
+      }
+    }
+    return $contactFields;
+  }
+
+  /**
+   *
+   *
+   * @param int $contactId
+   * @param string $primaryEmail
+   */
+  public static function updateContactName($contactId, string $primaryEmail) {
+    if (is_string($primaryEmail) && $primaryEmail !== '' &&
+      !CRM_Contact_BAO_Contact::hasName(['id' => $contactId])
+    ) {
+      CRM_Core_DAO::setFieldValue('CRM_Contact_DAO_Contact', $contactId, 'display_name', $primaryEmail);
+      CRM_Core_DAO::setFieldValue('CRM_Contact_DAO_Contact', $contactId, 'sort_name', $primaryEmail);
+    }
+  }
+
+  /**
+   * Get default text for a message with the signature from the email sender populated.
+   *
+   * @param int $emailID
+   *
+   * @return array
+   *
+   * @throws \CRM_Core_Exception
+   * @throws \Civi\API\Exception\UnauthorizedException
+   */
+  public static function getEmailSignatureDefaults(int $emailID): array {
+    // Add signature
+    $defaultEmail = Email::get(FALSE)
+      ->addSelect('signature_html', 'signature_text')
+      ->addWhere('id', '=', $emailID)->execute()->first();
+    return [
+      'html_message' => empty($defaultEmail['signature_html']) ? '' : '<br/><br/>--' . $defaultEmail['signature_html'],
+      'text_message' => empty($defaultEmail['signature_text']) ? '' : "\n\n--\n" . $defaultEmail['signature_text'],
+    ];
   }
 
 }

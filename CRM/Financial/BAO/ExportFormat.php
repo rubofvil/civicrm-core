@@ -1,34 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                             |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -49,6 +33,25 @@ abstract class CRM_Financial_BAO_ExportFormat {
    * @var CRM_Core_Smarty
    */
   static protected $_template;
+
+  /**
+   * Download Exported file.
+   * @var bool
+   */
+  public $_isDownloadFile;
+
+  /**
+   * BatchIds to be exported
+   * @var string
+   */
+  public $_batchIds;
+
+
+  /**
+   * Files to be downloaded
+   * @var array
+   */
+  public $_downloadFile;
 
   /**
    * Class constructor.
@@ -83,9 +86,9 @@ abstract class CRM_Financial_BAO_ExportFormat {
   /**
    * Abstract function that generates exports, and downloads them as zip file.
    *
-   * @param $exportDaos array with DAO's for queries to be exported.
+   * @param array $exportDaos with DAO's for queries to be exported.
    */
-  public abstract function makeExport($exportDaos);
+  abstract public function makeExport($exportDaos);
 
   /**
    * @return string
@@ -102,7 +105,7 @@ abstract class CRM_Financial_BAO_ExportFormat {
    *
    * @return string
    */
-  public abstract function getFileExtension();
+  abstract public function getFileExtension();
 
   /**
    * @return object
@@ -125,6 +128,7 @@ abstract class CRM_Financial_BAO_ExportFormat {
    * Depending on the output format might want to override this, e.g. for IIF tabs need to be escaped etc,
    * but for CSV it doesn't make sense because php has built in csv output functions.
    */
+
   /**
    * @param $s
    * @param string $type
@@ -141,6 +145,9 @@ abstract class CRM_Financial_BAO_ExportFormat {
   }
 
   public function initiateDownload() {
+    if (!$this->_isDownloadFile) {
+      return NULL;
+    }
     $config = CRM_Core_Config::singleton();
     // zip files if more than one.
     if (count($this->_downloadFile) > 1) {
@@ -153,7 +160,8 @@ abstract class CRM_Financial_BAO_ExportFormat {
         ob_clean();
         flush();
         readfile($config->customFileUploadDir . CRM_Utils_File::cleanFileName(basename($zip)));
-        unlink($zip); //delete the zip to avoid clutter.
+        //delete the zip to avoid clutter.
+        unlink($zip);
         CRM_Utils_System::civiExit();
       }
     }
@@ -176,8 +184,8 @@ abstract class CRM_Financial_BAO_ExportFormat {
    */
   public static function createActivityExport($batchIds, $fileName) {
     $session = CRM_Core_Session::singleton();
-    $values = array();
-    $params = array('id' => $batchIds);
+    $values = [];
+    $params = ['id' => $batchIds];
     CRM_Batch_BAO_Batch::retrieve($params, $values);
     $createdBy = CRM_Contact_BAO_Contact::displayName($values['created_id']);
     $modifiedBy = CRM_Contact_BAO_Contact::displayName($values['modified_id']);
@@ -198,40 +206,38 @@ abstract class CRM_Financial_BAO_ExportFormat {
 
     // create activity.
     $subject .= ' ' . ts('Batch') . '[' . $values['title'] . ']';
-    $activityTypes = CRM_Core_PseudoConstant::activityType(TRUE, FALSE, FALSE, 'name');
-    $activityParams = array(
-      'activity_type_id' => array_search('Export Accounting Batch', $activityTypes),
+    $activityParams = [
+      'activity_type_id' => 'Export Accounting Batch',
       'subject' => $subject,
-      'status_id' => 2,
+      'status_id' => 'Completed',
       'activity_date_time' => date('YmdHis'),
       'source_contact_id' => $session->get('userID'),
       'source_record_id' => $values['id'],
       'target_contact_id' => $session->get('userID'),
       'details' => $details,
-      'attachFile_1' => array(
+      'attachFile_1' => [
         'uri' => $fileName,
         'type' => 'text/csv',
         'location' => $fileName,
         'upload_date' => date('YmdHis'),
-      ),
-    );
-
-    CRM_Activity_BAO_Activity::create($activityParams);
+      ],
+    ];
+    civicrm_api3('Activity', 'create', $activityParams);
   }
 
   /**
    * @param array $files
-   * @param null $destination
+   * @param string $destination
    * @param bool $overwrite
    *
    * @return bool
    */
-  public function createZip($files = array(), $destination = NULL, $overwrite = FALSE) {
+  public function createZip($files = [], $destination = NULL, $overwrite = FALSE) {
     // if the zip file already exists and overwrite is false, return false
     if (file_exists($destination) && !$overwrite) {
       return FALSE;
     }
-    $valid_files = array();
+
     if (is_array($files)) {
       foreach ($files as $file) {
         // make sure the file exists
@@ -242,7 +248,7 @@ abstract class CRM_Financial_BAO_ExportFormat {
     }
     if (count($validFiles)) {
       $zip = new ZipArchive();
-      if ($zip->open($destination, $overwrite ? ZIPARCHIVE::OVERWRITE : ZIPARCHIVE::CREATE) !== TRUE) {
+      if ($zip->open($destination, $overwrite ? ZIPARCHIVE::CREATE | ZIPARCHIVE::OVERWRITE : ZIPARCHIVE::CREATE) !== TRUE) {
         return FALSE;
       }
       foreach ($validFiles as $file) {

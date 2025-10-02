@@ -1,34 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -37,13 +21,6 @@
 class CRM_Admin_Page_ContactType extends CRM_Core_Page_Basic {
 
   public $useLivePageJS = TRUE;
-
-  /**
-   * The action links that we need to display for the browse screen.
-   *
-   * @var array
-   */
-  static $_links = NULL;
 
   /**
    * Get BAO Name.
@@ -56,48 +33,11 @@ class CRM_Admin_Page_ContactType extends CRM_Core_Page_Basic {
   }
 
   /**
-   * Get action Links.
-   *
-   * @return array
-   *   (reference) of action links
-   */
-  public function &links() {
-    if (!(self::$_links)) {
-      self::$_links = array(
-        CRM_Core_Action::UPDATE => array(
-          'name' => ts('Edit'),
-          'url' => 'civicrm/admin/options/subtype',
-          'qs' => 'action=update&id=%%id%%&reset=1',
-          'title' => ts('Edit Contact Type'),
-        ),
-        CRM_Core_Action::DISABLE => array(
-          'name' => ts('Disable'),
-          'ref' => 'crm-enable-disable',
-          'title' => ts('Disable Contact Type'),
-        ),
-        CRM_Core_Action::ENABLE => array(
-          'name' => ts('Enable'),
-          'ref' => 'crm-enable-disable',
-          'title' => ts('Enable Contact Type'),
-        ),
-        CRM_Core_Action::DELETE => array(
-          'name' => ts('Delete'),
-          'url' => 'civicrm/admin/options/subtype',
-          'qs' => 'action=delete&id=%%id%%',
-          'title' => ts('Delete Contact Type'),
-        ),
-      );
-    }
-    return self::$_links;
-  }
-
-  /**
    * Run page.
    */
   public function run() {
     $action = CRM_Utils_Request::retrieve('action', 'String', $this, FALSE, 0);
     $this->assign('action', $action);
-    $id = CRM_Utils_Request::retrieve('id', 'Positive', $this, FALSE, 0);
     if (!$action) {
       $this->browse();
     }
@@ -124,13 +64,14 @@ class CRM_Admin_Page_ContactType extends CRM_Core_Page_Basic {
         }
       }
       $rows[$key]['action'] = CRM_Core_Action::formLink(self::links(), $mask,
-        array('id' => $value['id']),
+        ['id' => $value['id']],
         ts('more'),
         FALSE,
         'contactType.manage.action',
         'ContactType',
         $value['id']
       );
+      $rows[$key] = array_merge(['class' => ''], $rows[$key]);
     }
     $this->assign('rows', $rows);
   }

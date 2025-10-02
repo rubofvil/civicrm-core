@@ -1,35 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright (C) 2011 Marty Wright                                    |
- | Licensed to CiviCRM under the Academic Free License version 3.0.   |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -39,43 +22,46 @@ class CRM_Core_BAO_PaperSize extends CRM_Core_DAO_OptionValue {
 
   /**
    * Static holder for the Paper Size Option Group ID.
+   * @var int
    */
   private static $_gid = NULL;
 
   /**
    * Paper Size fields stored in the 'value' field of the Option Value table.
+   * @var array
    */
-  private static $optionValueFields = array(
-    'metric' => array(
+  private static $optionValueFields = [
+    'metric' => [
       'name' => 'metric',
       'type' => CRM_Utils_Type::T_STRING,
       'default' => 'mm',
-    ),
-    'width' => array(
+    ],
+    'width' => [
       'name' => 'width',
       'type' => CRM_Utils_Type::T_FLOAT,
       'metric' => TRUE,
       'default' => 612,
-    ),
-    'height' => array(
+    ],
+    'height' => [
       'name' => 'height',
       'type' => CRM_Utils_Type::T_FLOAT,
       'metric' => TRUE,
       'default' => 792,
-    ),
-  );
+    ],
+  ];
 
   /**
    * Get Option Group ID for Paper Sizes.
    *
    * @return int
    *   Group ID (null if Group ID doesn't exist)
+   * @throws CRM_Core_Exception
    */
   private static function _getGid() {
     if (!self::$_gid) {
       self::$_gid = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_OptionGroup', 'paper_size', 'id', 'name');
       if (!self::$_gid) {
-        CRM_Core_Error::fatal(ts('Paper Size Option Group not found in database.'));
+        throw new CRM_Core_Exception(ts('Paper Size Option Group not found in database.'));
       }
     }
     return self::$_gid;
@@ -84,7 +70,7 @@ class CRM_Core_BAO_PaperSize extends CRM_Core_DAO_OptionValue {
   /**
    * Add ordering fields to Paper Size list.
    *
-   * @param array (reference) $list List of Paper Sizes
+   * @param array $list List of Paper Sizes
    * @param string $returnURL
    *   URL of page calling this function.
    *
@@ -104,7 +90,7 @@ class CRM_Core_BAO_PaperSize extends CRM_Core_DAO_OptionValue {
    *   (reference)   Paper Size list
    */
   public static function &getList($namesOnly = FALSE) {
-    static $list = array();
+    static $list = [];
     if (self::_getGid()) {
       // get saved Paper Sizes from Option Value table
       $dao = new CRM_Core_DAO_OptionValue();
@@ -131,13 +117,13 @@ class CRM_Core_BAO_PaperSize extends CRM_Core_DAO_OptionValue {
    *   Name/value pairs containing the default Paper Size values.
    */
   public static function &getDefaultValues() {
-    $params = array('is_active' => 1, 'is_default' => 1);
-    $defaults = array();
+    $params = ['is_active' => 1, 'is_default' => 1];
+    $defaults = [];
     if (!self::retrieve($params, $defaults)) {
       foreach (self::$optionValueFields as $name => $field) {
         $defaults[$name] = $field['default'];
       }
-      $filter = array('option_group_id' => self::_getGid());
+      $filter = ['option_group_id' => self::_getGid()];
       $defaults['weight'] = CRM_Utils_Weight::getDefaultWeight('CRM_Core_DAO_OptionValue', $filter);
     }
     return $defaults;
@@ -155,8 +141,8 @@ class CRM_Core_BAO_PaperSize extends CRM_Core_DAO_OptionValue {
    *   (reference) associative array of name/value pairs
    */
   public static function &getPaperFormat($field, $val) {
-    $params = array('is_active' => 1, $field => $val);
-    $paperFormat = array();
+    $params = ['is_active' => 1, $field => $val];
+    $paperFormat = [];
     if (self::retrieve($params, $paperFormat)) {
       return $paperFormat;
     }
@@ -196,18 +182,18 @@ class CRM_Core_BAO_PaperSize extends CRM_Core_DAO_OptionValue {
    *
    * @param string $field
    *   Name of a Paper Size field.
-   * @param array (reference) $values associative array of name/value pairs containing
+   * @param array $values associative array of name/value pairs containing
    *                                           Paper Size field selections
    *
    * @param null $default
    *
-   * @return value
+   * @return mixed
    */
   public static function getValue($field, &$values, $default = NULL) {
     if (array_key_exists($field, self::$optionValueFields)) {
       switch (self::$optionValueFields[$field]['type']) {
         case CRM_Utils_Type::T_INT:
-          return (int) CRM_Utils_Array::value($field, $values, $default);
+          return (int) ($values[$field] ?? $default);
 
         case CRM_Utils_Type::T_FLOAT:
           // Round float values to three decimal places and trim trailing zeros.
@@ -217,7 +203,7 @@ class CRM_Core_BAO_PaperSize extends CRM_Core_DAO_OptionValue {
           $f = rtrim($f, '.');
           return (float) (empty($f) ? '0' : $f);
       }
-      return CRM_Utils_Array::value($field, $values, $default);
+      return $values[$field] ?? $default;
     }
     return $default;
   }
@@ -263,9 +249,10 @@ class CRM_Core_BAO_PaperSize extends CRM_Core_DAO_OptionValue {
   /**
    * Save the Paper Size in the DB.
    *
-   * @param array (reference) $values associative array of name/value pairs
+   * @param array $values associative array of name/value pairs
    * @param int $id
    *   Id of the database record (null = new record).
+   * @throws CRM_Core_Exception
    */
   public function savePaperSize(&$values, $id) {
     // get the Option Group ID for Paper Sizes (create one if it doesn't exist)
@@ -289,7 +276,7 @@ class CRM_Core_BAO_PaperSize extends CRM_Core_DAO_OptionValue {
     }
     // copy the supplied form values to the corresponding Option Value fields in the base class
     foreach ($this->fields() as $name => $field) {
-      $this->$name = trim(CRM_Utils_Array::value($name, $values, $this->$name));
+      $this->$name = trim($values[$name] ?? $this->$name);
       if (empty($this->$name)) {
         $this->$name = 'null';
       }
@@ -309,12 +296,12 @@ class CRM_Core_BAO_PaperSize extends CRM_Core_DAO_OptionValue {
     // make sure serialized array will fit in the 'value' column
     $attribute = CRM_Core_DAO::getAttribute('CRM_Core_BAO_PaperSize', 'value');
     if (strlen($this->value) > $attribute['maxlength']) {
-      CRM_Core_Error::fatal(ts('Paper Size does not fit in database.'));
+      throw new CRM_Core_Exception(ts('Paper Size does not fit in database.'));
     }
     $this->save();
 
     // fix duplicate weights
-    $filter = array('option_group_id' => self::_getGid());
+    $filter = ['option_group_id' => self::_getGid()];
     CRM_Utils_Weight::correctDuplicateWeights('CRM_Core_DAO_OptionValue', $filter);
   }
 
@@ -323,7 +310,7 @@ class CRM_Core_BAO_PaperSize extends CRM_Core_DAO_OptionValue {
    *
    * @param int $id
    *   ID of the Paper Size to be deleted.
-   *
+   * @throws CRM_Core_Exception
    */
   public static function del($id) {
     if ($id) {
@@ -331,14 +318,14 @@ class CRM_Core_BAO_PaperSize extends CRM_Core_DAO_OptionValue {
       $dao->id = $id;
       if ($dao->find(TRUE)) {
         if ($dao->option_group_id == self::_getGid()) {
-          $filter = array('option_group_id' => self::_getGid());
+          $filter = ['option_group_id' => self::_getGid()];
           CRM_Utils_Weight::delWeight('CRM_Core_DAO_OptionValue', $id, $filter);
           $dao->delete();
           return;
         }
       }
     }
-    CRM_Core_Error::fatal(ts('Invalid value passed to delete function.'));
+    throw new CRM_Core_Exception(ts('Invalid value passed to delete function.'));
   }
 
 }

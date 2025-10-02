@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -29,23 +13,53 @@
  * Provides a collection of static methods for array manipulation.
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 class CRM_Utils_Array {
 
   /**
-   * Returns $list[$key] if such element exists, or a default value otherwise.
+   * Cast a value to an array.
    *
-   * If $list is not actually an array at all, then the default value is
-   * returned.
+   * This is similar to PHP's `(array)`, but it also converts iterators.
    *
+   * @param mixed $value
+   * @return array
+   */
+  public static function cast($value) {
+    if (is_array($value)) {
+      return $value;
+    }
+    if ($value instanceof CRM_Utils_LazyArray || $value instanceof ArrayObject) {
+      // iterator_to_array() would work here, but getArrayCopy() doesn't require actual iterations.
+      return $value->getArrayCopy();
+    }
+    if (is_iterable($value)) {
+      return iterator_to_array($value);
+    }
+    if (is_scalar($value)) {
+      return [$value];
+    }
+    throw new \RuntimeException(sprintf("Cannot cast %s to array", gettype($value)));
+  }
+
+  /**
+   * Returns $list[$key] if such element exists, or $default otherwise.
+   *
+   * If $list is not an array or ArrayAccess object, $default is returned.
+   *
+   * @deprecated
+   * In most cases this can be replaced with
+   *   $list[$key] ?? $default
+   * with the minor difference that when $list[$key] exists and is NULL, this function will always
+   * return NULL.
    *
    * @param string $key
    *   Key value to look up in the array.
-   * @param array $list
+   * @param array|ArrayAccess $list
    *   Array from which to look up a value.
    * @param mixed $default
-   *   (optional) Value to return $list[$key] does not exist.
+   *   (optional) Value to return when $list[$key] does not exist. If $default
+   *   is not specified, NULL is used.
    *
    * @return mixed
    *   Can return any type, since $list might contain anything.
@@ -53,6 +67,9 @@ class CRM_Utils_Array {
   public static function value($key, $list, $default = NULL) {
     if (is_array($list)) {
       return array_key_exists($key, $list) ? $list[$key] : $default;
+    }
+    if ($list instanceof ArrayAccess) {
+      return $list->offsetExists($key) ? $list[$key] : $default;
     }
     return $default;
   }
@@ -71,23 +88,59 @@ class CRM_Utils_Array {
    * @return mixed
    *   The value of the key, or null if the key is not found.
    */
-  public static function retrieveValueRecursive(&$params, $key) {
-    if (!is_array($params)) {
-      return NULL;
+  public static function retrieveValueRecursive(array $params, string $key) {
+    // Note that !empty means funky handling for 0
+    // but it is 'baked in'. We should probably deprecate this
+    // for a more logical approach.
+    // see https://github.com/civicrm/civicrm-core/pull/19478#issuecomment-785388559
+    if (!empty($params[$key])) {
+      return $params[$key];
     }
-    elseif ($value = CRM_Utils_Array::value($key, $params)) {
-      return $value;
-    }
-    else {
-      foreach ($params as $subParam) {
-        if (is_array($subParam) &&
-          $value = self::retrieveValueRecursive($subParam, $key)
-        ) {
-          return $value;
-        }
+    foreach ($params as $subParam) {
+      if (is_array($subParam) &&
+        // @todo - this will mishandle values like 0 and false
+        // but it's a little scary to fix.
+        $value = self::retrieveValueRecursive($subParam, $key)
+      ) {
+        return $value;
       }
     }
     return NULL;
+  }
+
+  /**
+   * Recursively searches through a given array for all matches
+   *
+   * @param array|null $collection
+   * @param array|callable|string $predicate
+   * @return array
+   */
+  public static function findAll($collection, $predicate) {
+    $results = [];
+    $search = function($collection) use (&$search, &$results, $predicate) {
+      if (is_array($collection)) {
+        if (is_callable($predicate)) {
+          if ($predicate($collection)) {
+            $results[] = $collection;
+          }
+        }
+        elseif (is_array($predicate)) {
+          if (count(array_intersect_assoc($collection, $predicate)) === count($predicate)) {
+            $results[] = $collection;
+          }
+        }
+        else {
+          if (array_key_exists($predicate, $collection)) {
+            $results[] = $collection;
+          }
+        }
+        foreach ($collection as $item) {
+          $search($item);
+        }
+      }
+    };
+    $search($collection);
+    return $results;
   }
 
   /**
@@ -129,26 +182,26 @@ class CRM_Utils_Array {
    *   The array to be serialized.
    * @param int $depth
    *   (optional) Indentation depth counter.
-   * @param string $seperator
+   * @param string $separator
    *   (optional) String to be appended after open/close tags.
    *
    * @return string
    *   XML fragment representing $list.
    */
-  public static function &xml(&$list, $depth = 1, $seperator = "\n") {
+  public static function &xml(&$list, $depth = 1, $separator = "\n") {
     $xml = '';
     foreach ($list as $name => $value) {
       $xml .= str_repeat(' ', $depth * 4);
       if (is_array($value)) {
-        $xml .= "<{$name}>{$seperator}";
-        $xml .= self::xml($value, $depth + 1, $seperator);
+        $xml .= "<{$name}>{$separator}";
+        $xml .= self::xml($value, $depth + 1, $separator);
         $xml .= str_repeat(' ', $depth * 4);
-        $xml .= "</{$name}>{$seperator}";
+        $xml .= "</{$name}>{$separator}";
       }
       else {
         // make sure we escape value
         $value = self::escapeXML($value);
-        $xml .= "<{$name}>$value</{$name}>{$seperator}";
+        $xml .= "<{$name}>$value</{$name}>{$separator}";
       }
     }
     return $xml;
@@ -171,8 +224,8 @@ class CRM_Utils_Array {
     static $dst = NULL;
 
     if (!$src) {
-      $src = array('&', '<', '>', '');
-      $dst = array('&amp;', '&lt;', '&gt;', ',');
+      $src = ['&', '<', '>', ''];
+      $dst = ['&amp;', '&lt;', '&gt;', ','];
     }
 
     return str_replace($src, $dst, $value);
@@ -228,19 +281,17 @@ class CRM_Utils_Array {
    *   Destination array.
    * @param string $prefix
    *   (optional) String to prepend to keys.
-   * @param string $seperator
+   * @param string $separator
    *   (optional) String that separates the concatenated keys.
    */
-  public static function flatten(&$list, &$flat, $prefix = '', $seperator = ".") {
+  public static function flatten(&$list, &$flat, $prefix = '', $separator = ".") {
     foreach ($list as $name => $value) {
-      $newPrefix = ($prefix) ? $prefix . $seperator . $name : $name;
+      $newPrefix = ($prefix) ? $prefix . $separator . $name : $name;
       if (is_array($value)) {
-        self::flatten($value, $flat, $newPrefix, $seperator);
+        self::flatten($value, $flat, $newPrefix, $separator);
       }
       else {
-        if (!empty($value)) {
-          $flat[$newPrefix] = $value;
-        }
+        $flat[$newPrefix] = $value;
       }
     }
   }
@@ -259,14 +310,14 @@ class CRM_Utils_Array {
    *   Array-encoded tree
    */
   public function unflatten($delim, &$arr) {
-    $result = array();
+    $result = [];
     foreach ($arr as $key => $value) {
       $path = explode($delim, $key);
       $node = &$result;
       while (count($path) > 1) {
         $key = array_shift($path);
         if (!isset($node[$key])) {
-          $node[$key] = array();
+          $node[$key] = [];
         }
         $node = &$node[$key];
       }
@@ -302,7 +353,7 @@ class CRM_Utils_Array {
       return $a1;
     }
 
-    $a3 = array();
+    $a3 = [];
     foreach ($a1 as $key => $value) {
       if (array_key_exists($key, $a2) &&
         is_array($a2[$key]) && is_array($a1[$key])
@@ -377,7 +428,7 @@ class CRM_Utils_Array {
   public static function crmInArray($value, $params, $caseInsensitive = TRUE) {
     foreach ($params as $item) {
       if (is_array($item)) {
-        $ret = crmInArray($value, $item, $caseInsensitive);
+        $ret = self::crmInArray($value, $item, $caseInsensitive);
       }
       else {
         $ret = ($caseInsensitive) ? strtolower($item) == strtolower($value) : $item == $value;
@@ -392,9 +443,7 @@ class CRM_Utils_Array {
   /**
    * Convert associative array names to values and vice-versa.
    *
-   * This function is used by both the web form layer and the api. Note that
-   * the api needs the name => value conversion, also the view layer typically
-   * requires value => name conversion
+   * This function is used by by import functions and some webforms.
    *
    * @param array $defaults
    * @param string $property
@@ -416,7 +465,7 @@ class CRM_Utils_Array {
     $look = $reverse ? array_flip($lookup) : $lookup;
 
     // trim lookup array, ignore . ( fix for CRM-1514 ), eg for prefix/suffix make sure Dr. and Dr both are valid
-    $newLook = array();
+    $newLook = [];
     foreach ($look as $k => $v) {
       $newLook[trim($k, ".")] = $v;
     }
@@ -451,7 +500,7 @@ class CRM_Utils_Array {
    * @return bool
    *   True if the array is empty.
    */
-  public static function crmIsEmptyArray($array = array()) {
+  public static function crmIsEmptyArray($array = []) {
     if (!is_array($array)) {
       return TRUE;
     }
@@ -473,15 +522,25 @@ class CRM_Utils_Array {
    *
    * @param array $array
    *   Array to be sorted.
-   * @param string $field
+   * @param string|array $field
    *   Name of the attribute used for sorting.
    *
    * @return array
    *   Sorted array
    */
   public static function crmArraySortByField($array, $field) {
-    $code = "return strnatcmp(\$a['$field'], \$b['$field']);";
-    uasort($array, create_function('$a,$b', $code));
+    $fields = (array) $field;
+    uasort($array, function ($a, $b) use ($fields) {
+      foreach ($fields as $f) {
+        $f1 = $a[$f] ?? '';
+        $f2 = $b[$f] ?? '';
+        $v = strnatcmp($f1, $f2);
+        if ($v !== 0) {
+          return $v;
+        }
+      }
+      return 0;
+    });
     return $array;
   }
 
@@ -507,30 +566,38 @@ class CRM_Utils_Array {
   /**
    * Sorts an array and maintains index association (with localization).
    *
-   * Uses Collate from the PECL "intl" package, if available, for UTF-8
-   * sorting (e.g. list of countries). Otherwise calls PHP's asort().
-   *
-   * On Debian/Ubuntu: apt-get install php5-intl
-   *
    * @param array $array
-   *   (optional) Array to be sorted.
+   *   Array to be sorted.
    *
    * @return array
    *   Sorted array.
    */
-  public static function asort($array = array()) {
-    $lcMessages = CRM_Utils_System::getUFLocale();
+  public static function asort(array $array) {
+    $lcMessages = CRM_Core_I18n::getLocale();
 
-    if ($lcMessages && $lcMessages != 'en_US' && class_exists('Collator')) {
-      $collator = new Collator($lcMessages . '.utf8');
-      $collator->asort($array);
-    }
-    else {
-      // This calls PHP's built-in asort().
-      asort($array);
-    }
+    $collator = new Collator($lcMessages . '.utf8');
+    $collator->asort($array);
 
     return $array;
+  }
+
+  /**
+   * Example:
+   *   $data = deepSort($data, fn(array &$a) => sort($a)))
+   *   $data = deepSort($data, fn(array &$a) => uksort($a, 'strnatcmp'))
+   *
+   * @param array $array
+   *   The array that should be sorted.
+   * @param callable $sort
+   *   A function which sorts an array.
+   */
+  public static function deepSort(array &$array, callable $sort): void {
+    $sort($array);
+    foreach ($array as &$value) {
+      if (is_array($value)) {
+        self::deepSort($value, $sort);
+      }
+    }
   }
 
   /**
@@ -570,18 +637,18 @@ class CRM_Utils_Array {
   public static function index($keys, $records) {
     $final_key = array_pop($keys);
 
-    $result = array();
+    $result = [];
     foreach ($records as $record) {
       $node = &$result;
       foreach ($keys as $key) {
         if (is_array($record)) {
-          $keyvalue = isset($record[$key]) ? $record[$key] : NULL;
+          $keyvalue = $record[$key] ?? NULL;
         }
         else {
-          $keyvalue = isset($record->{$key}) ? $record->{$key} : NULL;
+          $keyvalue = $record->{$key} ?? NULL;
         }
         if (isset($node[$keyvalue]) && !is_array($node[$keyvalue])) {
-          $node[$keyvalue] = array();
+          $node[$keyvalue] = [];
         }
         $node = &$node[$keyvalue];
       }
@@ -607,14 +674,14 @@ class CRM_Utils_Array {
    *   Keys are the original keys of $records; values are the $prop values.
    */
   public static function collect($prop, $records) {
-    $result = array();
+    $result = [];
     if (is_array($records)) {
       foreach ($records as $key => $record) {
         if (is_object($record)) {
           $result[$key] = $record->{$prop};
         }
         else {
-          $result[$key] = $record[$prop];
+          $result[$key] = self::value($prop, $record);
         }
       }
     }
@@ -640,11 +707,11 @@ class CRM_Utils_Array {
    * @return array
    *   Keys are the original keys of $objects; values are the method results.
    */
-  public static function collectMethod($method, $objects, $args = array()) {
-    $result = array();
+  public static function collectMethod($method, $objects, $args = []) {
+    $result = [];
     if (is_array($objects)) {
       foreach ($objects as $key => $object) {
-        $result[$key] = call_user_func_array(array($object, $method), $args);
+        $result[$key] = call_user_func_array([$object, $method], $args);
       }
     }
     return $result;
@@ -677,8 +744,8 @@ class CRM_Utils_Array {
       return $values;
     }
     // Empty string -> empty array
-    if ($values === '') {
-      return array();
+    if ($values === '' || $values === "$delim$delim") {
+      return [];
     }
     return explode($delim, trim((string) $values, $delim));
   }
@@ -687,8 +754,8 @@ class CRM_Utils_Array {
    * Joins array elements with a string, adding surrounding delimiters.
    *
    * This method works mostly like PHP's built-in implode(), but the generated
-   * string is surrounded by delimiter characters. Also, if NULL is passed as
-   * the $values parameter, NULL is returned.
+   * string is surrounded by delimiter characters. Also, if NULL or '' is passed as
+   * the $values parameter, it is returned unchanged.
    *
    * @param mixed $values
    *   Array to be imploded. If a non-array is passed, it will be cast to an
@@ -701,8 +768,8 @@ class CRM_Utils_Array {
    *   The generated string, or NULL if NULL was passed as $values parameter.
    */
   public static function implodePadded($values, $delim = CRM_Core_DAO::VALUE_SEPARATOR) {
-    if ($values === NULL) {
-      return NULL;
+    if ($values === NULL || $values === '') {
+      return $values;
     }
     // If we already have a string, strip $delim off the ends so it doesn't get added twice
     if (is_string($values)) {
@@ -798,9 +865,9 @@ class CRM_Utils_Array {
    *   {fg => blue, bg => black}
    *   }
    */
-  public static function product($dimensions, $template = array()) {
+  public static function product($dimensions, $template = []) {
     if (empty($dimensions)) {
-      return array($template);
+      return [$template];
     }
 
     foreach ($dimensions as $key => $value) {
@@ -810,7 +877,7 @@ class CRM_Utils_Array {
     }
     unset($dimensions[$key]);
 
-    $results = array();
+    $results = [];
     foreach ($firstValues as $firstValue) {
       foreach (self::product($dimensions, $template) as $result) {
         $result[$firstKey] = $firstValue;
@@ -846,7 +913,7 @@ class CRM_Utils_Array {
    * @return array
    */
   public static function subset($array, $keys) {
-    $result = array();
+    $result = [];
     foreach ($keys as $key) {
       if (isset($array[$key])) {
         $result[$key] = $array[$key];
@@ -860,14 +927,18 @@ class CRM_Utils_Array {
    * This is necessary to preserve sort order when sending an array through json_encode.
    *
    * @param array $associative
+   *   Ex: ['foo' => 'bar'].
    * @param string $keyName
+   *   Ex: 'key'.
    * @param string $valueName
+   *   Ex: 'value'.
    * @return array
+   *   Ex: [0 => ['key' => 'foo', 'value' => 'bar']].
    */
   public static function makeNonAssociative($associative, $keyName = 'key', $valueName = 'value') {
-    $output = array();
+    $output = [];
     foreach ($associative as $key => $val) {
-      $output[] = array($keyName => $key, $valueName => $val);
+      $output[] = [$keyName => $key, $valueName => $val];
     }
     return $output;
   }
@@ -881,7 +952,7 @@ class CRM_Utils_Array {
    * @return array
    */
   public static function multiArrayDiff($array1, $array2) {
-    $arrayDiff = array();
+    $arrayDiff = [];
     foreach ($array1 as $mKey => $mValue) {
       if (array_key_exists($mKey, $array2)) {
         if (is_array($mValue)) {
@@ -913,11 +984,11 @@ class CRM_Utils_Array {
    * @return array
    */
   public static function filterColumns($matrix, $columns) {
-    $newRows = array();
+    $newRows = [];
     foreach ($matrix as $pos => $oldRow) {
-      $newRow = array();
+      $newRow = [];
       foreach ($columns as $column) {
-        $newRow[$column] = CRM_Utils_Array::value($column, $oldRow);
+        $newRow[$column] = $oldRow[$column] ?? NULL;
       }
       $newRows[$pos] = $newRow;
     }
@@ -925,17 +996,45 @@ class CRM_Utils_Array {
   }
 
   /**
-   * Rewrite the keys in an array by filtering through a function.
+   * Rotate a matrix, converting from row-oriented array to a column-oriented array.
+   *
+   * @param iterable $rows
+   *   Ex: [['a'=>10,'b'=>'11'], ['a'=>20,'b'=>21]]
+   *   Formula: [scalar $rowId => [scalar $colId => mixed $value]]
+   * @param bool $unique
+   *   Only return unique values.
+   * @return array
+   *   Ex: ['a'=>[10,20], 'b'=>[11,21]]
+   *   Formula: [scalar $colId => [scalar $rowId => mixed $value]]
+   *   Note: In unique mode, the $rowId is not meaningful.
+   */
+  public static function asColumns(iterable $rows, bool $unique = FALSE) {
+    $columns = [];
+    foreach ($rows as $rowKey => $row) {
+      foreach ($row as $columnKey => $value) {
+        if (FALSE === $unique) {
+          $columns[$columnKey][$rowKey] = $value;
+        }
+        elseif (!in_array($value, $columns[$columnKey] ?? [])) {
+          $columns[$columnKey][] = $value;
+        }
+      }
+    }
+    return $columns;
+  }
+
+  /**
+   * Rewrite the keys in an array.
    *
    * @param array $array
-   * @param callable $func
-   *   Function($key, $value). Returns the new key.
+   * @param string|callable $indexBy
+   *   Either the value to key by, or a function($key, $value) that returns the new key.
    * @return array
    */
-  public static function rekey($array, $func) {
-    $result = array();
+  public static function rekey($array, $indexBy) {
+    $result = [];
     foreach ($array as $key => $value) {
-      $newKey = $func($key, $value);
+      $newKey = is_callable($indexBy) ? $indexBy($key, $value) : $value[$indexBy];
       $result[$newKey] = $value;
     }
     return $result;
@@ -959,46 +1058,198 @@ class CRM_Utils_Array {
   }
 
   /**
-   * Get a single value from an array-tre.
+   * Get a single value from an array-tree.
    *
-   * @param array $arr
-   *   Ex: array('foo'=>array('bar'=>123)).
-   * @param array $pathParts
-   *   Ex: array('foo',bar').
-   * @return mixed|NULL
+   * @param array $values
+   *   Ex: ['foo' => ['bar' => 123]].
+   * @param array $path
+   *   Ex: ['foo', 'bar'].
+   * @param mixed $default
+   * @return mixed
    *   Ex 123.
    */
-  public static function pathGet($arr, $pathParts) {
-    $r = $arr;
-    foreach ($pathParts as $part) {
-      if (!isset($r[$part])) {
-        return NULL;
+  public static function pathGet($values, $path, $default = NULL) {
+    foreach ($path as $key) {
+      if (!is_array($values) || !isset($values[$key])) {
+        return $default;
       }
-      $r = $r[$part];
+      $values = $values[$key];
     }
-    return $r;
+    return $values;
+  }
+
+  /**
+   * Check if a key isset which may be several layers deep.
+   *
+   * This is a helper for when the calling function does not know how many layers deep
+   * the path array is so cannot easily check.
+   *
+   * @param array $values
+   * @param array $path
+   * @return bool
+   */
+  public static function pathIsset($values, $path) {
+    if ($path === []) {
+      return ($values !== NULL);
+    }
+    foreach ($path as $key) {
+      if (!is_array($values) || !isset($values[$key])) {
+        return FALSE;
+      }
+      $values = $values[$key];
+    }
+    return TRUE;
+  }
+
+  /**
+   * Remove a key from an array.
+   *
+   * This is a helper for when the calling function does not know how many layers deep
+   * the path array is so cannot easily check.
+   *
+   * @param array $values
+   * @param array $path
+   * @param bool $cleanup
+   *   If removed item leaves behind an empty array, should you remove the empty array?
+   * @return bool
+   *   TRUE if anything has been removed. FALSE if no changes were required.
+   */
+  public static function pathUnset(&$values, $path, $cleanup = FALSE) {
+    if (count($path) === 0) {
+      $values = NULL;
+      return TRUE;
+    }
+
+    if (count($path) === 1) {
+      if (isset($values[$path[0]])) {
+        unset($values[$path[0]]);
+        return TRUE;
+      }
+      else {
+        return FALSE;
+      }
+    }
+    else {
+      $next = array_shift($path);
+      $r = static::pathUnset($values[$next], $path, $cleanup);
+      if ($cleanup && $values[$next] === []) {
+        $r = TRUE;
+        unset($values[$next]);
+      }
+      return $r;
+    }
   }
 
   /**
    * Set a single value in an array tree.
    *
-   * @param array $arr
-   *   Ex: array('foo'=>array('bar'=>123)).
+   * @param array $values
+   *   Ex: ['foo' => ['bar' => 123]].
    * @param array $pathParts
-   *   Ex: array('foo',bar').
+   *   Ex: ['foo', 'bar'].
    * @param $value
    *   Ex: 456.
    */
-  public static function pathSet(&$arr, $pathParts, $value) {
-    $r = &$arr;
+  public static function pathSet(&$values, $pathParts, $value) {
+    if ($pathParts === []) {
+      $values = $value;
+      return;
+    }
+    $r = &$values;
     $last = array_pop($pathParts);
     foreach ($pathParts as $part) {
       if (!isset($r[$part])) {
-        $r[$part] = array();
+        $r[$part] = [];
       }
       $r = &$r[$part];
     }
     $r[$last] = $value;
+  }
+
+  /**
+   * Move an item in an array-tree (if it exists).
+   *
+   * @param array $values
+   *   Data-tree
+   * @param string[] $src
+   *   Old path for the existing item
+   * @param string[] $dest
+   *   New path
+   * @param bool $cleanup
+   * @return int
+   *   Number of items moved (0 or 1).
+   */
+  public static function pathMove(&$values, $src, $dest, $cleanup = FALSE) {
+    if (!static::pathIsset($values, $src)) {
+      return 0;
+    }
+    else {
+      $value = static::pathGet($values, $src);
+      static::pathSet($values, $dest, $value);
+      static::pathUnset($values, $src, $cleanup);
+      return 1;
+    }
+  }
+
+  /**
+   * Attempt to synchronize or fill aliased items.
+   *
+   * If $canonPath is set, copy to $altPath; or...
+   * If $altPath is set, copy to $canonPath.
+   *
+   * @param array $params
+   *   Data-tree
+   * @param string[] $canonPath
+   *   Preferred path
+   * @param string[] $altPath
+   *   Old/alternate/deprecated path.
+   * @param callable|null $filter
+   *   Optional function to filter the value as it passes through (canonPath=>altPath or altPath=>canonPath).
+   *   function(mixed $v, bool $isCanon): mixed
+   */
+  public static function pathSync(&$params, $canonPath, $altPath, ?callable $filter = NULL) {
+    $MISSING = new \stdClass();
+
+    $v = static::pathGet($params, $canonPath, $MISSING);
+    if ($v !== $MISSING) {
+      static::pathSet($params, $altPath, $filter ? $filter($v, TRUE) : $v);
+      return;
+    }
+
+    $v = static::pathGet($params, $altPath, $MISSING);
+    if ($v !== $MISSING) {
+      static::pathSet($params, $canonPath, $filter ? $filter($v, FALSE) : $v);
+      return;
+    }
+  }
+
+  /**
+   * Take one well-defined item out of a single-item list.
+   *
+   * Assert that the list genuinely contains *exactly* one item.
+   *
+   * @param iterable $items
+   * @param string $recordTypeLabel
+   * @return mixed
+   *   The first (and only) item from the $items list.
+   * @throws \CRM_Core_Exception
+   */
+  public static function single(iterable $items, string $recordTypeLabel = 'record') {
+    $result = NULL;
+    foreach ($items as $values) {
+      if ($result === NULL) {
+        $result = $values;
+      }
+      else {
+        throw new \CRM_Core_Exception("Expected to find one {$recordTypeLabel}, but there were multiple.");
+      }
+    }
+
+    if ($result === NULL) {
+      throw new \CRM_Core_Exception("Expected to find one {$recordTypeLabel}, but there were zero.");
+    }
+
+    return $result;
   }
 
   /**
@@ -1011,19 +1262,10 @@ class CRM_Utils_Array {
    * @param string $valueField
    *   Ex: 'value'.
    * @return array
-   *   Ex: array(
-   *     0 => array('key' => 'foo', 'value' => 'bar')
-   *   ).
+   * @deprecated
    */
   public static function toKeyValueRows($array, $keyField = 'key', $valueField = 'value') {
-    $result = array();
-    foreach ($array as $key => $value) {
-      $result[] = array(
-        $keyField => $key,
-        $valueField => $value,
-      );
-    }
-    return $result;
+    return self::makeNonAssociative($array, $keyField, $valueField);
   }
 
   /**
@@ -1044,7 +1286,8 @@ class CRM_Utils_Array {
       (count($keys) == 1 &&
         (current($keys) > 1 ||
           is_string(current($keys)) ||
-          (current($keys) == 1 && $array[1] == 1) // handle (0 => 4), (1 => 1)
+          // handle (0 => 4), (1 => 1)
+          (current($keys) == 1 && $array[1] == 1)
         )
       )
     ) {
@@ -1074,6 +1317,132 @@ class CRM_Utils_Array {
       return $keys;
     }
     return $input;
+  }
+
+  /**
+   * Ensure that array is encoded in utf8 format.
+   *
+   * @param array $array
+   *
+   * @return array $array utf8-encoded.
+   */
+  public static function encode_items($array) {
+    foreach ($array as $key => $value) {
+      if (is_array($value)) {
+        $array[$key] = self::encode_items($value);
+      }
+      elseif (is_string($value)) {
+        $array[$key] = mb_convert_encoding($value, mb_detect_encoding($value, mb_detect_order(), TRUE), 'UTF-8');
+      }
+      else {
+        $array[$key] = $value;
+      }
+    }
+    return $array;
+  }
+
+  /**
+   * Build tree of elements.
+   *
+   * @param array $elements
+   * @param int|null $parentId
+   *
+   * @return array
+   */
+  public static function buildTree($elements, $parentId = NULL) {
+    $branch = [];
+
+    foreach ($elements as $element) {
+      if ($element['parent_id'] == $parentId) {
+        $children = self::buildTree($elements, $element['id']);
+        if ($children) {
+          $element['children'] = $children;
+        }
+        $branch[] = $element;
+      }
+    }
+
+    return $branch;
+  }
+
+  /**
+   * Find search string in tree.
+   *
+   * @param string $search
+   * @param array $tree
+   * @param string $field
+   *
+   * @return array|null
+   */
+  public static function findInTree($search, $tree, $field = 'id') {
+    foreach ($tree as $item) {
+      if ($item[$field] == $search) {
+        return $item;
+      }
+      if (!empty($item['children'])) {
+        $found = self::findInTree($search, $item['children']);
+        if ($found) {
+          return $found;
+        }
+      }
+    }
+    return NULL;
+  }
+
+  /**
+   * Prepend string prefix to every key in an array
+   *
+   * @param array $collection
+   * @param string $prefix
+   * @return array
+   */
+  public static function prefixKeys(array $collection, string $prefix): array {
+    $result = [];
+    foreach ($collection as $key => $value) {
+      $result[$prefix . $key] = $value;
+    }
+    return $result;
+  }
+
+  /**
+   * Removes all items from an array whose keys have a given prefix, and returns them unprefixed.
+   *
+   * @param array $collection
+   * @param string $prefix
+   */
+  public static function filterByPrefix(array &$collection, string $prefix): array {
+    $filtered = [];
+    foreach (array_keys($collection) as $key) {
+      if (!$prefix || str_starts_with($key, $prefix)) {
+        $filtered[substr($key, strlen($prefix))] = $collection[$key];
+        unset($collection[$key]);
+      }
+    }
+    return $filtered;
+  }
+
+  /**
+   * Changes array keys to meet the expectations of select2.js
+   *
+   * @param array $options
+   * @param string $label
+   * @param string $id
+   * @return array
+   */
+  public static function formatForSelect2(array $options, string $label = 'label', string $id = 'id'): array {
+    foreach ($options as &$option) {
+      if (isset($option[$label])) {
+        $option['text'] = (string) $option[$label];
+      }
+      if (isset($option[$id])) {
+        $option['id'] = (string) $option[$id];
+      }
+      if (!empty($option['children'])) {
+        $option['children'] = self::formatForSelect2($option['children'], $label, $id);
+      }
+      $option = array_intersect_key($option, array_flip(['id', 'text', 'children', 'color', 'icon', 'description', 'grouping', 'filter']));
+    }
+    return array_values($options);
   }
 
 }

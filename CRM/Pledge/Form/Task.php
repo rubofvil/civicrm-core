@@ -1,61 +1,25 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
- * This class generates task actions for CiviEvent.
+ * Class for pledge form task actions.
+ * FIXME: This needs refactoring to properly inherit from CRM_Core_Form_Task and share more functions.
  */
-class CRM_Pledge_Form_Task extends CRM_Core_Form {
-
-  /**
-   * The task being performed.
-   *
-   * @var int
-   */
-  protected $_task;
-
-  /**
-   * The additional clause that we restrict the search with.
-   *
-   * @var string
-   */
-  protected $_componentClause = NULL;
-
-  /**
-   * The array that holds all the component ids.
-   *
-   * @var array
-   */
-  protected $_componentIds;
+class CRM_Pledge_Form_Task extends CRM_Core_Form_Task {
 
   /**
    * The array that holds all the pledge ids.
@@ -74,27 +38,18 @@ class CRM_Pledge_Form_Task extends CRM_Core_Form {
   /**
    * Common pre-processing.
    *
-   * @param CRM_Core_Form $form
-   * @param bool $useTable
+   * @param CRM_Pledge_Form_Task $form
    */
-  public static function preProcessCommon(&$form, $useTable = FALSE) {
-    $form->_pledgeIds = array();
+  public static function preProcessCommon(&$form) {
+    $form->_pledgeIds = [];
 
     $values = $form->controller->exportValues('Search');
 
     $form->_task = $values['task'];
-    $pledgeTasks = CRM_Pledge_Task::tasks();
-    $form->assign('taskName', $pledgeTasks[$form->_task]);
 
-    $ids = array();
-    if ($values['radio_ts'] == 'ts_sel') {
-      foreach ($values as $name => $value) {
-        if (substr($name, 0, CRM_Core_Form::CB_PREFIX_LEN) == CRM_Core_Form::CB_PREFIX) {
-          $ids[] = substr($name, CRM_Core_Form::CB_PREFIX_LEN);
-        }
-      }
-    }
-    else {
+    $ids = $form->getSelectedIDs($values);
+
+    if (!$ids) {
       $queryParams = $form->get('queryParams');
       $sortOrder = NULL;
       if ($form->get(CRM_Utils_Sort::SORT_ORDER)) {
@@ -118,16 +73,7 @@ class CRM_Pledge_Form_Task extends CRM_Core_Form {
     }
 
     $form->_pledgeIds = $form->_componentIds = $ids;
-
-    // set the context for redirection for any task actions
-    $qfKey = CRM_Utils_Request::retrieve('qfKey', 'String', $form);
-    $urlParams = 'force=1';
-    if (CRM_Utils_Rule::qfKey($qfKey)) {
-      $urlParams .= "&qfKey=$qfKey";
-    }
-
-    $session = CRM_Core_Session::singleton();
-    $session->replaceUserContext(CRM_Utils_System::url('civicrm/pledge/search', $urlParams));
+    $form->setNextUrl('pledge');
   }
 
   /**
@@ -135,7 +81,7 @@ class CRM_Pledge_Form_Task extends CRM_Core_Form {
    * since its used for things like send email
    */
   public function setContactIDs() {
-    $this->_contactIds = &CRM_Core_DAO::getContactIDsFromComponent($this->_pledgeIds,
+    $this->_contactIds = CRM_Core_DAO::getContactIDsFromComponent($this->_pledgeIds,
       'civicrm_pledge'
     );
   }
@@ -151,18 +97,17 @@ class CRM_Pledge_Form_Task extends CRM_Core_Form {
    * @param bool $submitOnce
    */
   public function addDefaultButtons($title, $nextType = 'next', $backType = 'back', $submitOnce = FALSE) {
-    $this->addButtons(array(
-        array(
+    $this->addButtons([
+        [
           'type' => $nextType,
           'name' => $title,
           'isDefault' => TRUE,
-        ),
-        array(
+        ],
+        [
           'type' => $backType,
           'name' => ts('Cancel'),
-        ),
-      )
-    );
+        ],
+    ]);
   }
 
 }

@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -30,17 +14,25 @@ namespace Civi\Core;
 /**
  * Class SqlTriggers
  * @package Civi\Core
+ * @service sql_triggers
  *
  * This class manages creation and destruction of SQL triggers.
  */
-class SqlTriggers {
+class SqlTriggers extends \Civi\Core\Service\AutoService {
 
   /**
    * The name of the output file.
    *
-   * @var string|NULL
+   * @var string|null
    */
-  private $file = NULL;
+  private $file;
+
+  /**
+   * Queries written to file when the class is destructed.
+   *
+   * @var array
+   */
+  private $enqueuedQueries = [];
 
   /**
    * Build a list of triggers via hook and add them to (err, reconcile them
@@ -53,7 +45,7 @@ class SqlTriggers {
    * @see CRM-9716
    */
   public function rebuild($tableName = NULL, $force = FALSE) {
-    $info = array();
+    $info = [];
 
     $logging = new \CRM_Logging_Schema();
     $logging->triggerInfo($info, $tableName, $force);
@@ -68,6 +60,7 @@ class SqlTriggers {
 
     // now create the set of new triggers
     $this->createTriggers($info, $tableName);
+    $this->writeEnqueuedQueriesToFile();
   }
 
   /**
@@ -76,13 +69,13 @@ class SqlTriggers {
    * @param string $onlyTableName
    *   the specific table requiring a rebuild; or NULL to rebuild all tables.
    */
-  public function createTriggers(&$info, $onlyTableName = NULL) {
+  public function createTriggers($info, $onlyTableName = NULL) {
     // Validate info array, should probably raise errors?
     if (is_array($info) == FALSE) {
       return;
     }
 
-    $triggers = array();
+    $triggers = [];
 
     // now enumerate the tables and the events and collect the same set in a different format
     foreach ($info as $value) {
@@ -98,14 +91,14 @@ class SqlTriggers {
       }
 
       if (is_string($value['table']) == TRUE) {
-        $tables = array($value['table']);
+        $tables = [$value['table']];
       }
       else {
         $tables = $value['table'];
       }
 
       if (is_string($value['event']) == TRUE) {
-        $events = array(strtolower($value['event']));
+        $events = [strtolower($value['event'])];
       }
       else {
         $events = array_map('strtolower', $value['event']);
@@ -115,34 +108,35 @@ class SqlTriggers {
 
       foreach ($tables as $tableName) {
         if (!isset($triggers[$tableName])) {
-          $triggers[$tableName] = array();
+          $triggers[$tableName] = [];
         }
 
         foreach ($events as $eventName) {
-          $template_params = array('{tableName}', '{eventName}');
-          $template_values = array($tableName, $eventName);
+          $template_params = ['{tableName}', '{eventName}'];
+          $template_values = [$tableName, $eventName];
 
           $sql = str_replace($template_params,
             $template_values,
             $value['sql']
           );
+          // @todo See https://github.com/civicrm/civicrm-core/pull/23926#discussion_r912298758. It's not clear 'variables' is used anywhere, and isn't documented or unit tested.
           $variables = str_replace($template_params,
             $template_values,
-            \CRM_Utils_Array::value('variables', $value)
+            $value['variables'] ?? ''
           );
 
           if (!isset($triggers[$tableName][$eventName])) {
-            $triggers[$tableName][$eventName] = array();
+            $triggers[$tableName][$eventName] = [];
           }
 
           if (!isset($triggers[$tableName][$eventName][$whenName])) {
             // We're leaving out cursors, conditions, and handlers for now
             // they are kind of dangerous in this context anyway
             // better off putting them in stored procedures
-            $triggers[$tableName][$eventName][$whenName] = array(
-              'variables' => array(),
-              'sql' => array(),
-            );
+            $triggers[$tableName][$eventName][$whenName] = [
+              'variables' => [],
+              'sql' => [],
+            ];
           }
 
           if ($variables) {
@@ -154,6 +148,10 @@ class SqlTriggers {
       }
     }
 
+    // Sort tables alphabetically in order to output in a consistent order
+    // for sites that like to diff this output over time
+    // (ie. with the logging_no_trigger_permission setting in place).
+    ksort($triggers);
     // now spit out the sql
     foreach ($triggers as $tableName => $tables) {
       if ($onlyTableName != NULL && $onlyTableName != $tableName) {
@@ -181,7 +179,7 @@ class SqlTriggers {
    *   the specific table requiring a rebuild; or NULL to rebuild all tables.
    */
   public function dropTriggers($tableName = NULL) {
-    $info = array();
+    $info = [];
 
     $logging = new \CRM_Logging_Schema();
     $logging->triggerInfo($info, $tableName);
@@ -201,25 +199,21 @@ class SqlTriggers {
    * @param array $params
    *   Optional parameters to interpolate into the string.
    */
-  public function enqueueQuery($triggerSQL, $params = array()) {
+  public function enqueueQuery($triggerSQL, $params = []) {
     if (\Civi::settings()->get('logging_no_trigger_permission')) {
 
       if (!file_exists($this->getFile())) {
         // Ugh. Need to let user know somehow. This is the first change.
-        \CRM_Core_Session::setStatus(ts('The mysql commands you need to run are stored in %1', array(
-            1 => $this->getFile(),
-          )),
+        \CRM_Core_Session::setStatus(ts('The mysql commands you need to run are stored in %1', [
+          1 => $this->getFile(),
+        ]),
           '',
           'alert',
-          array('expires' => 0)
+          ['expires' => 0]
         );
       }
-
-      $buf = "\n";
-      $buf .= "DELIMITER //\n";
-      $buf .= \CRM_Core_DAO::composeQuery($triggerSQL, $params) . " //\n";
-      $buf .= "DELIMITER ;\n";
-      file_put_contents($this->getFile(), $buf, FILE_APPEND);
+      $query = \CRM_Core_DAO::composeQuery($triggerSQL, $params);
+      $this->enqueuedQueries[$query] = $query;
     }
     else {
       \CRM_Core_DAO::executeQuery($triggerSQL, $params, TRUE, NULL, FALSE, FALSE);
@@ -236,6 +230,37 @@ class SqlTriggers {
       $this->file = "{$config->configAndLogDir}CiviCRM." . $prefix . md5($config->dsn) . '.sql';
     }
     return $this->file;
+  }
+
+  /**
+   * Write queries to file when the class is destructed.
+   *
+   * Note this is already written out for a full rebuild but it is
+   * possible (at least in terms of what is public) to call drop & create
+   * separately so this ensures they are output.
+   */
+  public function __destruct() {
+    $this->writeEnqueuedQueriesToFile();
+  }
+
+  /**
+   * Write queries queued for write-to-file.
+   */
+  protected function writeEnqueuedQueriesToFile(): void {
+    if (!empty($this->enqueuedQueries) && $this->getFile()) {
+      $buf = "DELIMITER //\n";
+      foreach ($this->enqueuedQueries as $query) {
+        if (str_starts_with($query, 'CREATE TRIGGER')) {
+          // The create triggers are long so put spaces between them. For the drops
+          // condensed is more readable.
+          $buf .= "\n";
+        }
+        $buf .= $query . " //\n";
+      }
+      $buf .= "DELIMITER ;\n";
+      file_put_contents($this->getFile(), $buf, FILE_APPEND);
+      $this->enqueuedQueries = [];
+    }
   }
 
 }

@@ -1,33 +1,17 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 <div class="crm-block crm-form-block crm-event-manage-repeat-form-block">
 {include file="CRM/Core/Form/RecurringEntity.tpl" recurringFormIsEmbedded=false}
 {if $rows}
-<div class="crm-block crm-manage-events crm-accordion-wrapper">
-  <div class="crm-accordion-header">{ts}Connected Repeating Events{/ts}</div>
+<details class="crm-block crm-manage-events crm-accordion-bold" open>
+  <summary>{ts}Connected Repeating Events{/ts}</summary>
   <div class="crm-accordion-body">
   {strip}
   {include file="CRM/common/jsortable.tpl"}
@@ -54,7 +38,7 @@
           <tr class="row_{$row.id}{if NOT $row.is_active} disabled{/if}">
           <td class="crm-event_{$row.id}{$highlight}">
             <a href="{crmURL p='civicrm/event/info' q="id=`$row.id`&reset=1"}"
-               title="{ts}View event info page{/ts}" class="bold">{$row.title}</a>&nbsp;&nbsp;({ts}ID:{/ts} {$row.id})
+               title="{ts escape='htmlattribute'}View event info page{/ts}" class="bold">{$row.title}</a>&nbsp;&nbsp;({ts}ID:{/ts} {$row.id})
           </td>
           <td class="crm-event-is_public{$highlight}">{if $row.is_public eq 1} {ts}Yes{/ts} {else} {ts}No{/ts} {/if}</td>
               <td class="crm-event-start_date{$highlight}" data-order="{$row.start_date|crmDate:'%Y-%m-%d'}">{$row.start_date|crmDate:"%b %d, %Y %l:%M %P"}</td>
@@ -73,6 +57,6 @@
     </table>
   {/strip}
   </div>
-</div>
+</details>
 {/if}
 </div>

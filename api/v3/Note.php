@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -44,7 +28,7 @@
  *   API result array
  */
 function civicrm_api3_note_create($params) {
-  return _civicrm_api3_basic_create(_civicrm_api3_get_BAO(__FUNCTION__), $params);
+  return _civicrm_api3_basic_create(_civicrm_api3_get_BAO(__FUNCTION__), $params, 'Note');
 }
 
 /**
@@ -73,8 +57,8 @@ function _civicrm_api3_note_create_spec(&$params) {
  * @return array
  */
 function civicrm_api3_note_delete($params) {
-  $result = new CRM_Core_BAO_Note();
-  return $result->del($params['id']) ? civicrm_api3_create_success() : civicrm_api3_create_error('Error while deleting Note');
+  $result = CRM_Core_BAO_Note::deleteRecord($params);
+  return $result ? civicrm_api3_create_success() : civicrm_api3_create_error('Error while deleting Note');
 }
 
 /**
@@ -108,12 +92,12 @@ function _civicrm_api3_note_get_spec(&$params) {
  *
  * @param array $params
  *   array; only required 'id' parameter is used.
- *
+ * @deprecated
  * @return array
  *   Nested associative array beginning with direct children of given note.
  */
-function &civicrm_api3_note_tree_get($params) {
-  civicrm_api3_verify_mandatory($params, NULL, array('id'));
+function civicrm_api3_note_tree_get($params) {
+  civicrm_api3_verify_mandatory($params, NULL, ['id']);
 
   if (!is_numeric($params['id'])) {
     return civicrm_api3_create_error(ts("Invalid note ID"));
@@ -126,4 +110,13 @@ function &civicrm_api3_note_tree_get($params) {
   }
   $noteTree = CRM_Core_BAO_Note::getNoteTree($params['id'], $params['max_depth'], $params['snippet']);
   return civicrm_api3_create_success($noteTree, $params);
+}
+
+/**
+ * Declare deprecated api functions.
+ *
+ * @return array
+ */
+function _civicrm_api3_note_deprecation() {
+  return ['tree_get' => 'Unused api action.'];
 }

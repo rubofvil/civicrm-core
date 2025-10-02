@@ -4,6 +4,7 @@
  * Interface CRM_Core_Reference_Interface
  */
 interface CRM_Core_Reference_Interface {
+
   public function getReferenceTable();
 
   public function getReferenceKey();
@@ -30,7 +31,7 @@ interface CRM_Core_Reference_Interface {
    *
    * @param CRM_Core_DAO $targetDao
    *   The instance for which we want references.
-   * @return array
+   * @return array{type: string, count: int}|NULL
    *   a record describing the reference; must include the keys:
    *   - 'type': string (not necessarily unique)
    *   - 'count': int

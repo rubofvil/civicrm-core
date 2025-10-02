@@ -1,56 +1,30 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
- * $Id$
- *
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 class CRM_Utils_Cache_Redis implements CRM_Utils_Cache_Interface {
+
+  // TODO Consider native implementation.
+  use CRM_Utils_Cache_NaiveMultipleTrait;
+  // TODO Native implementation
+  use CRM_Utils_Cache_NaiveHasTrait;
+
   const DEFAULT_HOST    = 'localhost';
   const DEFAULT_PORT    = 6379;
   const DEFAULT_TIMEOUT = 3600;
   const DEFAULT_PREFIX  = '';
-
-  /**
-   * The host name of the redisd server
-   *
-   * @var string
-   */
-  protected $_host = self::DEFAULT_HOST;
-
-  /**
-   * The port on which to connect on
-   *
-   * @var int
-   */
-  protected $_port = self::DEFAULT_PORT;
 
   /**
    * The default timeout to use
@@ -78,6 +52,35 @@ class CRM_Utils_Cache_Redis implements CRM_Utils_Cache_Interface {
   protected $_cache;
 
   /**
+   * Create a connection. If a connection already exists, re-use it.
+   *
+   * @param array $config
+   * @return Redis
+   */
+  public static function connect($config) {
+    $host = $config['host'] ?? self::DEFAULT_HOST;
+    $port = $config['port'] ?? self::DEFAULT_PORT;
+    // Ugh.
+    $pass = CRM_Utils_Constant::value('CIVICRM_DB_CACHE_PASSWORD');
+    $id = implode(':', ['connect', $host, $port /* $pass is constant */]);
+    if (!isset(Civi::$statics[__CLASS__][$id])) {
+      // Ideally, we'd track the connection in the service-container, but the
+      // cache connection is boot-critical.
+      $redis = new Redis();
+      if (!$redis->connect($host, $port)) {
+        // dont use fatal here since we can go in an infinite loop
+        echo 'Could not connect to redisd server';
+        CRM_Utils_System::civiExit();
+      }
+      if ($pass) {
+        $redis->auth($pass);
+      }
+      Civi::$statics[__CLASS__][$id] = $redis;
+    }
+    return Civi::$statics[__CLASS__][$id];
+  }
+
+  /**
    * Constructor
    *
    * @param array $config
@@ -86,39 +89,41 @@ class CRM_Utils_Cache_Redis implements CRM_Utils_Cache_Interface {
    * @return \CRM_Utils_Cache_Redis
    */
   public function __construct($config) {
-    if (isset($config['host'])) {
-      $this->_host = $config['host'];
-    }
-    if (isset($config['port'])) {
-      $this->_port = $config['port'];
-    }
     if (isset($config['timeout'])) {
       $this->_timeout = $config['timeout'];
     }
     if (isset($config['prefix'])) {
       $this->_prefix = $config['prefix'];
     }
-
-    $this->_cache = new Redis();
-    if (!$this->_cache->connect($this->_host, $this->_port)) {
-      // dont use fatal here since we can go in an infinite loop
-      echo 'Could not connect to redisd server';
-      CRM_Utils_System::civiExit();
+    if (defined('CIVICRM_DEPLOY_ID')) {
+      $this->_prefix = CIVICRM_DEPLOY_ID . '_' . $this->_prefix;
     }
-    $this->_cache->auth(CIVICRM_DB_CACHE_PASSWORD);
+
+    $this->_cache = self::connect($config);
   }
 
   /**
    * @param $key
    * @param $value
+   * @param null|int|\DateInterval $ttl
    *
    * @return bool
    * @throws Exception
    */
-  public function set($key, &$value) {
-    if (!$this->_cache->set($this->_prefix . $key, serialize($value), $this->_timeout)) {
-      CRM_Core_Error::debug('Result Code: ', $this->_cache->getResultMessage());
-      CRM_Core_Error::fatal("Redis set failed, wondering why?, $key", $value);
+  public function set($key, $value, $ttl = NULL) {
+    CRM_Utils_Cache::assertValidKey($key);
+    if (is_int($ttl) && $ttl <= 0) {
+      return $this->delete($key);
+    }
+    $ttl = CRM_Utils_Date::convertCacheTtl($ttl, self::DEFAULT_TIMEOUT);
+    if (!$this->_cache->setex($this->_prefix . $key, $ttl, serialize($value))) {
+      if (PHP_SAPI === 'cli' || (Civi\Core\Container::isContainerBooted() && CRM_Core_Permission::check('view debug output'))) {
+        throw new CRM_Utils_Cache_CacheException("Redis set ($key) failed: " . $this->_cache->getLastError());
+      }
+      else {
+        Civi::log()->error("Redis set ($key) failed: " . $this->_cache->getLastError());
+        throw new CRM_Utils_Cache_CacheException("Redis set ($key) failed");
+      }
       return FALSE;
     }
     return TRUE;
@@ -126,28 +131,49 @@ class CRM_Utils_Cache_Redis implements CRM_Utils_Cache_Interface {
 
   /**
    * @param $key
+   * @param mixed $default
    *
    * @return mixed
    */
-  public function get($key) {
+  public function get($key, $default = NULL) {
+    CRM_Utils_Cache::assertValidKey($key);
     $result = $this->_cache->get($this->_prefix . $key);
-    return unserialize($result);
+    return ($result === FALSE) ? $default : unserialize($result);
   }
 
   /**
    * @param $key
    *
-   * @return mixed
+   * @return bool
    */
   public function delete($key) {
-    return $this->_cache->delete($this->_prefix . $key);
+    CRM_Utils_Cache::assertValidKey($key);
+    $this->_cache->del($this->_prefix . $key);
+    return TRUE;
   }
 
   /**
-   * @return mixed
+   * @return bool
    */
   public function flush() {
-    return $this->_cache->flushDB();
+    // FIXME: Ideally, we'd map each prefix to a different 'hash' object in Redis,
+    // and this would be simpler. However, that needs to go in tandem with a
+    // more general rethink of cache expiration/TTL.
+
+    $keys = $this->_cache->keys($this->_prefix . '*');
+    $this->_cache->del($keys);
+    return TRUE;
+  }
+
+  public function clear() {
+    return $this->flush();
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function garbageCollection() {
+    return FALSE;
   }
 
 }

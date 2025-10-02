@@ -6,15 +6,20 @@
  */
 class CRM_Utils_NumberTest extends CiviUnitTestCase {
 
+  public function setUp(): void {
+    parent::setUp();
+    $this->useTransaction();
+  }
+
   /**
    * @return array
    */
-  public function randomDecimalCases() {
-    $cases = array();
+  public static function randomDecimalCases() {
+    $cases = [];
     // array(array $precision, int $expectedMinInclusive, int $expectedMaxExclusive)
-    $cases[] = array(array(1, 0), 0, 10);
-    $cases[] = array(array(5, 2), 0, 1000);
-    $cases[] = array(array(10, 8), 0, 100);
+    $cases[] = [[1, 0], 0, 10];
+    $cases[] = [[5, 2], 0, 1000];
+    $cases[] = [[10, 8], 0, 100];
     return $cases;
   }
 
@@ -30,7 +35,7 @@ class CRM_Utils_NumberTest extends CiviUnitTestCase {
       $decimal = CRM_Utils_Number::createRandomDecimal($precision);
       // print "Assert $decimal between $expectedMinInclusive and $expectedMaxExclusive\n";
       $this->assertTrue(($expectedMinInclusive <= $decimal) && ($decimal < $expectedMaxExclusive), "Assert $decimal between $expectedMinInclusive and $expectedMaxExclusive");
-      if (strpos($decimal, '.') === FALSE) {
+      if (!str_contains($decimal, '.')) {
         $decimal .= '.';
       }
       list ($before, $after) = explode('.', $decimal);
@@ -42,15 +47,15 @@ class CRM_Utils_NumberTest extends CiviUnitTestCase {
   /**
    * @return array
    */
-  public function truncDecimalCases() {
-    $cases = array();
+  public static function truncDecimalCases() {
+    $cases = [];
     // array($value, $precision, $expectedValue)
-    $cases[] = array(523, array(1, 0), 5);
-    $cases[] = array(523, array(5, 2), 523);
-    $cases[] = array(523, array(10, 8), 52.3);
-    $cases[] = array(12345, array(3, 3), 0.123);
-    $cases[] = array(0.12345, array(10, 0), 12345);
-    $cases[] = array(-123.45, array(4, 2), -12.34);
+    $cases[] = [523, [1, 0], 5];
+    $cases[] = [523, [5, 2], 523];
+    $cases[] = [523, [10, 8], 52.3];
+    $cases[] = [12345, [3, 3], 0.123];
+    $cases[] = [0.12345, [10, 0], 12345];
+    $cases[] = [-123.45, [4, 2], -12.34];
     return $cases;
   }
 
@@ -65,6 +70,22 @@ class CRM_Utils_NumberTest extends CiviUnitTestCase {
     $this->assertEquals($expectedValue, CRM_Utils_Number::createTruncatedDecimal($value, $precision),
       "assert createTruncatedValue($value, ($sigFigs,$decFigs)) == $expectedValue"
     );
+  }
+
+  public static function sizeCases() {
+    $cases = [];
+    $cases[] = ['20M', '20971520'];
+    $cases[] = ['40G', '42949672960'];
+    return $cases;
+  }
+
+  /**
+   * @param $size
+   * @param $expectedValue
+   * @dataProvider sizeCases
+   */
+  public function testFormatUnitSize($size, $expectedValue) {
+    $this->assertEquals($expectedValue, CRM_Utils_Number::formatUnitSize($size));
   }
 
 }

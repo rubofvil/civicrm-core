@@ -1,26 +1,10 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 
@@ -40,12 +24,14 @@
           <table id="options" class="display">
             <thead>
             <tr class="columnheader">
-              <th id="sortable">{ts}Role{/ts}</th>
+              <th>{ts}Role{/ts}</th>
               <th>{ts}Operation{/ts}</th>
               <th>{ts}Type of Data{/ts}</th>
               <th>{ts}Which Data{/ts}</th>
               <th>{ts}Description{/ts}</th>
               <th>{ts}Enabled?{/ts}</th>
+              <th>{ts}Mode{/ts}</th>
+              <th id="sortable">{ts}Priority{/ts}</th>
               <th></th>
             </tr>
             </thead>
@@ -58,6 +44,8 @@
                 <td class="crm-acl-object" >{$row.object}</td>
                 <td class="crm-acl-name crm-editable" data-field="name">{$row.name}</td>
                 <td class="crm-acl-is_active" id="row_{$aclID}_status">{if $row.is_active eq 1} {ts}Yes{/ts} {else} {ts}No{/ts} {/if}</td>
+                <td class="crm-acl-deny" id="row_{$aclID}_deny">{if $row.deny}{ts}Deny{/ts}{else}{ts}Allow{/ts}{/if}</td>
+                <td class="crm-acl-priority" id="row_{$aclID}_priority">{$row.priority}</td>
                 <td>{$row.action|replace:'xx':$aclID}</td>
               </tr>
             {/foreach}
@@ -67,13 +55,13 @@
 
         {if $action ne 1 and $action ne 2}
           <div class="action-link">
-            {crmButton q="action=add&reset=1" id="newACL" icon="plus-circle"}{ts}Add ACL{/ts}{/crmButton}
+            {crmButton p="civicrm/acl/edit" q="action=add&reset=1" id="newACL" icon="plus-circle"}{ts}Add ACL{/ts}{/crmButton}
           </div>
         {/if}
       </div>
     {else}
       <div class="messages status no-popup">
-        <img src="{$config->resourceBase}i/Inform.gif" alt="{ts}status{/ts}"/>
+        <img src="{$config->resourceBase}i/Inform.gif" alt="{ts escape='htmlattribute'}status{/ts}"/>
         {capture assign=crmURL}{crmURL q="action=add&reset=1"}{/capture}
         {ts 1=$crmURL}There are no ACLs entered. You can <a href='%1'>add one</a>.{/ts}
       </div>

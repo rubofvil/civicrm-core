@@ -1,34 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -47,7 +31,8 @@ class CRM_Contact_Form_Edit_Individual {
    *   ( 1 for contact summary.
    * top bar form and 2 for display name edit )
    */
-  public static function buildQuickForm(&$form, $inlineEditMode = NULL) {
+  public static function buildQuickForm($form, $inlineEditMode = NULL): void {
+    $form->addOptionalQuickFormElement('formal_title');
     $form->applyFilter('__ALL__', 'trim');
 
     if (!$inlineEditMode || $inlineEditMode == 1) {
@@ -62,17 +47,17 @@ class CRM_Contact_Form_Edit_Individual {
       // Fixme: dear god why? these come out in a format that is NOT the name of the fields.
       foreach ($nameFields as &$fix) {
         $fix = str_replace(' ', '_', strtolower($fix));
-        if ($fix == 'prefix' || $fix == 'suffix') {
+        if ($fix === 'prefix' || $fix === 'suffix') {
           // God, why god?
           $fix .= '_id';
         }
       }
 
       foreach ($nameFields as $name) {
-        $props = array();
+        $props = [];
         if ($name == 'prefix_id' || $name == 'suffix_id') {
           //override prefix/suffix label name as Prefix/Suffix respectively and adjust select size
-          $props = array('class' => 'eight', 'placeholder' => ' ', 'label' => $name == 'prefix_id' ? ts('Prefix') : ts('Suffix'));
+          $props = ['class' => 'eight', 'placeholder' => ' ', 'label' => $name == 'prefix_id' ? ts('Prefix') : ts('Suffix')];
         }
         $form->addField($name, $props);
       }
@@ -84,34 +69,22 @@ class CRM_Contact_Form_Edit_Individual {
 
       // job title
       // override the size for UI to look better
-      $form->addField('job_title', array('size' => '30'));
+      $form->addField('job_title', ['size' => '30']);
 
       //Current Employer Element
-      $props = array(
-        'api' => array('params' => array('contact_type' => 'Organization')),
-        'create' => TRUE,
-      );
-      $form->addField('employer_id', $props);
-      $form->addField('contact_source', array('class' => 'big'));
+      $form->addField('employer_id', ['create' => TRUE]);
+      $form->addField('contact_source', ['class' => 'big']);
     }
 
     if (!$inlineEditMode) {
-      $checkSimilar = Civi::settings()->get('contact_ajax_check_similar');
-
-      if ($checkSimilar == NULL) {
-        $checkSimilar = 0;
-      }
-      $form->assign('checkSimilar', $checkSimilar);
-
       //External Identifier Element
-      $form->addField('external_identifier', array('label' => 'External ID'));
+      $form->addField('external_identifier', ['label' => ts('External ID')]);
 
       $form->addRule('external_identifier',
         ts('External ID already exists in Database.'),
         'objectExists',
-        array('CRM_Contact_DAO_Contact', $form->_contactId, 'external_identifier')
+        ['CRM_Contact_DAO_Contact', $form->_contactId, 'external_identifier']
       );
-      CRM_Core_ShowHideBlocks::links($form, 'demographics', '', '');
     }
   }
 
@@ -124,20 +97,17 @@ class CRM_Contact_Form_Edit_Individual {
    *   The uploaded files if any.
    * @param int $contactID
    *
-   * @return bool
+   * @return bool|array
    *   TRUE if no errors, else array of errors.
    */
   public static function formRule($fields, $files, $contactID = NULL) {
-    $errors = array();
-    $primaryID = CRM_Contact_Form_Contact::formRule($fields, $errors, $contactID);
+    $errors = [];
+    $primaryID = CRM_Contact_Form_Contact::formRule($fields, $errors, $contactID, 'Individual');
 
     // make sure that firstName and lastName or a primary OpenID is set
-    if (!$primaryID && (empty($fields['first_name']) || empty($fields['last_name']))) {
-      $errors['_qf_default'] = ts('First Name and Last Name OR an email OR an OpenID in the Primary Location should be set.');
+    if (!$primaryID && (empty($fields['first_name']) && empty($fields['last_name']))) {
+      $errors['_qf_default'] = ts('Please enter a First Name, Last Name or Email (Primary).');
     }
-
-    //check for duplicate - dedupe rules
-    CRM_Contact_Form_Contact::checkDuplicateContacts($fields, $errors, $contactID, 'Individual');
 
     return empty($errors) ? TRUE : $errors;
   }

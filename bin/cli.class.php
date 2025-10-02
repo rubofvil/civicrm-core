@@ -1,26 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright Tech To The People http:tttp.eu (c) 2008                 |
- +--------------------------------------------------------------------+
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -39,26 +24,35 @@
  */
 class civicrm_cli {
   // required values that must be passed
-  // via the command line
-  var $_required_arguments = array('action', 'entity');
-  var $_additional_arguments = array();
-  var $_entity = NULL;
-  var $_action = NULL;
-  var $_output = FALSE;
-  var $_joblog = FALSE;
-  var $_semicolon = FALSE;
-  var $_config;
+  /**
+   * via the command line
+   * @var array
+   */
+  public $_required_arguments = array('action', 'entity');
+  public $_additional_arguments = array();
+  public $_entity = NULL;
+  public $_action = NULL;
+  public $_output = FALSE;
+  public $_joblog = FALSE;
+  public $_semicolon = FALSE;
+  public $_config;
 
-  // optional arguments
-  var $_site = 'localhost';
-  var $_user = NULL;
-  var $_password = NULL;
+  /**
+   * optional arguments
+   * @var string
+   */
+  public $_site = 'localhost';
+  public $_user = NULL;
+  public $_password = NULL;
 
   // all other arguments populate the parameters
-  // array that is passed to civicrm_api
-  var $_params = array('version' => 3);
+  /**
+   * array that is passed to civicrm_api
+   * @var array
+   */
+  public $_params = array('version' => 3);
 
-  var $_errors = array();
+  public $_errors = array();
 
   /**
    * @return bool
@@ -99,6 +93,7 @@ class civicrm_cli {
   public function callApi() {
     require_once 'api/api.php';
 
+    CRM_Core_Config::setPermitCacheFlushMode(FALSE);
     //  CRM-9822 -'execute' action always goes thru Job api and always writes to log
     if ($this->_action != 'execute' && $this->_joblog) {
       require_once 'CRM/Core/JobManager.php';
@@ -111,6 +106,8 @@ class civicrm_cli {
       $this->_params['auth'] = FALSE;
       $result = civicrm_api($this->_entity, $this->_action, $this->_params);
     }
+    CRM_Core_Config::setPermitCacheFlushMode(TRUE);
+    CRM_Contact_BAO_Contact_Utils::clearContactCaches();
 
     if (!empty($result['is_error'])) {
       $this->_log($result['error_message']);
@@ -134,7 +131,7 @@ class civicrm_cli {
     // of this script
     array_shift($args);
 
-    while (list($k, $arg) = each($args)) {
+    foreach ($args as $k => $arg) {
       // sanitize all user input
       $arg = $this->_sanitize($arg);
 
@@ -199,7 +196,7 @@ class civicrm_cli {
         }
         // all other arguments are parameters
         $key = ltrim($arg, '--');
-        $this->_params[$key] = isset($value) ? $value : NULL;
+        $this->_params[$key] = $value ?? NULL;
       }
     }
     return TRUE;
@@ -282,8 +279,7 @@ class civicrm_cli {
    * @return bool
    */
   private function _validateOptions() {
-    $required = $this->_required_arguments;
-    while (list(, $var) = each($required)) {
+    foreach ($this->_required_arguments as $var) {
       $index = '_' . $var;
       if (empty($this->$index)) {
         $missing_arg = '--' . $var;
@@ -337,7 +333,7 @@ class civicrm_cli {
  * the database in a csv file format.
  */
 class civicrm_cli_csv_exporter extends civicrm_cli {
-  var $separator = ',';
+  public $separator = ',';
 
   /**
    */
@@ -388,8 +384,8 @@ class civicrm_cli_csv_exporter extends civicrm_cli {
  * passed to the script.
  */
 class civicrm_cli_csv_file extends civicrm_cli {
-  var $header;
-  var $separator = ',';
+  public $header;
+  public $separator = ',';
 
   /**
    */
@@ -411,25 +407,26 @@ class civicrm_cli_csv_file extends civicrm_cli {
     }
 
     //header
-    $header = fgetcsv($handle, 0, $this->separator);
+    $header = fgetcsv($handle, 0, $this->separator, '"', '');
     // In case fgetcsv couldn't parse the header and dumped the whole line in 1 array element
     // Try a different separator char
     if (count($header) == 1) {
       $this->separator = ";";
       rewind($handle);
-      $header = fgetcsv($handle, 0, $this->separator);
-      if (count($header) == 1) {
-        die("Invalid file format for " . $this->_file . ". It must be a valid csv with separator ',' or ';'\n");
-      }
+      $header = fgetcsv($handle, 0, $this->separator, '"', '');
     }
 
     $this->header = $header;
-    while (($data = fgetcsv($handle, 0, $this->separator)) !== FALSE) {
+    while (($data = fgetcsv($handle, 0, $this->separator, '"', '')) !== FALSE) {
       // skip blank lines
       if (count($data) == 1 && is_null($data[0])) {
         continue;
       }
       $this->row++;
+      if ($this->row % 1000 == 0) {
+        // Reset PEAR_DB_DATAOBJECT cache to prevent memory leak
+        CRM_Core_DAO::freeResult();
+      }
       $params = $this->convertLine($data);
       $this->processLine($params);
     }
@@ -437,6 +434,7 @@ class civicrm_cli_csv_file extends civicrm_cli {
   }
 
   /* return a params as expected */
+
   /**
    * @param $data
    *
@@ -464,6 +462,7 @@ class civicrm_cli_csv_file extends civicrm_cli {
  *
  */
 class civicrm_cli_csv_importer extends civicrm_cli_csv_file {
+
   /**
    * @param array $params
    */
@@ -485,6 +484,7 @@ class civicrm_cli_csv_importer extends civicrm_cli_csv_file {
  *
  */
 class civicrm_cli_csv_deleter extends civicrm_cli_csv_file {
+
   /**
    * @param array $params
    */

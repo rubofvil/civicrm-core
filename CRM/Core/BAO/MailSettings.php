@@ -1,66 +1,77 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
- * $Id$
- *
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 class CRM_Core_BAO_MailSettings extends CRM_Core_DAO_MailSettings {
 
   /**
-   * Class constructor.
+   * Get a list of setup-actions.
+   *
+   * @return array{array{title:string, callback: mixed, url: string}}
+   *   List of available actions. See description in the hook-docs.
+   * @see CRM_Utils_Hook::mailSetupActions()
    */
-  public function __construct() {
-    parent::__construct();
+  public static function getSetupActions() {
+    $setupActions = [];
+    $setupActions['standard'] = [
+      'title' => ts('Standard Mail Account'),
+      'callback' => ['CRM_Core_BAO_MailSettings', 'setupStandardAccount'],
+    ];
+
+    CRM_Utils_Hook::mailSetupActions($setupActions);
+
+    foreach ($setupActions as $key => &$setupAction) {
+      if (!isset($setupAction['url'])) {
+        $setupAction['url'] = (string) Civi::url('//civicrm/ajax/setupMailAccount')->addQuery(['type' => $key]);
+      }
+    }
+
+    return $setupActions;
+  }
+
+  public static function setupStandardAccount($setupAction) {
+    return [
+      'url' => CRM_Utils_System::url('civicrm/admin/mailSettings/edit', 'action=add&reset=1', TRUE, NULL, FALSE),
+    ];
   }
 
   /**
-   * Return the DAO object containing to the default row of
+   * Return the BAO object containing to the default row of
    * civicrm_mail_settings and cache it for further calls
-   *
-   * @param bool $reset
    *
    * @return CRM_Core_BAO_MailSettings
    *   DAO with the default mail settings set
    */
-  public static function defaultDAO($reset = FALSE) {
-    static $mailSettings = array();
+  public static function defaultDAO(): self {
     $domainID = CRM_Core_Config::domainID();
-    if (empty($mailSettings[$domainID]) || $reset) {
+    if (!isset(\Civi::$statics[__CLASS__][__FUNCTION__][$domainID])) {
+      \Civi::$statics[__CLASS__][__FUNCTION__][$domainID] = [];
       $dao = new self();
       $dao->is_default = 1;
       $dao->domain_id = $domainID;
       $dao->find(TRUE);
-      $mailSettings[$domainID] = $dao;
+      \Civi::$statics[__CLASS__][__FUNCTION__][$domainID] = $dao;
     }
-    return $mailSettings[$domainID];
+    return \Civi::$statics[__CLASS__][__FUNCTION__][$domainID];
+  }
+
+  /**
+   * Clear cached variables.
+   */
+  public static function clearCache(): void {
+    unset(\Civi::$statics[__CLASS__]);
   }
 
   /**
@@ -69,8 +80,8 @@ class CRM_Core_BAO_MailSettings extends CRM_Core_DAO_MailSettings {
    * @return string
    *   default domain
    */
-  public static function defaultDomain() {
-    return self::defaultDAO()->domain;
+  public static function defaultDomain(): string {
+    return self::defaultDAO()->domain ?? '';
   }
 
   /**
@@ -104,28 +115,14 @@ class CRM_Core_BAO_MailSettings extends CRM_Core_DAO_MailSettings {
   }
 
   /**
-   * Retrieve DB object based on input parameters.
-   *
-   * It also stores all the retrieved values in the default array.
-   *
+   * @deprecated
    * @param array $params
-   *   (reference ) an assoc array of name/value pairs.
    * @param array $defaults
-   *   (reference ) an assoc array to hold the flattened values.
-   *
-   * @return CRM_Core_BAO_MailSettings
+   * @return self|null
    */
-  public static function retrieve(&$params, &$defaults) {
-    $mailSettings = new CRM_Core_DAO_MailSettings();
-    $mailSettings->copyValues($params);
-
-    $result = NULL;
-    if ($mailSettings->find(TRUE)) {
-      CRM_Core_DAO::storeValues($mailSettings, $defaults);
-      $result = $mailSettings;
-    }
-
-    return $result;
+  public static function retrieve($params, &$defaults) {
+    CRM_Core_Error::deprecatedFunctionWarning('API');
+    return self::commonRetrieve(self::class, $params, $defaults);
   }
 
   /**
@@ -133,25 +130,26 @@ class CRM_Core_BAO_MailSettings extends CRM_Core_DAO_MailSettings {
    *
    * @param array $params
    *   Reference array contains the values submitted by the form.
+   * @deprecated since 5.72 will be removed around 5.82
    *
-   *
-   * @return object
+   * @return CRM_Core_DAO_MailSettings
    */
-  public static function add(&$params) {
+  public static function add($params) {
+    CRM_Core_Error::deprecatedFunctionWarning('use apiv4');
     $result = NULL;
     if (empty($params)) {
       return $result;
     }
 
     if (empty($params['id'])) {
-      $params['is_ssl'] = CRM_Utils_Array::value('is_ssl', $params, FALSE);
-      $params['is_default'] = CRM_Utils_Array::value('is_default', $params, FALSE);
+      $params['is_ssl'] ??= FALSE;
+      $params['is_default'] ??= FALSE;
     }
 
     //handle is_default.
     if (!empty($params['is_default'])) {
       $query = 'UPDATE civicrm_mail_settings SET is_default = 0 WHERE domain_id = %1';
-      $queryParams = array(1 => array(CRM_Core_Config::domainID(), 'Integer'));
+      $queryParams = [1 => [CRM_Core_Config::domainID(), 'Integer']];
       CRM_Core_DAO::executeQuery($query, $queryParams);
     }
 
@@ -166,22 +164,28 @@ class CRM_Core_BAO_MailSettings extends CRM_Core_DAO_MailSettings {
    * Takes an associative array and creates a mail settings object.
    *
    * @param array $params
-   *   (reference ) an assoc array of name/value pairs.
    *
-   * @return CRM_Core_BAO_MailSettings
+   * @return CRM_Core_DAO_MailSettings
+   * @throws \CRM_Core_Exception
    */
-  public static function create(&$params) {
-    $transaction = new CRM_Core_Transaction();
-
-    $mailSettings = self::add($params);
-    if (is_a($mailSettings, 'CRM_Core_Error')) {
-      $mailSettings->rollback();
-      return $mailSettings;
+  public static function create(array $params): CRM_Core_DAO_MailSettings {
+    if (empty($params['id'])) {
+      $params['is_ssl'] ??= FALSE;
+      $params['is_default'] ??= FALSE;
     }
 
+    $transaction = new CRM_Core_Transaction();
+
+    if (!empty($params['is_default'])) {
+      $query = 'UPDATE civicrm_mail_settings SET is_default = 0 WHERE domain_id = %1';
+      $queryParams = [1 => [CRM_Core_Config::domainID(), 'Integer']];
+      CRM_Core_DAO::executeQuery($query, $queryParams);
+    }
+
+    $result = self::writeRecord($params);
     $transaction->commit();
-    CRM_Core_BAO_MailSettings::defaultDAO(TRUE);
-    return $mailSettings;
+    CRM_Core_BAO_MailSettings::clearCache();
+    return $result;
   }
 
   /**

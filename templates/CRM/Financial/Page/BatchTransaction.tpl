@@ -1,26 +1,10 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 
@@ -42,7 +26,7 @@
   </tbody>
 </table>
 
-<div class="crm-submit-buttons">{if in_array($batchStatus, array('Open', 'Reopened'))}{$form.close_batch.html}{/if} {$form.export_batch.html}</div>
+<div class="crm-submit-buttons">{if array_key_exists('close_batch', $form)}{$form.close_batch.html}{/if} {if array_key_exists('close_batch', $form)}{$form.export_batch.html}{/if}</div>
 
 {if in_array($batchStatus, array('Open', 'Reopened'))} {* Add / remove transactions only allowed for Open/Reopened batches *}
   <br /><div class="form-layout-compressed">{$form.trans_remove.html}&nbsp;{$form.rSubmit.html}</div><br/>
@@ -59,10 +43,11 @@
           <th class="crm-contact-type"></th>
           <th class="crm-contact-name">{ts}Name{/ts}</th>
           <th class="crm-amount">{ts}Amount{/ts}</th>
-    <th class="crm-trxnID">{ts}Trxn ID{/ts}</th>
-          <th class="crm-received">{ts}Received{/ts}</th>
+          <th class="crm-trxnID">{ts}Trxn ID{/ts}</th>
+          <th class="crm-trxn_date">{ts}Payment/Transaction Date{/ts}</th>
+          <th class="crm-received">{ts}Contribution Date{/ts}</th>
           <th class="crm-payment-method">{ts}Pay Method{/ts}</th>
-    <th class="crm-status">{ts}Status{/ts}</th>
+          <th class="crm-status">{ts}Status{/ts}</th>
           <th class="crm-type">{ts}Type{/ts}</th>
           <th class="crm-transaction-links"></th>
         </tr>
@@ -90,14 +75,17 @@ CRM.$(function($) {
 });
 function assignRemove(recordID, op) {
   var recordBAO = 'CRM_Batch_BAO_Batch';
+  if (op === 'assign' || op === 'remove') {
+    recordBAO = 'CRM_Batch_BAO_EntityBatch';
+  }
   var entityID = {/literal}"{$entityID}"{literal};
-  if (op == 'close' || op == 'export') {
+  if (op === 'close' || op === 'export') {
     var mismatch = checkMismatch();
   }
   else {
     CRM.$('#mark_x_' + recordID).closest('tr').block({message: {/literal}'{ts escape="js"}Updating{/ts}'{literal}});
   }
-  if (op == 'close' || (op == 'export' && mismatch.length)) {
+  if (op === 'close' || (op === 'export' && mismatch.length)) {
     CRM.$("#enableDisableStatusMsg").dialog({
       title: {/literal}'{ts escape="js"}Close Batch{/ts}'{literal},
       modal: true,
@@ -126,6 +114,23 @@ function assignRemove(recordID, op) {
   }
 }
 
+function removeFromBatch(financial_trxn_id) {
+  var entityID = "{/literal}{$entityID}{literal}";
+  if (financial_trxn_id && entityID) {
+    CRM.api4("EntityBatch", "delete", {where: [
+      ["entity_id", "=", financial_trxn_id],
+      ["entity_table", "=", "civicrm_financial_trxn"],
+      ["batch_id", "=", entityID]
+    ]}).then(function(batch) {
+      buildTransactionSelectorAssign(true);
+      buildTransactionSelectorRemove();
+      batchSummary(entityID);
+    }, function(failure) {
+      CRM.alert({/literal}'{ts escape="js"}Error removing from batch.{/ts}', '{ts escape="js"}Api Error{/ts}'{literal}, 'error');
+    });
+  }
+}
+
 function noServerResponse() {
   CRM.alert({/literal}'{ts escape="js"}No response from the server. Check your internet connection and try reloading the page.{/ts}', '{ts escape="js"}Network Error{/ts}'{literal}, 'error');
 }
@@ -135,9 +140,9 @@ function saveRecord(recordID, op, recordBAO, entityID) {
     window.location.href = CRM.url('civicrm/financial/batch/export', {reset: 1, id: recordID, status: 1});
     return;
   }
-  var postUrl = {/literal}"{crmURL p='civicrm/ajax/rest' h=0 q='className=CRM_Financial_Page_AJAX&fnName=assignRemove'}"{literal};
+  var postUrl = "{/literal}{crmURL p='civicrm/ajax/rest' h=0 q="className=CRM_Financial_Page_AJAX&fnName=assignRemove"}&qfKey={$financialAJAXQFKey}{literal}";
   //post request and get response
-  CRM.$.post( postUrl, { records: [recordID], recordBAO: recordBAO, op:op, entityID:entityID, key: {/literal}"{crmKey name='civicrm/ajax/ar'}"{literal}  }, function( html ){
+  CRM.$.post( postUrl, { records: [recordID], recordBAO: recordBAO, op:op, entityID:entityID }, function( html ){
     //this is custom status set when record update success.
     if (html.status == 'record-updated-success') {
        if (op == 'close') {
@@ -153,7 +158,7 @@ function saveRecord(recordID, op, recordBAO, entityID) {
       CRM.alert(html.status);
     }
   },
-  'json').error(noServerResponse);
+  'json').fail(noServerResponse);
 }
 
 function batchSummary(entityID) {

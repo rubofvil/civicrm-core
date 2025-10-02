@@ -1,4 +1,4 @@
-(function($, _) {
+(function($, _, Backbone) {
   if (!CRM.Backbone) CRM.Backbone = {};
 
   /**
@@ -190,7 +190,6 @@
       },
       _saved_onchange: function(model, options) {
         if (options.parse) return;
-        // console.log('change', model.changedAttributes(), model.previousAttributes());
         this.setModified();
       },
       setModified: function() {
@@ -569,4 +568,4 @@
       model.trigger('error', model, resp, options);
     };
   };
-})(CRM.$, CRM._);
+})(CRM.$, CRM._, CRM.BB);

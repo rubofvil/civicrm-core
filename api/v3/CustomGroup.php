@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -32,35 +16,50 @@
  */
 
 /**
- * Use this API to create a new group.
- *
- * The 'extends' value accepts an array or a comma separated string.
- * e.g array(
- * 'Individual','Contact') or 'Individual,Contact'
- * See the CRM Data Model for custom_group property definitions
- * $params['class_name'] is a required field, class being extended.
+ * This entire function consists of legacy handling, probably for a form that no longer exists.
+ * APIv3 is where code like this goes to die...
  *
  * @param array $params
- *   Array per getfields metadata.
+ *   For legacy reasons, 'extends' can be passed as an array (for setting Participant column_value)
  *
  * @return array
- * @todo $params['extends'] is array format - is that std compatible
  */
 function civicrm_api3_custom_group_create($params) {
   if (isset($params['extends']) && is_string($params['extends'])) {
-    $extends = explode(",", $params['extends']);
-    unset($params['extends']);
-    $params['extends'] = $extends;
+    $params['extends'] = explode(',', $params['extends']);
   }
-  if (!isset($params['extends'][0]) || !trim($params['extends'][0])) {
+  if (!isset($params['id']) && (!isset($params['extends'][0]) || !trim($params['extends'][0]))) {
+
     return civicrm_api3_create_error("First item in params['extends'] must be a class name (e.g. 'Contact').");
+  }
+  if (!isset($params['extends_entity_column_value']) && isset($params['extends'][1])) {
+    $extendsEntity = $params['extends'][0] ?? NULL;
+    $participantEntities = [
+      'ParticipantRole',
+      'ParticipantEventName',
+      'ParticipantEventType',
+    ];
+    if (in_array($extendsEntity, $participantEntities)
+    ) {
+      $params['extends_entity_column_id'] = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_OptionValue', $extendsEntity, 'value', 'name');
+    }
+    $params['extends_entity_column_value'] = $params['extends'][1];
+    if (in_array($extendsEntity, $participantEntities)) {
+      $params['extends'] = 'Participant';
+    }
+    else {
+      $params['extends'] = $extendsEntity;
+    }
+  }
+  elseif (isset($params['extends']) && (!isset($params['extends'][1]) || empty($params['extends'][1]))) {
+    $params['extends'] = $params['extends'][0];
   }
   if (isset($params['extends_entity_column_value']) && !is_array($params['extends_entity_column_value'])) {
     // BAO fails if this is a string, but API getFields says this must be a string, so we'll do a double backflip
     $params['extends_entity_column_value'] = CRM_Utils_Array::explodePadded($params['extends_entity_column_value']);
   }
 
-  return _civicrm_api3_basic_create(_civicrm_api3_get_BAO(__FUNCTION__), $params);
+  return _civicrm_api3_basic_create(_civicrm_api3_get_BAO(__FUNCTION__), $params, 'CustomGroup');
 }
 
 /**
@@ -86,8 +85,9 @@ function _civicrm_api3_custom_group_create_spec(&$params) {
 function civicrm_api3_custom_group_delete($params) {
   $values = new CRM_Core_DAO_CustomGroup();
   $values->id = $params['id'];
-  $values->find(TRUE);
-
+  if (!$values->find(TRUE)) {
+    return civicrm_api3_create_error('Error while deleting custom group');
+  }
   $result = CRM_Core_BAO_CustomGroup::deleteGroup($values, TRUE);
   return $result ? civicrm_api3_create_success() : civicrm_api3_create_error('Error while deleting custom group');
 }
@@ -114,9 +114,23 @@ function civicrm_api3_custom_group_get($params) {
  */
 function civicrm_api3_custom_group_setvalue($params) {
   require_once 'api/v3/Generic/Setvalue.php';
-  $result = civicrm_api3_generic_setValue(array("entity" => 'CustomGroup', 'params' => $params));
+  $result = civicrm_api3_generic_setValue(["entity" => 'CustomGroup', 'params' => $params]);
   if (empty($result['is_error'])) {
-    CRM_Utils_System::flushCache();
+    Civi::rebuild(['system' => TRUE])->execute();
+  }
+  return $result;
+}
+
+function civicrm_api3_custom_group_getoptions($params) {
+  $result = civicrm_api3_generic_getoptions(['entity' => 'CustomGroup', 'params' => $params]);
+  // This provides legacy support for APIv3, which also needs the ParticipantEventName etc pseudo-selectors
+  if ($params['field'] === 'extends') {
+    $options = CRM_Core_SelectValues::customGroupExtends();
+    $options = CRM_Core_PseudoConstant::formatArrayOptions($params['context'] ?? NULL, $options);
+    if (!empty($params['sequential'])) {
+      $options = CRM_Utils_Array::makeNonAssociative($options);
+    }
+    $result['values'] = $options;
   }
   return $result;
 }

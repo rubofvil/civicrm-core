@@ -4,17 +4,13 @@ require_once 'CRM/Core/Config.php';
 require_once 'CRM/Core/Error.php';
 require_once 'CRM/Utils/Array.php';
 
-$config = CRM_Core_Config::singleton();
+CRM_Core_Config::singleton();
 
 // To keep backward compatibility for URLs generated
 // by CiviCRM < 1.7, we check for the q variable as well.
-if (isset($_GET['qid'])) {
-  $queue_id = CRM_Utils_Array::value('qid', $_GET);
-}
-else {
-  $queue_id = CRM_Utils_Array::value('q', $_GET);
-}
-$url_id = CRM_Utils_Array::value('u', $_GET);
+$queue_id = $_GET['qid'] ?? $_GET['q'] ?? NULL;
+
+$url_id = $_GET['u'] ?? NULL;
 
 if (!$url_id) {
   echo "Missing input parameters\n";
@@ -22,7 +18,7 @@ if (!$url_id) {
 }
 
 require_once 'CRM/Mailing/Event/BAO/TrackableURLOpen.php';
-$url = CRM_Mailing_Event_BAO_TrackableURLOpen::track($queue_id, $url_id);
+$url = CRM_Mailing_Event_BAO_MailingEventTrackableURLOpen::track($queue_id, $url_id);
 
 // CRM-7103
 // Looking for additional query variables and append them when redirecting.
@@ -58,5 +54,6 @@ if (strlen($query_string) > 0) {
 $url = str_replace('&amp;', '&', $url);
 
 // CRM-17953 - The CMS is not bootstrapped so cannot use CRM_Utils_System::redirect
+header('X-Robots-Tag: noindex');
 header('Location: ' . $url);
 CRM_Utils_System::civiExit();

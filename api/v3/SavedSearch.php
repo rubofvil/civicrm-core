@@ -1,29 +1,12 @@
 <?php
-
 /*
-  +--------------------------------------------------------------------+
-  | CiviCRM version 4.7                                                |
-  +--------------------------------------------------------------------+
-  | Copyright Chirojeugd-Vlaanderen vzw 2015                           |
-  +--------------------------------------------------------------------+
-  | This file is a part of CiviCRM.                                    |
-  |                                                                    |
-  | CiviCRM is free software; you can copy, modify, and distribute it  |
-  | under the terms of the GNU Affero General Public License           |
-  | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
-  |                                                                    |
-  | CiviCRM is distributed in the hope that it will be useful, but     |
-  | WITHOUT ANY WARRANTY; without even the implied warranty of         |
-  | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
-  | See the GNU Affero General Public License for more details.        |
-  |                                                                    |
-  | You should have received a copy of the GNU Affero General Public   |
-  | License and the CiviCRM Licensing Exception along                  |
-  | with this program; if not, contact CiviCRM LLC                     |
-  | at info[AT]civicrm[DOT]org. If you have questions about the        |
-  | GNU Affero General Public License or the licensing of CiviCRM,     |
-  | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
-  +--------------------------------------------------------------------+
+ +--------------------------------------------------------------------+
+ | Copyright CiviCRM LLC. All rights reserved.                        |
+ |                                                                    |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
+ +--------------------------------------------------------------------+
  */
 
 /**
@@ -37,32 +20,28 @@
  *
  * @param array $params
  *   Associative array of property name-value pairs to insert in new saved search.
- * @example SavedSearch/Create.php Std create example.
- * @return array api result array
+ *
+ * @return array
+ *   api result array
  *   {@getfields saved_search_create}
+ *
+ * @throws \CRM_Core_Exception
+ *
+ * @example SavedSearch/Create.php Std create example.
  * @access public
  */
 function civicrm_api3_saved_search_create($params) {
-  civicrm_api3_verify_one_mandatory($params, NULL, array('form_values', 'where_clause'));
-  // The create function of the dao expects a 'formValues' that is
-  // not serialized. The get function returns form_values, that is
-  // serialized.
-  // So for the create API, I guess it should work for serialized and
-  // unserialized form_values.
-
-  if (isset($params["form_values"])) {
-    if (is_array($params["form_values"])) {
-      $params["formValues"] = $params["form_values"];
-    }
-    else {
-      // Assume that form_values is serialized.
-      $params["formValues"] = unserialize($params["form_values"]);
-    }
-  }
-
-  $result = _civicrm_api3_basic_create(_civicrm_api3_get_BAO(__FUNCTION__), $params);
+  $result = _civicrm_api3_basic_create(_civicrm_api3_get_BAO(__FUNCTION__), $params, 'SavedSearch');
   _civicrm_api3_saved_search_result_cleanup($result);
   return $result;
+}
+
+/**
+ * @param array $fields
+ */
+function _civicrm_api3_saved_search_create_spec(&$fields) {
+  $fields['form_values']['api.aliases'][] = 'formValues';
+  $fields['form_values']['api.required'] = TRUE;
 }
 
 /**
@@ -71,9 +50,14 @@ function civicrm_api3_saved_search_create($params) {
  * @param array $params
  *   Associative array of property name-value pairs. $params['id'] should be
  *   the ID of the saved search to be deleted.
- * @example SavedSearch/Delete.php Std delete example.
- * @return array api result array
+ *
+ * @return array
+ *   api result array
  *   {@getfields saved_search_delete}
+ *
+ * @throws \CRM_Core_Exception
+ *
+ * @example SavedSearch/Delete.php Std delete example.
  * @access public
  */
 function civicrm_api3_saved_search_delete($params) {
@@ -86,7 +70,8 @@ function civicrm_api3_saved_search_delete($params) {
  * @param array $params
  *   An associative array of name-value pairs.
  * @example SavedSearch/Get.php Std get example.
- * @return array api result array
+ * @return array
+ *   api result array
  *   {@getfields saved_search_get}
  * @access public
  */
@@ -97,16 +82,19 @@ function civicrm_api3_saved_search_get($params) {
 }
 
 /**
- * This function unserializes the form_values in an SavedSearch API result.
+ * Unserialize the form_values field in SavedSearch API results.
+ *
+ * Note: APIv4 handles serialization automatically based on metadata.
  *
  * @param array $result API result to be cleaned up.
  */
 function _civicrm_api3_saved_search_result_cleanup(&$result) {
   if (isset($result['values']) && is_array($result['values'])) {
-    // Only clean up the values if there are values. (A getCount operation
-    // for example does not return values.)
+    // Only run if there are values (getCount for example does not return values).
     foreach ($result['values'] as $key => $value) {
-      $result['values'][$key]['form_values'] = unserialize($value['form_values']);
+      if (isset($value['form_values'])) {
+        $result['values'][$key]['form_values'] = CRM_Utils_String::unserialize($value['form_values']);
+      }
     }
   }
 }

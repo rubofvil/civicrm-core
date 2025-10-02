@@ -1,36 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
- * $Id$
- *
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 class CRM_Core_Lock implements \Civi\Core\Lock\LockInterface {
 
@@ -40,20 +22,31 @@ class CRM_Core_Lock implements \Civi\Core\Lock\LockInterface {
    * Prior to version 5.7.5 mysql only supports a single named lock. This variable is
    * part of the skullduggery involved in 'say it's no so Frank'.
    *
-   * See further comments on the aquire function.
+   * See further comments on the acquire function.
    *
    * @var bool
    */
-  static $jobLog = FALSE;
+  public static $jobLog = FALSE;
 
-  // lets have a 3 second timeout for now
+  /**
+   * lets have a 3 second timeout for now
+   */
   const TIMEOUT = 3;
 
+  /**
+   * @var bool
+   */
   protected $_hasLock = FALSE;
 
   protected $_name;
 
   protected $_id;
+
+  /**
+   * Lock Timeout
+   * @var int
+   */
+  protected $_timeout;
 
   /**
    * Use MySQL's GET_LOCK(). Locks are shared across all Civi instances
@@ -124,7 +117,8 @@ class CRM_Core_Lock implements \Civi\Core\Lock\LockInterface {
    */
   public function __construct($name, $timeout = NULL, $serverWideLock = FALSE) {
     $config = CRM_Core_Config::singleton();
-    $dsnArray = DB::parseDSN($config->dsn);
+    $dsn = CRM_Utils_SQL::autoSwitchDSN($config->dsn);
+    $dsnArray = DB::parseDSN($dsn);
     $database = $dsnArray['database'];
     $domainID = CRM_Core_Config::domainID();
     if ($serverWideLock) {
@@ -136,7 +130,7 @@ class CRM_Core_Lock implements \Civi\Core\Lock\LockInterface {
     // MySQL 5.7 doesn't like long lock names so creating a lock id
     $this->_id = sha1($this->_name);
     if (defined('CIVICRM_LOCK_DEBUG')) {
-      CRM_Core_Error::debug_log_message('trying to construct lock for ' . $this->_name . '(' . $this->_id . ')');
+      \Civi::log()->debug('trying to construct lock for ' . $this->_name . '(' . $this->_id . ')');
     }
     $this->_timeout = $timeout !== NULL ? $timeout : self::TIMEOUT;
   }
@@ -170,26 +164,23 @@ class CRM_Core_Lock implements \Civi\Core\Lock\LockInterface {
    *
    * @todo document naming convention for CiviMail locks as this is key to ensuring they work properly.
    *
-   * @param int $timeout
+   * @param int|null $timeout
    *
    * @return bool
    * @throws \CRM_Core_Exception
    */
   public function acquire($timeout = NULL) {
     if (!$this->_hasLock) {
-      if (self::$jobLog && CRM_Core_DAO::singleValueQuery("SELECT IS_USED_LOCK( '" . self::$jobLog . "')")) {
-        return $this->hackyHandleBrokenCode(self::$jobLog);
-      }
 
       $query = "SELECT GET_LOCK( %1, %2 )";
-      $params = array(
-        1 => array($this->_id, 'String'),
-        2 => array($timeout ? $timeout : $this->_timeout, 'Integer'),
-      );
+      $params = [
+        1 => [$this->_id, 'String'],
+        2 => [$timeout ?: $this->_timeout, 'Integer'],
+      ];
       $res = CRM_Core_DAO::singleValueQuery($query, $params);
       if ($res) {
         if (defined('CIVICRM_LOCK_DEBUG')) {
-          CRM_Core_Error::debug_log_message('acquire lock for ' . $this->_name . '(' . $this->_id . ')');
+          \Civi::log()->debug('acquire lock for ' . $this->_name . '(' . $this->_id . ')');
         }
         $this->_hasLock = TRUE;
         if (stristr($this->_name, 'data.mailing.job.')) {
@@ -198,7 +189,7 @@ class CRM_Core_Lock implements \Civi\Core\Lock\LockInterface {
       }
       else {
         if (defined('CIVICRM_LOCK_DEBUG')) {
-          CRM_Core_Error::debug_log_message('failed to acquire lock for ' . $this->_name . '(' . $this->_id . ')');
+          \Civi::log()->debug('failed to acquire lock for ' . $this->_name . '(' . $this->_id . ')');
         }
       }
     }
@@ -211,7 +202,7 @@ class CRM_Core_Lock implements \Civi\Core\Lock\LockInterface {
   public function release() {
     if ($this->_hasLock) {
       if (defined('CIVICRM_LOCK_DEBUG')) {
-        CRM_Core_Error::debug_log_message('release lock for ' . $this->_name . '(' . $this->_id . ')');
+        \Civi::log()->debug('release lock for ' . $this->_name . '(' . $this->_id . ')');
       }
       $this->_hasLock = FALSE;
 
@@ -220,8 +211,18 @@ class CRM_Core_Lock implements \Civi\Core\Lock\LockInterface {
       }
 
       $query = "SELECT RELEASE_LOCK( %1 )";
-      $params = array(1 => array($this->_id, 'String'));
-      return CRM_Core_DAO::singleValueQuery($query, $params);
+      $params = [1 => [$this->_id, 'String']];
+      if (CRM_Core_Transaction::isActive()) {
+        CRM_Core_Transaction::addCallback(CRM_Core_Transaction::PHASE_POST_COMMIT, function ($query, $params) {
+          return CRM_Core_DAO::singleValueQuery($query, $params);
+        }, [$query, $params]);
+        CRM_Core_Transaction::addCallback(CRM_Core_Transaction::PHASE_POST_ROLLBACK, function ($query, $params) {
+          return CRM_Core_DAO::singleValueQuery($query, $params);
+        }, [$query, $params]);
+      }
+      else {
+        return CRM_Core_DAO::singleValueQuery($query, $params);
+      }
     }
   }
 
@@ -230,7 +231,7 @@ class CRM_Core_Lock implements \Civi\Core\Lock\LockInterface {
    */
   public function isFree() {
     $query = "SELECT IS_FREE_LOCK( %1 )";
-    $params = array(1 => array($this->_id, 'String'));
+    $params = [1 => [$this->_id, 'String']];
     return CRM_Core_DAO::singleValueQuery($query, $params);
   }
 
@@ -239,31 +240,6 @@ class CRM_Core_Lock implements \Civi\Core\Lock\LockInterface {
    */
   public function isAcquired() {
     return $this->_hasLock;
-  }
-
-  /**
-   * CRM-12856 locks were originally set up for jobs, but the concept was extended to caching & groups without
-   * understanding that would undermine the job locks (because grabbing a lock implicitly releases existing ones)
-   * this is all a big hack to mitigate the impact of that - but should not be seen as a fix. Not sure correct fix
-   * but maybe locks should be used more selectively? Or else we need to handle is some cool way that Tim is yet to write :-)
-   * if we are running in the context of the cron log then we would rather die (or at least let our process die)
-   * than release that lock - so if the attempt is being made by setCache or something relatively trivial
-   * we'll just return TRUE, but if it's another job then we will crash as that seems 'safer'
-   *
-   * @param string $jobLog
-   * @throws CRM_Core_Exception
-   * @return bool
-   */
-  public function hackyHandleBrokenCode($jobLog) {
-    if (stristr($this->_name, 'job')) {
-      CRM_Core_Error::debug_log_message('lock acquisition for ' . $this->_name . '(' . $this->_id . ')' . ' attempted when ' . $jobLog . ' is not released');
-      throw new CRM_Core_Exception('lock acquisition for ' . $this->_name . '(' . $this->_id . ')' . ' attempted when ' . $jobLog . ' is not released');
-    }
-    if (defined('CIVICRM_LOCK_DEBUG')) {
-      CRM_Core_Error::debug_log_message('(CRM-12856) faking lock for ' . $this->_name . '(' . $this->_id . ')');
-    }
-    $this->_hasLock = TRUE;
-    return TRUE;
   }
 
 }

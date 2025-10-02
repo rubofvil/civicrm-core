@@ -136,8 +136,8 @@
     <div class="crm-amount-raised-wrapper">
         <span id="crm_cpid_{$cpageId}_amt_raised" class="crm-amount-raised"> -- placeholder -- </span>
     </div>
-    {if $form.url_logo.value}
-        <div class="crm-logo"><img src="{$form.url_logo.value}" alt={ts}Logo{/ts}></div>
+    {if !empty($form.url_logo.value)}
+        <div class="crm-logo"><img src="{$form.url_logo.value}" alt="{ts escape='htmlattribute'}Logo{/ts}"></div>
     {/if}
     <div id="crm_cpid_{$cpageId}_donors" class="crm-donors"></div>
     <div id="crm_cpid_{$cpageId}_comments" class="crm-comments"></div>
@@ -211,4 +211,4 @@ function onReady( ) {
 }
 </script>
 {/literal}
-<script type="text/javascript" src="{$config->userFrameworkResourceURL}/extern/widget.php?cpageId={$cpageId}&widgetId={$widget_id}&format=3"></script>
+<script type="text/javascript" src="{$widgetExternUrl}"></script>

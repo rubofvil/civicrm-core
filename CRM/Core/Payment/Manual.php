@@ -1,34 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 class CRM_Core_Payment_Manual extends CRM_Core_Payment {
 
@@ -38,6 +22,19 @@ class CRM_Core_Payment_Manual extends CRM_Core_Payment {
    * This function checks to see if we have the right config values.
    */
   public function checkConfig() {}
+
+  /**
+   * Constructor.
+   */
+  public function __construct() {
+    $this->_paymentProcessor = [
+      'payment_type' => 0,
+      'billing_mode' => 0,
+      'id' => 0,
+      'url_recur' => '',
+      'is_recur' => 0,
+    ];
+  }
 
   /**
    * Get billing fields required for this processor.
@@ -62,7 +59,7 @@ class CRM_Core_Payment_Manual extends CRM_Core_Payment {
       // @todo - use profile api to retrieve this - either as pseudo-profile or (better) set up billing
       // as a reserved profile in the DB and (even better) allow the profile to be selected
       // on the form instead of just 'billing for pay=later bool'
-      return array(
+      return [
         'first_name' => 'billing_first_name',
         'middle_name' => 'billing_middle_name',
         'last_name' => 'billing_last_name',
@@ -71,10 +68,10 @@ class CRM_Core_Payment_Manual extends CRM_Core_Payment {
         'country' => "billing_country_id-{$billingLocationID}",
         'state_province' => "billing_state_province_id-{$billingLocationID}",
         'postal_code' => "billing_postal_code-{$billingLocationID}",
-      );
+      ];
     }
     else {
-      return array();
+      return [];
     }
   }
 
@@ -84,8 +81,20 @@ class CRM_Core_Payment_Manual extends CRM_Core_Payment {
    * @return array
    */
   public function getPaymentFormFields() {
-    return array();
+    if (!$this->isBackOffice()) {
+      return [];
+    }
+
+    $paymentInstrument = CRM_Core_PseudoConstant::getName('CRM_Contribute_BAO_Contribution', 'payment_instrument_id', $this->getPaymentInstrumentID());
+    if ($paymentInstrument === 'Credit Card') {
+      return ['credit_card_type', 'pan_truncation'];
+    }
+    elseif ($paymentInstrument === 'Check') {
+      return ['check_number'];
+    }
+    return [];
   }
+
   /**
    * Process payment.
    *
@@ -102,8 +111,18 @@ class CRM_Core_Payment_Manual extends CRM_Core_Payment {
    * @throws \Civi\Payment\Exception\PaymentProcessorException
    */
   public function doPayment(&$params, $component = 'contribute') {
-    $params['payment_status_id'] = $this->getResult();
-    return $params;
+    $result['payment_status_id'] = $this->getResult();
+    if ($result['payment_status_id'] == CRM_Core_PseudoConstant::getKey('CRM_Contribute_BAO_Contribution', 'contribution_status_id', 'Pending')) {
+      $result = $this->setStatusPaymentPending($result);
+    }
+    elseif ($result['payment_status_id'] == CRM_Core_PseudoConstant::getKey('CRM_Contribute_BAO_Contribution', 'contribution_status_id', 'Completed')) {
+      $result = $this->setStatusPaymentCompleted($result);
+    }
+    else {
+      throw new \Civi\Payment\Exception\PaymentProcessorException('Result from doPayment MUST be one of Completed|Pending');
+    }
+
+    return $result;
   }
 
   /**
@@ -121,7 +140,7 @@ class CRM_Core_Payment_Manual extends CRM_Core_Payment {
    */
   protected function getResult() {
     if (!$this->result) {
-      $this->setResult(CRM_Core_PseudoConstant::getKey('CRM_Contribute_BAO_Contribution', 'status_id', 'Pending'));
+      $this->setResult(CRM_Core_PseudoConstant::getKey('CRM_Contribute_BAO_Contribution', 'contribution_status_id', 'Pending'));
     }
     return $this->result;
   }
@@ -135,6 +154,15 @@ class CRM_Core_Payment_Manual extends CRM_Core_Payment {
    */
   public function setResult($result) {
     $this->result = $result;
+  }
+
+  /**
+   * Set payment instrument id.
+   *
+   * @param int $paymentInstrumentID
+   */
+  public function setPaymentInstrumentID($paymentInstrumentID) {
+    $this->paymentInstrumentID = $paymentInstrumentID;
   }
 
   /**
@@ -152,7 +180,25 @@ class CRM_Core_Payment_Manual extends CRM_Core_Payment {
    * @return string
    */
   public function getPaymentTypeLabel() {
-    return '';
+    return CRM_Core_PseudoConstant::getLabel('CRM_Contribute_BAO_Contribution', 'payment_instrument_id', $this->getPaymentInstrumentID());
+  }
+
+  /**
+   * Are live payments supported - e.g dummy doesn't support this.
+   *
+   * @return bool
+   */
+  protected function supportsLiveMode() {
+    return TRUE;
+  }
+
+  /**
+   * Are test payments supported.
+   *
+   * @return bool
+   */
+  protected function supportsTestMode() {
+    return TRUE;
   }
 
   /**
@@ -174,22 +220,32 @@ class CRM_Core_Payment_Manual extends CRM_Core_Payment {
   }
 
   /**
-   * Submit a manual payment.
+   * Does the processor support the user having a choice as to whether to cancel the recurring with the processor?
    *
-   * @param array $params
-   *   Assoc array of input parameters for this transaction.
+   * If this returns TRUE then there will be an option to send a cancellation request in the cancellation form.
    *
-   * @return array
+   * This would normally be false for processors where CiviCRM maintains the schedule.
+   *
+   * @return bool
    */
-  public function doDirectPayment(&$params) {
-    $statuses = CRM_Contribute_BAO_Contribution::buildOptions('contribution_status_id');
-    if ($params['is_pay_later']) {
-      $result['payment_status_id'] = array_search('Pending', $statuses);
-    }
-    else {
-      $result['payment_status_id'] = array_search('Completed', $statuses);
-    }
-    return $result;
+  protected function supportsCancelRecurringNotifyOptional() {
+    return FALSE;
+  }
+
+  /**
+   * Are back office payments supported.
+   *
+   * @return bool
+   */
+  protected function supportsBackOffice() {
+    return TRUE;
+  }
+
+  /**
+   * Does the processor work without an email address?
+   */
+  protected function supportsNoEmailProvided() {
+    return TRUE;
   }
 
   /**
@@ -200,5 +256,55 @@ class CRM_Core_Payment_Manual extends CRM_Core_Payment {
   public function isSendReceiptForPending() {
     return TRUE;
   }
+
+  /**
+   * Get help text information (help, description, etc.) about this payment,
+   * to display to the user.
+   *
+   * @param string $context
+   *   Context of the text.
+   *   Only explicitly supported contexts are handled without error.
+   *   Currently supported:
+   *   - contributionPageRecurringHelp (params: is_recur_installments, is_email_receipt)
+   *
+   * @param array $params
+   *   Parameters for the field, context specific.
+   *
+   * @return string
+   */
+  public function getText($context, $params): string {
+    switch ($context) {
+      case 'contributionPageContinueText':
+        return '';
+
+      case 'contributionPageButtonText':
+        return ts('Continue');
+
+      case 'contributionPageConfirmText':
+        return '';
+
+      default:
+        return parent::getText($context, $params);
+    }
+  }
+
+  /**
+   * Does this processor support cancelling recurring contributions through code.
+   *
+   * @return bool
+   */
+  protected function supportsCancelRecurring() {
+    return TRUE;
+  }
+
+  /**
+   * Override default payment instrument validation, as recommended.
+   *
+   * We have nothing to validate here.
+   *
+   * @param array $values
+   * @param array $errors
+   */
+  public function validatePaymentInstrument($values, &$errors): void {}
 
 }

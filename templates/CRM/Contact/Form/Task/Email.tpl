@@ -1,66 +1,54 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 <div class="crm-block crm-form-block crm-contactEmail-form-block">
-<div class="crm-submit-buttons">{include file="CRM/common/formButtons.tpl" location="top"}</div>
 {if $suppressedEmails > 0}
     <div class="status">
         <p>{ts count=$suppressedEmails plural='Email will NOT be sent to %count contacts - (no email address on file, or communication preferences specify DO NOT EMAIL, or contact is deceased).'}Email will NOT be sent to %count contact - (no email address on file, or communication preferences specify DO NOT EMAIL, or contact is deceased).{/ts}</p>
     </div>
 {/if}
+{capture assign='tokenTitle'}{ts}Tokens{/ts}{/capture}
+
 <table class="form-layout-compressed">
-    <tr class="crm-contactEmail-form-block-fromEmailAddress">
-       <td class="label">{$form.fromEmailAddress.label}</td>
-       <td>{$form.fromEmailAddress.html} {help id="id-from_email" file="CRM/Contact/Form/Task/Email.hlp" isAdmin=$isAdmin}</td>
-    </tr>
+  <tr id="selectEmailFrom" class="crm-contactEmail-form-block-fromEmailAddress crm-email-element">
+    <td class="label">{$form.from_email_address.label}</td>
+    <td>
+      {$form.from_email_address.html}
+      {help id="from_email_address" file="CRM/Contact/Form/Task/Help/Email/id-from_email.hlp" title=$tokenTitle}
+    </td>
+  </tr>
     <tr class="crm-contactEmail-form-block-recipient">
        <td class="label">{if $single eq false}{ts}Recipient(s){/ts}{else}{$form.to.label}{/if}</td>
        <td>
-         {$form.to.html}{if $noEmails eq true}&nbsp;&nbsp;{$form.emailAddress.html}{/if}
+         {$form.to.html} {help id="to" file="CRM/Contact/Form/Task/Email.hlp"}
        </td>
     </tr>
-    <tr class="crm-contactEmail-form-block-cc_id" {if !$form.cc_id.value}style="display:none;"{/if}>
+    <tr class="crm-contactEmail-form-block-cc_id" {if empty($form.cc_id.value)}style="display:none;"{/if}>
       <td class="label">{$form.cc_id.label}</td>
       <td>
         {$form.cc_id.html}
-        <a class="crm-hover-button clear-cc-link" rel="cc_id" title="{ts}Clear{/ts}" href="#"><i class="crm-i fa-times"></i></a>
+        <a class="crm-hover-button clear-cc-link" rel="cc_id" title="{ts escape='htmlattribute'}Clear{/ts}" href="#"><i class="crm-i fa-times" role="img" aria-hidden="true"></i></a>
       </td>
     </tr>
-    <tr class="crm-contactEmail-form-block-bcc_id" {if !$form.bcc_id.value}style="display:none;"{/if}>
+    <tr class="crm-contactEmail-form-block-bcc_id" {if empty($form.bcc_id.value)}style="display:none;"{/if}>
       <td class="label">{$form.bcc_id.label}</td>
       <td>
         {$form.bcc_id.html}
-        <a class="crm-hover-button clear-cc-link" rel="bcc_id" title="{ts}Clear{/ts}" href="#"><i class="crm-i fa-times"></i></a>
+        <a class="crm-hover-button clear-cc-link" rel="bcc_id" title="{ts escape='htmlattribute'}Clear{/ts}" href="#"><i class="crm-i fa-times" role="img" aria-hidden="true"></i></a>
       </td>
     </tr>
     <tr>
       <td></td>
       <td>
         <div>
-          <a href="#" rel="cc_id" class="add-cc-link crm-hover-button" {if $form.cc_id.value}style="display:none;"{/if}>{ts}Add CC{/ts}</a>&nbsp;&nbsp;
-          <a href="#" rel="bcc_id" class="add-cc-link crm-hover-button" {if $form.bcc_id.value}style="display:none;"{/if}>{ts}Add BCC{/ts}</a>
+          <a href="#" rel="cc_id" class="add-cc-link crm-hover-button" {if !empty($form.cc_id.value)}style="display:none;"{/if}>{ts}Add CC{/ts}</a>&nbsp;&nbsp;
+          <a href="#" rel="bcc_id" class="add-cc-link crm-hover-button" {if !empty($form.bcc_id.value)}style="display:none;"{/if}>{ts}Add BCC{/ts}</a>
         </div>
       </td>
     </tr>
@@ -76,12 +64,14 @@
        <td>
          {$form.subject.html|crmAddClass:huge}&nbsp;
          <input class="crm-token-selector big" data-field="subject" />
-         {help id="id-token-subject" tplFile=$tplFile isAdmin=$isAdmin file="CRM/Contact/Form/Task/Email.hlp"}
+         {help id="id-token-subject" tplFile=$tplFile isAdmin=$isAdmin file="CRM/Contact/Form/Task/Email.hlp" title=$tokenTitle}
        </td>
     </tr>
+  {* CRM-15984 --add campaign to email activities *}
+  {include file="CRM/Campaign/Form/addCampaignToComponent.tpl" campaignTrClass="crm-contactEmail-form-block-campaign_id"}
 </table>
 
-{include file="CRM/Contact/Form/Task/EmailCommon.tpl"}
+{include file="CRM/Contact/Form/Task/EmailCommon.tpl" noAttach=0}
 {include file="CRM/Activity/Form/FollowUp.tpl" type='email-'}
 
 <div class="spacer"> </div>
@@ -114,7 +104,7 @@ CRM.$(function($) {
     $('.crm-contactEmail-form-block-'+type, $form).hide().find('input.crm-ajax-select').select2('data', []);
   });
 
-  var sourceDataUrl = "{/literal}{crmURL p='civicrm/ajax/checkemail' q='id=1' h=0 }{literal}";
+  var sourceDataUrl = "{/literal}{crmURL p='civicrm/ajax/checkemail' q='id=1' h=0}{literal}";
 
   function emailSelect(el, prepopulate) {
     $(el, $form).data('api-entity', 'contact').css({width: '40em', 'max-width': '90%'}).crmSelect2({
@@ -137,13 +127,9 @@ CRM.$(function($) {
   }
 
   {/literal}
-  var toContact = {if $toContact}{$toContact}{else}''{/if},
-    ccContact = {if $ccContact}{$ccContact}{else}''{/if},
-    bccContact = {if $bccContact}{$bccContact}{else}''{/if};
+  var toContact = {if $toContact}{$toContact}{else}''{/if};
   {literal}
   emailSelect('#to', toContact);
-  emailSelect('#cc_id', ccContact);
-  emailSelect('#bcc_id', bccContact);
 });
 
 

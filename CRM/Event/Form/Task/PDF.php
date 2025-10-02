@@ -1,35 +1,19 @@
 <?php
 
 /*
-  +--------------------------------------------------------------------+
-  | CiviCRM version 4.7                                                |
-  +--------------------------------------------------------------------+
-  | Copyright CiviCRM LLC (c) 2004-2016                                |
-  +--------------------------------------------------------------------+
-  | This file is a part of CiviCRM.                                    |
-  |                                                                    |
-  | CiviCRM is free software; you can copy, modify, and distribute it  |
-  | under the terms of the GNU Affero General Public License           |
-  | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
-  |                                                                    |
-  | CiviCRM is distributed in the hope that it will be useful, but     |
-  | WITHOUT ANY WARRANTY; without even the implied warranty of         |
-  | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
-  | See the GNU Affero General Public License for more details.        |
-  |                                                                    |
-  | You should have received a copy of the GNU Affero General Public   |
-  | License and the CiviCRM Licensing Exception along                  |
-  | with this program; if not, contact CiviCRM LLC                     |
-  | at info[AT]civicrm[DOT]org. If you have questions about the        |
-  | GNU Affero General Public License or the licensing of CiviCRM,     |
-  | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
-  +--------------------------------------------------------------------+
+ +--------------------------------------------------------------------+
+ | Copyright CiviCRM LLC. All rights reserved.                        |
+ |                                                                    |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
+ +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  * $Id: PDF.php 45499 2013-02-08 12:31:05Z kurund $
  */
 
@@ -39,11 +23,13 @@
  */
 class CRM_Event_Form_Task_PDF extends CRM_Event_Form_Task {
 
+  use CRM_Contact_Form_Task_PDFTrait;
+
   /**
    * Are we operating in "single mode", i.e. printing letter to one
    * specific participant?
    *
-   * @var boolean
+   * @var bool
    */
   public $_single = FALSE;
 
@@ -57,49 +43,39 @@ class CRM_Event_Form_Task_PDF extends CRM_Event_Form_Task {
   public $_activityId = NULL;
 
   /**
+   * The context this page is being rendered in
+   *
+   * @var string
+   */
+  protected $_context;
+
+  /**
    * Build all the data structures needed to build the form.
    */
   public function preProcess() {
-    CRM_Contact_Form_Task_PDFLetterCommon::preProcess($this);
-    parent::preProcess();
+    $this->preProcessPDF();
+    $this->_context = CRM_Utils_Request::retrieve('context', 'Alphanumeric', $this);
+    if ($this->_context == 'view' || $this->_context == 'participant') {
+      $this->_single = TRUE;
 
-    // we have all the participant ids, so now we get the contact ids
-    parent::setContactIDs();
+      $participantID = CRM_Utils_Request::retrieve('id', 'Positive', $this, TRUE);
+      $contactID = CRM_Utils_Request::retrieve('cid', 'Positive', $this, TRUE);
+      $this->_participantIds = [$participantID];
+      $this->_componentClause = " civicrm_participant.id = $participantID ";
+      $this->assign('totalSelectedParticipants', 1);
 
+      if ($this->_context == 'view') {
+        // also set the user context to send back to view page
+        $session = CRM_Core_Session::singleton();
+        $session->pushUserContext(CRM_Utils_System::url('civicrm/contact/view/participant',
+          "reset=1&action=view&id={$participantID}&cid={$contactID}"
+        ));
+      }
+    }
+    else {
+      parent::preProcess();
+    }
     $this->assign('single', $this->_single);
-  }
-
-  /**
-   * Build the form object.
-   */
-  public function buildQuickForm() {
-    CRM_Contact_Form_Task_PDFLetterCommon::buildQuickForm($this);
-  }
-
-  /**
-   * Process the form after the input has been submitted and validated.
-   */
-  public function postProcess() {
-    CRM_Contact_Form_Task_PDFLetterCommon::postProcess($this);
-  }
-
-  /**
-   * Set default values for the form.
-   *
-   * @return void
-   */
-  public function setDefaultValues() {
-    return CRM_Contact_Form_Task_PDFLetterCommon::setDefaultValues();
-  }
-
-  /**
-   * List available tokens for this form.
-   *
-   * @return array
-   */
-  public function listTokens() {
-    $tokens = CRM_Core_SelectValues::contactTokens();
-    return $tokens;
   }
 
 }

@@ -1,44 +1,31 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
  * This class generates form components for custom data
- *
- * It delegates the work to lower level subclasses and integrates the changes
- * back in. It also uses a lot of functionality with the CRM API's, so any change
- * made here could potentially affect the API etc. Be careful, be aware, use unit tests.
  */
-class CRM_Case_Form_CustomData extends CRM_Core_Form {
+class CRM_Case_Form_CustomData extends CRM_Core_Form implements CRM_Case_Form_CaseFormInterface {
+
+  public function getCaseID(): int {
+    if (!isset($this->_entityID)) {
+      $this->_entityID = (int) CRM_Utils_Request::retrieve('entityID', 'Positive', $this, TRUE);
+    }
+    return $this->_entityID;
+  }
 
   /**
    * The entity id, used when editing/creating custom data
@@ -55,31 +42,39 @@ class CRM_Case_Form_CustomData extends CRM_Core_Form {
   protected $_subTypeID;
 
   /**
+   * @var string
+   */
+  private $customGroupTitle;
+
+  /**
    * Pre processing work done here.
    *
-   * gets session variables for table name, id of entity in table, type of entity and stores them.
+   * gets session variables for table name, id of entity in table, type of
+   * entity and stores them.
+   *
+   * @throws \CRM_Core_Exception
    */
-  public function preProcess() {
-    $this->_groupID = CRM_Utils_Request::retrieve('groupID', 'Positive', $this, TRUE);
-    $this->_entityID = CRM_Utils_Request::retrieve('entityID', 'Positive', $this, TRUE);
+  public function preProcess(): void {
+    $groupID = CRM_Utils_Request::retrieve('groupID', 'Positive', $this, TRUE);
+    $this->getCaseID();
     $this->_subTypeID = CRM_Utils_Request::retrieve('subType', 'Positive', $this, TRUE);
-    $this->_contactID = CRM_Utils_Request::retrieve('cid', 'Positive', $this, TRUE);
+    $contactID = CRM_Utils_Request::retrieve('cid', 'Positive', $this, TRUE);
 
     $groupTree = CRM_Core_BAO_CustomGroup::getTree('Case',
-      $this,
+      NULL,
       $this->_entityID,
-      $this->_groupID,
+      $groupID,
       $this->_subTypeID
     );
     // simplified formatted groupTree
     $groupTree = CRM_Core_BAO_CustomGroup::formatGroupTree($groupTree, 1, $this);
     // Array contains only one item
     foreach ($groupTree as $groupValues) {
-      $this->_customTitle = $groupValues['title'];
-      CRM_Utils_System::setTitle(ts('Edit %1', array(1 => $groupValues['title'])));
+      $this->customGroupTitle = $groupValues['title'];
+      $this->setTitle(ts('Edit %1', [1 => $groupValues['title']]));
     }
 
-    $this->_defaults = array();
+    $this->_defaults = [];
     CRM_Core_BAO_CustomGroup::setDefaults($groupTree, $this->_defaults);
     $this->setDefaults($this->_defaults);
 
@@ -87,36 +82,38 @@ class CRM_Case_Form_CustomData extends CRM_Core_Form {
 
     //need to assign custom data type and subtype to the template
     $this->assign('entityID', $this->_entityID);
-    $this->assign('groupID', $this->_groupID);
+    $this->assign('groupID', $groupID);
     $this->assign('subType', $this->_subTypeID);
-    $this->assign('contactID', $this->_contactID);
+    $this->assign('contactID', $contactID);
+    $this->assign('cgCount');
   }
 
   /**
    * Build the form object.
    */
-  public function buildQuickForm() {
+  public function buildQuickForm(): void {
     // make this form an upload since we dont know if the custom data injected dynamically
     // is of type file etc
-    $this->addButtons(array(
-        array(
-          'type' => 'upload',
-          'name' => ts('Save'),
-          'isDefault' => TRUE,
-        ),
-        array(
-          'type' => 'cancel',
-          'name' => ts('Cancel'),
-        ),
-      )
-    );
+    $this->addButtons([
+      [
+        'type' => 'upload',
+        'name' => ts('Save'),
+        'isDefault' => TRUE,
+      ],
+      [
+        'type' => 'cancel',
+        'name' => ts('Cancel'),
+      ],
+    ]);
   }
 
   /**
    * Process the user submitted custom data values.
+   *
+   * @throws \CRM_Core_Exception
    */
-  public function postProcess() {
-    $params = $this->controller->exportValues($this->_name);
+  public function postProcess(): void {
+    $params = $this->getSubmittedValues();
 
     $transaction = new CRM_Core_Transaction();
 
@@ -125,34 +122,131 @@ class CRM_Case_Form_CustomData extends CRM_Core_Form {
       $this->_entityID,
       'Case'
     );
+    $contactID = CRM_Utils_Request::retrieve('cid', 'Positive', $this);
 
     $session = CRM_Core_Session::singleton();
-    $session->pushUserContext(CRM_Utils_System::url('civicrm/contact/view/case', "reset=1&id={$this->_entityID}&cid={$this->_contactID}&action=view"));
+    $session->pushUserContext(CRM_Utils_System::url('civicrm/contact/view/case', "reset=1&id={$this->_entityID}&cid={$contactID}&action=view"));
 
-    $session = CRM_Core_Session::singleton();
-    $activityTypeID = CRM_Core_OptionGroup::getValue('activity_type', 'Change Custom Data', 'name');
-    $activityParams = array(
-      'activity_type_id' => $activityTypeID,
-      'source_contact_id' => $session->get('userID'),
-      'is_auto' => TRUE,
-      'subject' => $this->_customTitle . " : change data",
-      'status_id' => CRM_Core_OptionGroup::getValue('activity_status',
-        'Completed',
-        'name'
-      ),
-      'target_contact_id' => $this->_contactID,
-      'details' => json_encode($this->_defaults),
-      'activity_date_time' => date('YmdHis'),
-    );
-    $activity = CRM_Activity_BAO_Activity::create($activityParams);
+    $formattedDetails = $this->formatCustomDataChangesForDetail($params);
+    if (!empty($formattedDetails)) {
+      $activityTypeID = CRM_Core_PseudoConstant::getKey('CRM_Activity_BAO_Activity', 'activity_type_id', 'Change Custom Data');
+      $activityParams = [
+        'activity_type_id' => $activityTypeID,
+        'source_contact_id' => $session->get('userID'),
+        'is_auto' => TRUE,
+        'subject' => $this->customGroupTitle . ' : change data',
+        'status_id' => CRM_Core_PseudoConstant::getKey('CRM_Activity_BAO_Activity', 'activity_status_id', 'Completed'),
+        'target_contact_id' => $contactID,
+        'details' => $formattedDetails,
+        'activity_date_time' => date('YmdHis'),
+      ];
+      $activity = CRM_Activity_BAO_Activity::create($activityParams);
 
-    $caseParams = array(
-      'activity_id' => $activity->id,
-      'case_id' => $this->_entityID,
-    );
-    CRM_Case_BAO_Case::processCaseActivity($caseParams);
+      $caseParams = [
+        'activity_id' => $activity->id,
+        'case_id' => $this->_entityID,
+      ];
+      CRM_Case_BAO_Case::processCaseActivity($caseParams);
+    }
 
     $transaction->commit();
+  }
+
+  /**
+   * Format the custom data changes as [label]: [old value] => [new value]
+   *
+   * @param array $params New custom field values from form
+   *
+   * @return string
+   * @throws \CRM_Core_Exception
+   */
+  public function formatCustomDataChangesForDetail(array $params): string {
+    $formattedDetails = [];
+    foreach ($params as $fieldKey => $newCustomValue) {
+      if (str_starts_with($fieldKey, 'custom_')) {
+        if (($this->_defaults[$fieldKey] ?? '') === $newCustomValue) {
+          // Don't show values that did not change
+          continue;
+        }
+        // We need custom field ID from custom_XX_1
+        [, $customFieldId] = explode('_', $fieldKey);
+
+        if (!empty($customFieldId) && is_numeric($customFieldId)) {
+          // valid custom field id
+          $customFieldId = (int) $customFieldId;
+
+          // check field exists and get meta
+          $customField = CRM_Core_BAO_CustomField::getField($customFieldId);
+
+          if ($customField) {
+            // label from custom field
+            $label = $customField['label'];
+
+            // before/after values from form
+            $oldValue = $this->_defaults[$fieldKey] ?? '';
+            $newValue = $newCustomValue;
+
+            // Convert dropdown and other machine values to human labels.
+            $oldValue = $this->formatDisplayValue($oldValue, $customFieldId, $customField['data_type']);
+            $newValue = $this->formatDisplayValue($newValue, $customFieldId, $customField['data_type']);
+
+            $formattedDetails[] = $label . ': ' . $oldValue . ' => ' . $newValue;
+          }
+
+        }
+
+      }
+    }
+
+    return implode('<br/>', $formattedDetails);
+  }
+
+  private function formatDisplayValue(mixed $value, int $customFieldId, string $customFieldDataType): string {
+    switch ($customFieldDataType) {
+      case 'Money':
+      case 'Float':
+        // Money and Float are special for non-US locales because at this point
+        // it's in human format so we don't want to try to convert it.
+        return $value;
+
+      case 'File':
+        // File is tricky - updating the case file reuses the same File ID.
+        // This makes saving /civicrm/file? urls meaningless as
+        // every URL will just render the latest version of the file...
+        //
+        // It also doesn't make sense to permanently save a url containing a time-limited checksum
+        //
+        // So for now we just save the filename before and after
+        //
+        // @todo consider updating the handling so new files are saved with new IDs,
+        // and then stashing the file ids somewhere that live urls can be rendered
+        // dynamically? (or is the expectation that old versions of files are totally gone forever?)
+
+        // new values come through with the whole file path in the `name` key
+        $filename = NULL;
+        if (!empty($value['name'])) {
+          $filename = basename($value['name']);
+        }
+
+        // old values come through with the filename in the `data` key
+        if (!empty($value['data'])) {
+          $filename = $value['data'];
+        }
+
+        if ($filename) {
+          // remove hash so we don't expose this
+          return CRM_Utils_File::cleanFileName($filename);
+        }
+
+        return ts('No file');
+
+      default:
+        return civicrm_api3('CustomValue', 'getdisplayvalue', [
+          'custom_field_id' => $customFieldId,
+          'entity_id' => $this->_entityID,
+          'custom_field_value' => $value,
+        ])['values'][$customFieldId]['display'];
+    }
   }
 
 }

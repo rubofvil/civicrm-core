@@ -1,34 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -37,11 +21,22 @@
 class CRM_Admin_Form_LocationType extends CRM_Admin_Form {
 
   /**
+   * @var bool
+   */
+  public $submitOnce = TRUE;
+
+  /**
+   * Explicitly declare the entity api name.
+   */
+  public function getDefaultEntity() {
+    return 'LocationType';
+  }
+
+  /**
    * Build the form object.
    */
   public function buildQuickForm() {
     parent::buildQuickForm();
-    $this->setPageTitle(ts('Location Type'));
 
     if ($this->_action & CRM_Core_Action::DELETE) {
       return;
@@ -57,7 +52,7 @@ class CRM_Admin_Form_LocationType extends CRM_Admin_Form {
     $this->addRule('name',
       ts('Name already exists in Database.'),
       'objectExists',
-      array('CRM_Core_DAO_LocationType', $this->_id)
+      ['CRM_Core_DAO_LocationType', $this->_id]
     );
     $this->addRule('name',
       ts('Name can only consist of alpha-numeric characters'),
@@ -69,15 +64,15 @@ class CRM_Admin_Form_LocationType extends CRM_Admin_Form {
 
     $this->add('text', 'description', ts('Description'), CRM_Core_DAO::getAttribute('CRM_Core_DAO_LocationType', 'description'));
 
-    $this->add('checkbox', 'is_active', ts('Enabled?'));
-    $this->add('checkbox', 'is_default', ts('Default?'));
+    $this->add('advcheckbox', 'is_active', ts('Enabled?'));
+    $this->add('advcheckbox', 'is_default', ts('Default?'));
 
     if ($this->_action & CRM_Core_Action::UPDATE) {
       if (CRM_Core_DAO::getFieldValue('CRM_Core_DAO_LocationType', $this->_id, 'is_reserved')) {
-        $this->freeze(array('name', 'description', 'is_active'));
+        $this->freeze(['name', 'description', 'is_active']);
       }
       if (CRM_Core_DAO::getFieldValue('CRM_Core_DAO_LocationType', $this->_id, 'is_default')) {
-        $this->freeze(array('is_default'));
+        $this->freeze(['is_default']);
       }
     }
   }
@@ -86,41 +81,22 @@ class CRM_Admin_Form_LocationType extends CRM_Admin_Form {
    * Process the form submission.
    */
   public function postProcess() {
-    CRM_Utils_System::flushCache('CRM_Core_DAO_LocationType');
-
+    // Delete action
     if ($this->_action & CRM_Core_Action::DELETE) {
-      CRM_Core_BAO_LocationType::del($this->_id);
+      CRM_Core_BAO_LocationType::deleteRecord(['id' => $this->_id]);
       CRM_Core_Session::setStatus(ts('Selected Location type has been deleted.'), ts('Record Deleted'), 'success');
       return;
     }
-
-    // store the submitted values in an array
+    // Create or update actions
     $params = $this->exportValues();
-    $params['is_active'] = CRM_Utils_Array::value('is_active', $params, FALSE);
-    $params['is_default'] = CRM_Utils_Array::value('is_default', $params, FALSE);
-
-    // action is taken depending upon the mode
-    $locationType = new CRM_Core_DAO_LocationType();
-    $locationType->name = $params['name'];
-    $locationType->display_name = $params['display_name'];
-    $locationType->vcard_name = $params['vcard_name'];
-    $locationType->description = $params['description'];
-    $locationType->is_active = $params['is_active'];
-    $locationType->is_default = $params['is_default'];
-
-    if ($params['is_default']) {
-      $query = "UPDATE civicrm_location_type SET is_default = 0";
-      CRM_Core_DAO::executeQuery($query);
-    }
-
     if ($this->_action & CRM_Core_Action::UPDATE) {
-      $locationType->id = $this->_id;
+      $params['id'] = $this->_id;
     }
 
-    $locationType->save();
+    $locationType = CRM_Core_BAO_LocationType::writeRecord($params);
 
     CRM_Core_Session::setStatus(ts("The location type '%1' has been saved.",
-      array(1 => $locationType->name)
+      [1 => $locationType->name]
     ), ts('Saved'), 'success');
   }
 

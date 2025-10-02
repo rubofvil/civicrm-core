@@ -1,34 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 class CRM_Utils_Check_Message {
   /**
@@ -59,6 +43,12 @@ class CRM_Utils_Check_Message {
   private $help;
 
   /**
+   * @var array
+   *   actions which can be performed with this message
+   */
+  private $actions = [];
+
+  /**
    * @var string
    *   crm-i css class
    */
@@ -87,10 +77,10 @@ class CRM_Utils_Check_Message {
    *   Printable message (short).
    * @param string $level
    *   The severity of the message. Use PSR-3 log levels.
+   * @param string $icon
    *
    * @see Psr\Log\LogLevel
    *
-   * @throws \CRM_Core_Exception
    */
   public function __construct($name, $message, $title, $level = \Psr\Log\LogLevel::WARNING, $icon = NULL) {
     $this->name = $name;
@@ -155,6 +145,33 @@ class CRM_Utils_Check_Message {
   }
 
   /**
+   * Set optional additional actions text.
+   *
+   * @param string $title
+   *   Text displayed on the status message as a link or button.
+   * @param string|false $confirmation
+   *   Optional confirmation message before performing action
+   * @param string $type
+   *   Link action type. One of: href|api3|api4
+   * @param array $params
+   *   Params to be passed to the api or CRM.url (depending on $type)
+   *   Ex (api4): ['MyApiEntity', 'MyApiAction', [...apiParams...]]
+   *   Ex (href): ['path' => 'civicrm/admin/foo', 'query' => 'reset=1']
+   *   Ex (href): ['url' => 'https://example.com/more/info']
+   * @param string $icon
+   *   Fa-icon class for the button
+   */
+  public function addAction($title, $confirmation, $type, $params, $icon = NULL) {
+    $this->actions[] = [
+      'title' => $title,
+      'confirm' => $confirmation,
+      'type' => $type,
+      'params' => $params,
+      'icon' => $icon,
+    ];
+  }
+
+  /**
    * Set severity level
    *
    * @param string|int $level
@@ -180,7 +197,7 @@ class CRM_Utils_Check_Message {
    * @return array
    */
   public function toArray() {
-    $array = array(
+    $array = [
       'name' => $this->name,
       'message' => $this->message,
       'title' => $this->title,
@@ -188,12 +205,15 @@ class CRM_Utils_Check_Message {
       'severity_id' => $this->level,
       'is_visible' => (int) $this->isVisible(),
       'icon' => $this->icon,
-    );
+    ];
     if ($this->getHiddenUntil()) {
       $array['hidden_until'] = $this->getHiddenUntil();
     }
     if (!empty($this->help)) {
       $array['help'] = $this->help;
+    }
+    if (!empty($this->actions)) {
+      $array['actions'] = $this->actions;
     }
     return $array;
   }
@@ -229,7 +249,7 @@ class CRM_Utils_Check_Message {
    *
    * @return bool
    *   TRUE means hidden, FALSE means visible.
-   * @throws \CiviCRM_API3_Exception
+   * @throws \CRM_Core_Exception
    */
   private function checkStatusPreference() {
     $this->hiddenUntil = FALSE;
@@ -237,22 +257,20 @@ class CRM_Utils_Check_Message {
     if ($this->level < 2) {
       return FALSE;
     }
-    $statusPreferenceParams = array(
-      'name' => $this->getName(),
-      'domain_id' => CRM_Core_Config::domainID(),
-      'sequential' => 1,
-    );
+    $where = [
+      ['name', '=', $this->getName()],
+      ['domain_id', '=', CRM_Core_Config::domainID()],
+    ];
     // Check if there's a StatusPreference matching this name/domain.
-    $statusPreference = civicrm_api3('StatusPreference', 'get', $statusPreferenceParams);
-    $prefs = CRM_Utils_Array::value('values', $statusPreference, array());
-    if ($prefs) {
+    $pref = civicrm_api4('StatusPreference', 'get', ['checkPermissions' => FALSE, 'where' => $where])->first();
+    if ($pref) {
       // If so, compare severity to StatusPreference->severity.
-      if ($this->level <= $prefs[0]['ignore_severity']) {
-        if (isset($prefs[0]['hush_until'])) {
+      if ($this->level <= $pref['ignore_severity']) {
+        if (isset($pref['hush_until'])) {
           // Time-based hush.
-          $this->hiddenUntil = $prefs[0]['hush_until'];
+          $this->hiddenUntil = $pref['hush_until'];
           $today = new DateTime();
-          $snoozeDate = new DateTime($prefs[0]['hush_until']);
+          $snoozeDate = new DateTime($pref['hush_until']);
           return !($today > $snoozeDate);
         }
         else {

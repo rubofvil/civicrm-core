@@ -1,34 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -45,10 +29,14 @@ class CRM_Contact_Form_Edit_Email {
    *   Block number to build.
    * @param bool $blockEdit
    *   Is it block edit.
+   *
+   * @deprecated since 6.3 will be removed around 6.10
    */
   public static function buildQuickForm(&$form, $blockCount = NULL, $blockEdit = FALSE) {
+    CRM_Core_Error::deprecatedFunctionWarning('no alternative');
     // passing this via the session is AWFUL. we need to fix this
     if (!$blockCount) {
+      CRM_Core_Error::deprecatedWarning('pass in blockCount');
       $blockId = ($form->get('Email_Block_Count')) ? $form->get('Email_Block_Count') : 1;
     }
     else {
@@ -58,60 +46,55 @@ class CRM_Contact_Form_Edit_Email {
     $form->applyFilter('__ALL__', 'trim');
 
     //Email box
-    $form->addField("email[$blockId][email]", array('entity' => 'email'));
+    $form->addField("email[$blockId][email]", [
+      'entity' => 'email',
+      'aria-label' => ts('Email %1', [1 => $blockId]),
+      'label' => ts('Email %1', [1 => $blockId]),
+    ]);
     $form->addRule("email[$blockId][email]", ts('Email is not valid.'), 'email');
     if (isset($form->_contactType) || $blockEdit) {
       //Block type
-      $form->addField("email[$blockId][location_type_id]", array('entity' => 'email', 'placeholder' => NULL, 'class' => 'eight', 'option_url' => NULL));
+      $form->addField("email[$blockId][location_type_id]", ['entity' => 'email', 'placeholder' => NULL, 'class' => 'eight', 'option_url' => NULL, 'title' => ts('Email Location %1', [1 => $blockId]), 'type' => 'Select']);
 
       //TODO: Refactor on_hold field to select.
       $multipleBulk = CRM_Core_BAO_Email::isMultipleBulkMail();
 
       //On-hold select
       if ($multipleBulk) {
-        $holdOptions = array(
+        $holdOptions = [
           0 => ts('- select -'),
           1 => ts('On Hold Bounce'),
           2 => ts('On Hold Opt Out'),
-        );
+        ];
         $form->addElement('select', "email[$blockId][on_hold]", '', $holdOptions);
       }
       else {
-        $form->addField("email[$blockId][on_hold]", array('entity' => 'email', 'type' => 'advcheckbox'));
+        $form->addField("email[$blockId][on_hold]", ['entity' => 'email', 'type' => 'advcheckbox', 'aria-label' => ts('On Hold for Email %1?', [1 => $blockId])]);
       }
 
       //Bulkmail checkbox
       $form->assign('multipleBulk', $multipleBulk);
-      if ($multipleBulk) {
-        $js = array('id' => "Email_" . $blockId . "_IsBulkmail");
-        $form->addElement('advcheckbox', "email[$blockId][is_bulkmail]", NULL, '', $js);
-      }
-      else {
-        $js = array('id' => "Email_" . $blockId . "_IsBulkmail");
-        if (!$blockEdit) {
-          $js['onClick'] = 'singleSelect( this.id );';
-        }
-        $form->addElement('radio', "email[$blockId][is_bulkmail]", '', '', '1', $js);
-      }
+      $js = [
+        'id' => 'Email_' . $blockId . '_IsBulkmail',
+        'aria-label' => ts('Bulk Mailing for Email %1?', [1 => $blockId]),
+        'onChange' => "if (CRM.$(this).is(':checked')) {
+          CRM.$('.crm-email-bulkmail input').not(this).prop('checked', false);
+        }",
+      ];
+
+      $form->addElement('advcheckbox', "email[$blockId][is_bulkmail]", NULL, '', $js);
 
       //is_Primary radio
-      $js = array('id' => "Email_" . $blockId . "_IsPrimary");
-      if (!$blockEdit) {
-        $js['onClick'] = 'singleSelect( this.id );';
-      }
+      $js = [
+        'id' => 'Email_' . $blockId . '_IsPrimary',
+        'aria-label' => ts('Email %1 is primary?', [1 => $blockId]),
+        'class' => 'crm-email-is_primary',
+        'onChange' => "if (CRM.$(this).is(':checked')) {
+          CRM.$('.crm-email-is_primary').not(this).prop('checked', false);
+        }",
+      ];
 
       $form->addElement('radio', "email[$blockId][is_primary]", '', '', '1', $js);
-
-      if (CRM_Utils_System::getClassName($form) == 'CRM_Contact_Form_Contact') {
-
-        $form->add('textarea', "email[$blockId][signature_text]", ts('Signature (Text)'),
-          array('rows' => 2, 'cols' => 40)
-        );
-
-        $form->add('wysiwyg', "email[$blockId][signature_html]", ts('Signature (HTML)'),
-          array('rows' => 2, 'cols' => 40)
-        );
-      }
     }
   }
 

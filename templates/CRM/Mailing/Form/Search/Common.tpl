@@ -10,9 +10,8 @@
   {$form.mailing_job_status.html}
 </td>
 </tr>
-<tr><td><label>{ts}Mailing Date{/ts}</label></td></tr>
 <tr>
-{include file="CRM/Core/DateRange.tpl" fieldName="mailing_date" from='_low' to='_high'}
+{include file="CRM/Core/DatePickerRangeWrapper.tpl" fieldName="mailing_job_start_date" to='' from='' colspan='' class='' hideRelativeLabel=0}
 </tr>
 <tr>
   <td>
@@ -57,17 +56,13 @@
         {$form.mailing_optout.html}&nbsp;
         {$form.mailing_optout.label}
         </td>
-        <td>
-        {$form.mailing_forward.html}&nbsp;
-        {$form.mailing_forward.label}
-        </td>
       </tr>
     </table>
   </td>
 </tr>
 <tr>
   <td>{* campaign in Advance search *}
-      {include file="CRM/Campaign/Form/addCampaignToComponent.tpl" campaignContext="componentSearch"
+      {include file="CRM/Campaign/Form/addCampaignToSearch.tpl"
        campaignTrClass='crmCampaign' campaignTdClass='crmCampaignContainer'}
   </td>
 </tr>

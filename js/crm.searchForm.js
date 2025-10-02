@@ -63,13 +63,13 @@
         params.name = $('input.select-row').map(function() {return $(this).attr('id');}).get().join('-');
       }
     }
-    $.getJSON(url, params, function(data) {
+    $.post(url, params, function(data) {
       if (data && data.getCount !== undefined) {
         selected = data.getCount;
         displayCount();
         enableTaskMenu();
       }
-    });
+    }, 'json');
   }
 
   /**
@@ -134,7 +134,7 @@
       // When selecting a task
       .on('change', 'select#task', function(e) {
         var $form = $(this).closest('form'),
-        $go = $('input.crm-search-go-button', $form);
+        $go = $('button.crm-search-go-button', $form);
         var $selectedOption = $(this).find(':selected');
         if (!$selectedOption.val()) {
           // do not blank refresh the empty option.

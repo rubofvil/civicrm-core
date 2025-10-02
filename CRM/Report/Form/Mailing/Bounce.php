@@ -1,34 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 class CRM_Report_Form_Mailing_Bounce extends CRM_Report_Form {
 
@@ -38,18 +22,12 @@ class CRM_Report_Form_Mailing_Bounce extends CRM_Report_Form {
 
   protected $_phoneField = FALSE;
 
-  protected $_customGroupExtends = array(
+  protected $_customGroupExtends = [
     'Contact',
     'Individual',
     'Household',
     'Organization',
-  );
-
-  protected $_charts = array(
-    '' => 'Tabular',
-    'barChart' => 'Bar Chart',
-    'pieChart' => 'Pie Chart',
-  );
+  ];
 
   /**
    * This report has not been optimised for group filtering.
@@ -58,9 +36,8 @@ class CRM_Report_Form_Mailing_Bounce extends CRM_Report_Form {
    * all reports have been adjusted to take care of it. This report has not
    * and will run an inefficient query until fixed.
    *
-   * CRM-19170
-   *
    * @var bool
+   * @see https://issues.civicrm.org/jira/browse/CRM-19170
    */
   protected $groupFilterNotOptimised = TRUE;
 
@@ -68,178 +45,203 @@ class CRM_Report_Form_Mailing_Bounce extends CRM_Report_Form {
    * Class constructor.
    */
   public function __construct() {
-    $this->_columns = array();
+    $this->_columns = [];
 
-    $this->_columns['civicrm_contact'] = array(
+    $this->_columns['civicrm_contact'] = [
       'dao' => 'CRM_Contact_DAO_Contact',
-      'fields' => array(
-        'id' => array(
+      'fields' => [
+        'id' => [
           'title' => ts('Contact ID'),
           'required' => TRUE,
-        ),
-        'sort_name' => array(
+        ],
+        'sort_name' => [
           'title' => ts('Contact Name'),
           'required' => TRUE,
-        ),
-      ),
-      'filters' => array(
-        'sort_name' => array(
+        ],
+      ],
+      'filters' => [
+        'sort_name' => [
           'title' => ts('Contact Name'),
-        ),
-        'source' => array(
+        ],
+        'source' => [
           'title' => ts('Contact Source'),
           'type' => CRM_Utils_Type::T_STRING,
-        ),
-        'id' => array(
+        ],
+        'id' => [
           'title' => ts('Contact ID'),
           'no_display' => TRUE,
-        ),
-      ),
-      'order_bys' => array(
-        'sort_name' => array(
+        ],
+      ],
+      'order_bys' => [
+        'sort_name' => [
           'title' => ts('Contact Name'),
           'default' => TRUE,
           'default_order' => 'ASC',
-        ),
-      ),
+        ],
+      ],
       'grouping' => 'contact-fields',
-    );
+    ];
 
-    $this->_columns['civicrm_mailing'] = array(
+    $this->_columns['civicrm_mailing'] = [
       'dao' => 'CRM_Mailing_DAO_Mailing',
-      'fields' => array(
-        'mailing_name' => array(
+      'fields' => [
+        'mailing_name' => [
           'name' => 'name',
-          'title' => ts('Mailing'),
+          'title' => ts('Mailing Name'),
           'default' => TRUE,
-        ),
-        'mailing_name_alias' => array(
+        ],
+        'mailing_name_alias' => [
           'name' => 'name',
           'required' => TRUE,
           'no_display' => TRUE,
-        ),
-      ),
-      'filters' => array(
-        'mailing_id' => array(
+        ],
+        'mailing_subject' => [
+          'name' => 'subject',
+          'title' => ts('Mailing Subject'),
+          'default' => TRUE,
+        ],
+      ],
+      'filters' => [
+        'mailing_id' => [
           'name' => 'id',
-          'title' => ts('Mailing'),
+          'title' => ts('Mailing Name'),
           'operatorType' => CRM_Report_Form::OP_MULTISELECT,
           'type' => CRM_Utils_Type::T_INT,
           'options' => CRM_Mailing_BAO_Mailing::getMailingsList(),
           'operator' => 'like',
-        ),
-      ),
-      'order_bys' => array(
-        'mailing_name' => array(
+        ],
+        'mailing_subject' => [
+          'name' => 'subject',
+          'title' => ts('Mailing Subject'),
+          'type' => CRM_Utils_Type::T_STRING,
+          'operator' => 'like',
+        ],
+      ],
+      'order_bys' => [
+        'mailing_name' => [
           'name' => 'name',
-          'title' => ts('Mailing'),
-        ),
-      ),
+          'title' => ts('Mailing Name'),
+        ],
+        'mailing_subject' => [
+          'name' => 'subject',
+          'title' => ts('Mailing Subject'),
+        ],
+      ],
       'grouping' => 'mailing-fields',
-    );
+    ];
 
-    $this->_columns['civicrm_mailing_event_bounce'] = array(
+    $this->_columns['civicrm_mailing_event_bounce'] = [
       'dao' => 'CRM_Mailing_DAO_Mailing',
-      'fields' => array(
-        'bounce_reason' => array(
+      'fields' => [
+        'bounce_reason' => [
           'title' => ts('Bounce Reason'),
-        ),
-        'time_stamp' => array(
+        ],
+        'time_stamp' => [
           'title' => ts('Bounce Date'),
-        ),
-      ),
-      'filters' => array(
-        'bounce_reason' => array(
+        ],
+      ],
+      'filters' => [
+        'bounce_reason' => [
           'title' => ts('Bounce Reason'),
           'type' => CRM_Utils_Type::T_STRING,
-        ),
-        'time_stamp' => array(
+        ],
+        'time_stamp' => [
           'title' => ts('Bounce Date'),
           'operatorType' => CRM_Report_Form::OP_DATE,
-          'type' => CRM_Utils_Type::T_DATE,
-        ),
-      ),
-      'order_bys' => array(
-        'bounce_reason' => array(
+          'type' => CRM_Utils_Type::T_DATE + CRM_Utils_Type::T_TIME,
+        ],
+      ],
+      'order_bys' => [
+        'bounce_reason' => [
           'title' => ts('Bounce Reason'),
-        ),
-        'time_stamp' => array(
+        ],
+        'time_stamp' => [
           'title' => ts('Bounce Date'),
-        ),
-      ),
+        ],
+      ],
       'grouping' => 'mailing-fields',
-    );
+    ];
 
-    $this->_columns['civicrm_mailing_bounce_type'] = array(
+    $this->_columns['civicrm_mailing_bounce_type'] = [
       'dao' => 'CRM_Mailing_DAO_BounceType',
-      'fields' => array(
-        'bounce_name' => array(
+      'fields' => [
+        'bounce_name' => [
           'name' => 'name',
           'title' => ts('Bounce Type'),
-        ),
-      ),
-      'filters' => array(
-        'bounce_type_name' => array(
+        ],
+      ],
+      'filters' => [
+        'bounce_type_name' => [
           'name' => 'name',
           'title' => ts('Bounce Type'),
-          'operatorType' => CRM_Report_Form::OP_SELECT,
+          'operatorType' => CRM_Report_Form::OP_MULTISELECT,
           'type' => CRM_Utils_Type::T_STRING,
           'options' => self::bounce_type(),
           'operator' => 'like',
-        ),
-      ),
-      'order_bys' => array(
-        'bounce_name' => array(
+        ],
+      ],
+      'order_bys' => [
+        'bounce_name' => [
           'name' => 'name',
           'title' => ts('Bounce Type'),
-        ),
-      ),
+        ],
+      ],
       'grouping' => 'mailing-fields',
-    );
+    ];
 
-    $this->_columns['civicrm_email'] = array(
+    $this->_columns['civicrm_email'] = [
       'dao' => 'CRM_Core_DAO_Email',
-      'fields' => array(
-        'email' => array(
+      'fields' => [
+        'email' => [
           'title' => ts('Email'),
           'no_repeat' => TRUE,
-        ),
-        'on_hold' => array(
+        ],
+        'on_hold' => [
           'title' => ts('On hold'),
-        ),
-        'hold_date' => array(
+        ],
+        'hold_date' => [
           'title' => ts('Hold date'),
-        ),
-        'reset_date' => array(
+        ],
+        'reset_date' => [
           'title' => ts('Hold reset date'),
-        ),
-      ),
-      'filters' => array(
-        'on_hold' => array(
+        ],
+      ],
+      'filters' => [
+        'email' => [
+          'title' => ts('Email'),
+        ],
+        'on_hold' => [
           'title' => ts('On hold'),
-        ),
-        'hold_date' => array(
+        ],
+        'hold_date' => [
           'title' => ts('Hold date'),
           'operatorType' => CRM_Report_Form::OP_DATE,
           'type' => CRM_Utils_Type::T_DATE,
-        ),
-        'reset_date' => array(
+        ],
+        'reset_date' => [
           'title' => ts('Hold reset date'),
           'operatorType' => CRM_Report_Form::OP_DATE,
           'type' => CRM_Utils_Type::T_DATE,
-        ),
-      ),
-      'order_bys' => array(
-        'email' => array('title' => ts('Email'), 'default_order' => 'ASC'),
-      ),
+        ],
+      ],
+      'order_bys' => [
+        'email' => ['title' => ts('Email'), 'default_order' => 'ASC'],
+      ],
       'grouping' => 'contact-fields',
-    );
+    ];
 
-    $this->_columns['civicrm_phone'] = array(
+    $this->_columns['civicrm_phone'] = [
       'dao' => 'CRM_Core_DAO_Phone',
-      'fields' => array('phone' => NULL),
+      'fields' => ['phone' => NULL],
       'grouping' => 'contact-fields',
-    );
+    ];
+
+    // Add charts support
+    $this->_charts = [
+      '' => ts('Tabular'),
+      'barChart' => ts('Bar Chart'),
+      'pieChart' => ts('Pie Chart'),
+    ];
 
     $this->_groupFilter = TRUE;
     $this->_tagFilter = TRUE;
@@ -252,8 +254,8 @@ class CRM_Report_Form_Mailing_Bounce extends CRM_Report_Form {
   }
 
   public function select() {
-    $select = array();
-    $this->_columnHeaders = array();
+    $select = [];
+    $this->_columnHeaders = [];
 
     foreach ($this->_columns as $tableName => $table) {
       if (array_key_exists('fields', $table)) {
@@ -269,9 +271,9 @@ class CRM_Report_Form_Mailing_Bounce extends CRM_Report_Form {
             }
 
             $select[] = "{$field['dbAlias']} as {$tableName}_{$fieldName}";
-            $this->_columnHeaders["{$tableName}_{$fieldName}"]['type'] = CRM_Utils_Array::value('type', $field);
-            $this->_columnHeaders["{$tableName}_{$fieldName}"]['no_display'] = CRM_Utils_Array::value('no_display', $field);
-            $this->_columnHeaders["{$tableName}_{$fieldName}"]['title'] = CRM_Utils_Array::value('title', $field);
+            $this->_columnHeaders["{$tableName}_{$fieldName}"]['type'] = $field['type'] ?? NULL;
+            $this->_columnHeaders["{$tableName}_{$fieldName}"]['no_display'] = $field['no_display'] ?? NULL;
+            $this->_columnHeaders["{$tableName}_{$fieldName}"]['title'] = $field['title'] ?? NULL;
           }
         }
       }
@@ -289,12 +291,12 @@ class CRM_Report_Form_Mailing_Bounce extends CRM_Report_Form {
   /**
    * @param $fields
    * @param $files
-   * @param $self
+   * @param self $self
    *
    * @return array
    */
   public static function formRule($fields, $files, $self) {
-    $errors = $grouping = array();
+    $errors = $grouping = [];
     return $errors;
   }
 
@@ -319,18 +321,12 @@ class CRM_Report_Form_Mailing_Bounce extends CRM_Report_Form {
         INNER JOIN civicrm_mailing {$this->_aliases['civicrm_mailing']}
           ON civicrm_mailing_job.mailing_id = {$this->_aliases['civicrm_mailing']}.id
       ";
-
-    if ($this->_phoneField) {
-      $this->_from .= "
-            LEFT JOIN civicrm_phone {$this->_aliases['civicrm_phone']}
-                   ON {$this->_aliases['civicrm_contact']}.id = {$this->_aliases['civicrm_phone']}.contact_id AND
-                      {$this->_aliases['civicrm_phone']}.is_primary = 1 ";
-    }
+    $this->joinPhoneFromContact();
   }
 
   public function where() {
 
-    $clauses = array();
+    $clauses = [];
 
     // Exclude SMS mailing type
     $clauses[] = "{$this->_aliases['civicrm_mailing']}.sms_provider_id IS NULL";
@@ -340,22 +336,22 @@ class CRM_Report_Form_Mailing_Bounce extends CRM_Report_Form {
       if (array_key_exists('filters', $table)) {
         foreach ($table['filters'] as $fieldName => $field) {
           $clause = NULL;
-          if (CRM_Utils_Array::value('type', $field) & CRM_Utils_Type::T_DATE) {
-            $relative = CRM_Utils_Array::value("{$fieldName}_relative", $this->_params);
-            $from = CRM_Utils_Array::value("{$fieldName}_from", $this->_params);
-            $to = CRM_Utils_Array::value("{$fieldName}_to", $this->_params);
+          if (($field['type'] ?? 0) & CRM_Utils_Type::T_DATE) {
+            $relative = $this->_params["{$fieldName}_relative"] ?? NULL;
+            $from = $this->_params["{$fieldName}_from"] ?? NULL;
+            $to = $this->_params["{$fieldName}_to"] ?? NULL;
 
             $clause = $this->dateClause($this->_aliases[$tableName] . '.' . $field['name'], $relative, $from, $to, $field['type']);
           }
           else {
-            $op = CRM_Utils_Array::value("{$fieldName}_op", $this->_params);
+            $op = $this->_params["{$fieldName}_op"] ?? NULL;
 
             if ($op) {
               $clause = $this->whereClause($field,
                 $op,
-                CRM_Utils_Array::value("{$fieldName}_value", $this->_params),
-                CRM_Utils_Array::value("{$fieldName}_min", $this->_params),
-                CRM_Utils_Array::value("{$fieldName}_max", $this->_params)
+                $this->_params["{$fieldName}_value"] ?? NULL,
+                $this->_params["{$fieldName}_min"] ?? NULL,
+                $this->_params["{$fieldName}_max"] ?? NULL
               );
             }
 
@@ -389,7 +385,7 @@ class CRM_Report_Form_Mailing_Bounce extends CRM_Report_Form {
 
     $sql = $this->buildQuery(TRUE);
 
-    $rows = $graphRows = array();
+    $rows = $graphRows = [];
     $this->buildRows($sql, $rows);
 
     $this->formatDisplay($rows);
@@ -405,19 +401,19 @@ class CRM_Report_Form_Mailing_Bounce extends CRM_Report_Form {
       return;
     }
 
-    $chartInfo = array(
+    $chartInfo = [
       'legend' => ts('Mail Bounce Report'),
       'xname' => ts('Mailing'),
       'yname' => ts('Bounce'),
       'xLabelAngle' => 20,
-      'tip' => ts('Mail Bounce: %1', array(1 => '#val#')),
-    );
+      'tip' => ts('Mail Bounce: %1', [1 => '#val#']),
+    ];
     foreach ($rows as $row) {
       $chartInfo['values'][$row['civicrm_mailing_mailing_name_alias']] = $row['civicrm_mailing_bounce_count'];
     }
 
     // build the chart.
-    CRM_Utils_OpenFlashChart::buildChart($chartInfo, $this->_params['charts']);
+    CRM_Utils_Chart::buildChart($chartInfo, $this->_params['charts']);
     $this->assign('chartType', $this->_params['charts']);
   }
 
@@ -426,7 +422,7 @@ class CRM_Report_Form_Mailing_Bounce extends CRM_Report_Form {
    */
   public function bounce_type() {
 
-    $data = array('' => ts('--Please Select--'));
+    $data = [];
 
     $bounce_type = new CRM_Mailing_DAO_BounceType();
     $query = "SELECT name FROM civicrm_mailing_bounce_type";
@@ -458,7 +454,7 @@ class CRM_Report_Form_Mailing_Bounce extends CRM_Report_Form {
       // If the email address has been deleted
       if (array_key_exists('civicrm_email_email', $row)) {
         if (empty($rows[$rowNum]['civicrm_email_email'])) {
-          $rows[$rowNum]['civicrm_email_email'] = '<del>Email address deleted</del>';
+          $rows[$rowNum]['civicrm_email_email'] = '<del>' . ts('Email address deleted.') . '</del>';
         }
         $entryFound = TRUE;
       }
@@ -484,11 +480,11 @@ class CRM_Report_Form_Mailing_Bounce extends CRM_Report_Form {
       }
 
       // Convert datetime values to custom date and time format
-      $dateFields = array(
+      $dateFields = [
         'civicrm_mailing_event_bounce_time_stamp',
         'civicrm_email_hold_date',
         'civicrm_email_reset_date',
-      );
+      ];
 
       foreach ($dateFields as $dateField) {
         if (array_key_exists($dateField, $row)) {

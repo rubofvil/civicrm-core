@@ -1,25 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -32,9 +18,7 @@
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
- * $Id$
- *
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -43,16 +27,17 @@
  *
  */
 class CRM_Event_Badge {
+
   /**
    */
   public function __construct() {
-    $this->style = array(
+    $this->style = [
       'width' => 0.1,
       'cap' => 'round',
       'join' => 'round',
       'dash' => '2,2',
-      'color' => array(0, 0, 200),
-    );
+      'color' => [0, 0, 200],
+    ];
     $this->format = '5160';
     $this->imgExtension = 'png';
     $this->imgRes = 300;
@@ -88,7 +73,7 @@ class CRM_Event_Badge {
     $this->event = self::retrieveEvent($eventID);
     //call function to create labels
     self::createLabels($participants);
-    CRM_Utils_System::civiExit(1);
+    CRM_Utils_System::civiExit();
   }
 
   /**
@@ -123,9 +108,9 @@ class CRM_Event_Badge {
     // CRM-13235 - leverage the Smarty path to get all templates directories
     $template = CRM_Core_Smarty::singleton();
     if (isset($template->template_dir) && $template->template_dir) {
-      $dirs = is_array($template->template_dir) ? $template->template_dir : array($template->template_dir);
+      $dirs = is_array($template->template_dir) ? $template->template_dir : [$template->template_dir];
       foreach ($dirs as $dir) {
-        foreach (array("$dir/$path/$eventID/$img", "$dir/$path/$img") as $imgFile) {
+        foreach (["$dir/$path/$eventID/$img", "$dir/$path/$img"] as $imgFile) {
           if (file_exists($imgFile)) {
             return $imgFile;
           }
@@ -147,15 +132,15 @@ class CRM_Event_Badge {
     $x = $this->pdf->GetAbsX();
     $y = $this->pdf->GetY();
     if ($this->debug) {
-      $this->pdf->Rect($x, $y, $this->pdf->width, $this->pdf->height, 'D', array(
-          'all' => array(
-            'width' => 1,
-            'cap' => 'round',
-            'join' => 'round',
-            'dash' => '2,10',
-            'color' => array(255, 0, 0),
-          ),
-        ));
+      $this->pdf->Rect($x, $y, $this->pdf->width, $this->pdf->height, 'D', [
+        'all' => [
+          'width' => 1,
+          'cap' => 'round',
+          'join' => 'round',
+          'dash' => '2,10',
+          'color' => [255, 0, 0],
+        ],
+      ]);
     }
     $img = $this->getImageFileName($this->event->id, $img);
     if ($img) {

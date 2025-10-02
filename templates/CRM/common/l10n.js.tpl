@@ -1,52 +1,44 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}// http://civicrm.org/licensing
-// <script> Generated {$smarty.now|date_format:'%d %b %Y %H:%M:%S'}
+// <script> Generated {$smarty.now|crmDate:'%d %b %Y %H:%M:%S'}
 {* This file should only contain strings and settings which rarely change *}
 (function($) {ldelim}
   // Config settings
-  CRM.config.userFramework = {$config->userFramework|@json_encode};
-  CRM.config.resourceBase = {$config->userFrameworkResourceURL|@json_encode};
-  CRM.config.lcMessages = {$config->lcMessages|@json_encode};
-  $.datepicker._defaults.dateFormat = CRM.config.dateInputFormat = {$config->dateInputFormat|@json_encode};
-  CRM.config.timeIs24Hr = {if $config->timeInputFormat eq 2}true{else}false{/if};
-  CRM.config.ajaxPopupsEnabled = {$ajaxPopupsEnabled|@json_encode};
+  CRM.config.userFramework = {$config->userFramework|@json_encode nofilter};
+  {* resourceBase: The URL of `civicrm-core` assets. Ends with "/". *}
+  CRM.config.resourceBase = {$config->userFrameworkResourceURL|@json_encode nofilter};
+  {* packageseBase: The URL of `civicrm-packages` assets. Ends with "/". *}
+  CRM.config.packagesBase = {capture assign=packagesBase}{crmResURL expr='[civicrm.packages]/'}{/capture}{$packagesBase|@json_encode nofilter};
+  CRM.config.lcMessages = {$lcMessages|@json_encode nofilter};
+  CRM.config.locale = {$locale|@json_encode nofilter};
+  CRM.config.cid = {$cid|@json_encode nofilter};
+  $.datepicker._defaults.dateFormat = CRM.config.dateInputFormat = {$dateInputFormat|@json_encode nofilter};
+  CRM.config.timeIs24Hr = {if $timeInputFormat eq 2}true{else}false{/if};
+  CRM.config.ajaxPopupsEnabled = {$ajaxPopupsEnabled|@json_encode nofilter};
+  CRM.config.allowAlertAutodismissal = {$allowAlertAutodismissal|@json_encode nofilter};
+  CRM.config.resourceCacheCode = {$resourceCacheCode|@json_encode nofilter};
+  CRM.config.quickAdd = {$quickAdd|@json_encode nofilter};
 
   // Merge entityRef settings
-  CRM.config.entityRef = $.extend({ldelim}{rdelim}, {$entityRef|@json_encode}, CRM.config.entityRef || {ldelim}{rdelim});
+  CRM.config.entityRef = $.extend({ldelim}{rdelim}, {$entityRef|@json_encode nofilter}, CRM.config.entityRef || {ldelim}{rdelim});
 
   // Initialize CRM.url and CRM.formatMoney
-  CRM.url({ldelim}back: '{crmURL p="*path*" q="*query*" h=0 fb=1}', front: '{crmURL p="*path*" q="*query*" h=0 fe=1}'{rdelim});
-  CRM.formatMoney('init', false, {$moneyFormat});
+  CRM.url({ldelim}back: '{crmURL p="civicrm/crmajax-placeholder-url-path" q="civicrm-placeholder-url-query=1" h=0 fb=1}', front: '{crmURL p="civicrm/crmajax-placeholder-url-path" q="civicrm-placeholder-url-query=1" h=0 fe=1}'{rdelim});
+  CRM.formatMoney('init', false, {$moneyFormat|@json_encode nofilter});
 
   // Localize select2
   $.fn.select2.defaults.formatNoMatches = "{ts escape='js'}None found.{/ts}";
   $.fn.select2.defaults.formatLoadMore = "{ts escape='js'}Loading...{/ts}";
   $.fn.select2.defaults.formatSearching = "{ts escape='js'}Searching...{/ts}";
   $.fn.select2.defaults.formatInputTooShort = function() {ldelim}
-    return ($(this).data('api-entity') === 'contact' || $(this).data('api-entity') === 'Contact') ? {$contactSearch} : {$otherSearch};
+    return ($(this).data('api-entity') === 'contact' || $(this).data('api-entity') === 'Contact') ? {$contactSearch nofilter} : {$otherSearch nofilter};
   {rdelim};
 
   // Localize jQuery UI
@@ -64,7 +56,7 @@
       "infoEmpty": "{ts escape='js'}Showing 0 to 0 of 0 entries{/ts}",
       "infoFiltered": "{ts escape='js' 1=_MAX_}(filtered from %1 total entries){/ts}",
       "infoPostFix": "",
-      "thousands": {$config->monetaryThousandSeparator|json_encode},
+      "thousands": {$config->monetaryThousandSeparator|json_encode nofilter},
       "lengthMenu": "{ts escape='js' 1=_MENU_}Show %1 entries{/ts}",
       "loadingRecords": " ",
       "processing": " ",
@@ -102,20 +94,30 @@
   {literal}
 
   var params = {
-    errorClass: 'crm-inline-error',
+    errorClass: 'crm-inline-error alert-danger',
     messages: {},
-    // TODO: remove after resolution of https://github.com/jzaefferer/jquery-validation/pull/1261
-    ignore: ":hidden, [readonly]"
+    ignore: '.select2-offscreen, [readonly], :hidden:not(.crm-select2), .crm-no-validate',
+    ignoreTitle: true,
+    errorPlacement: function(error, element) {
+      if (element.prop('type') === 'radio') {
+        error.appendTo(element.parents('div.content')[0]);
+      }
+      else {
+        error.insertAfter(element);
+      }
+    }
   };
 
   // use civicrm notifications when there are errors
   params.invalidHandler = function(form, validator) {
+    // If there is no container for display then red text will still show next to the invalid fields
+    // but there will be no overall message. Currently the container is only available on backoffice pages.
     if ($('#crm-notification-container').length) {
       $.each(validator.errorList, function(k, error) {
+        $(error.element).parents('.crm-custom-accordion.collapsed').crmAccordionToggle();
+        $(error.element).parents('.crm-custom-accordion').prop('open', true);
         $(error.element).crmError(error.message);
       });
-    } else {
-      alert({/literal}"{ts escape='js'}Please review and correct the highlighted fields before continuing.{/ts}"{literal});
     }
   };
 
@@ -124,5 +126,6 @@
     params: {},
     functions: []
   };
+
 })(jQuery);
 {/literal}

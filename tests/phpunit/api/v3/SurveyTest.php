@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -47,30 +31,28 @@
 class api_v3_SurveyTest extends CiviUnitTestCase {
   protected $params;
   protected $entity = 'survey';
-  public $DBResetRequired = FALSE;
 
-
-  public function setUp() {
-    $phoneBankActivityTypeID = $this->callAPISuccessGetValue('Option_value', array(
-        'label' => 'PhoneBank',
-        'return' => 'value',
-      ), 'integer');
+  public function setUp(): void {
+    parent::setUp();
+    $phoneBankActivityTypeID = $this->callAPISuccessGetValue('Option_value', [
+      'label' => 'PhoneBank',
+      'return' => 'value',
+    ], 'integer');
     $this->useTransaction();
     $this->enableCiviCampaign();
-    $this->params = array(
-      'title' => "survey title",
+    $this->params = [
+      'title' => 'survey title',
       'activity_type_id' => $phoneBankActivityTypeID,
       'max_number_of_contacts' => 12,
-      'instructions' => "Call people, ask for money",
-    );
-    parent::setUp();
+      'instructions' => 'Call people, ask for money',
+    ];
   }
 
   /**
    * Test create function succeeds.
    */
-  public function testCreateSurvey() {
-    $result = $this->callAPIAndDocument('survey', 'create', $this->params, __FUNCTION__, __FILE__);
+  public function testCreateSurvey(): void {
+    $result = $this->callAPISuccess('Survey', 'create', $this->params);
     $this->getAndCheck($this->params, $result['id'], $this->entity);
   }
 
@@ -81,9 +63,9 @@ class api_v3_SurveyTest extends CiviUnitTestCase {
    * action on create. Add extra checks for any 'special' return values or
    * behaviours
    */
-  public function testGetSurvey() {
-    $this->createTestEntity();
-    $result = $this->callAPIAndDocument('survey', 'get', $this->params, __FUNCTION__, __FILE__);
+  public function testGetSurvey(): void {
+    $this->createTestEntity('Survey', $this->params);
+    $result = $this->callAPISuccess('Survey', 'get', $this->params);
     $this->assertEquals(1, $result['count']);
     $this->assertNotNull($result['values'][$result['id']]['id']);
   }
@@ -91,30 +73,24 @@ class api_v3_SurveyTest extends CiviUnitTestCase {
   /**
    * Check the delete function succeeds.
    */
-  public function testDeleteSurvey() {
-    $entity = $this->createTestEntity();
-    $result = $this->callAPIAndDocument('survey', 'delete', array('id' => $entity['id']), __FUNCTION__, __FILE__);
-    $checkDeleted = $this->callAPISuccess($this->entity, 'get', array());
+  public function testDeleteSurvey(): void {
+    $entity = $this->createTestEntity('Survey', $this->params);
+    $this->callAPISuccess('survey', 'delete', ['id' => $entity['id']]);
+    $checkDeleted = $this->callAPISuccess($this->entity, 'get', []);
     $this->assertEquals(0, $checkDeleted['count']);
   }
 
   /**
-   * Test & document chained delete pattern.
-   *
-   * Note that explanation of the pattern
-   * is best put in the $description variable as it will then be displayed in the
-   * test generated examples. (these are to be found in the api/examples folder).
+   * Test chained delete pattern.
    */
-  public function testGetSurveyChainDelete() {
-    $description = "Demonstrates get + delete in the same call.";
-    $subfile = 'ChainedGetDelete';
-    $params = array(
-      'title' => "survey title",
+  public function testGetSurveyChainDelete(): void {
+    $params = [
+      'title' => 'survey title',
       'api.survey.delete' => 1,
-    );
-    $result = $this->callAPISuccess('survey', 'create', $this->params);
-    $result = $this->callAPIAndDocument('survey', 'get', $params, __FUNCTION__, __FILE__, $description, $subfile);
-    $this->assertEquals(0, $this->callAPISuccess('survey', 'getcount', array()));
+    ];
+    $this->callAPISuccess('Survey', 'create', $this->params);
+    $this->callAPISuccess('Survey', 'get', $params);
+    $this->assertEquals(0, $this->callAPISuccess('survey', 'getcount', []));
   }
 
 }

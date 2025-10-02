@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -29,7 +13,7 @@
  *
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -57,6 +41,9 @@ class CRM_Core_BAO_ConfigSetting {
    *
    * @param array $params
    *   Associated array of civicrm variables.
+   * @deprecated
+   *   This method was historically used to access civicrm_domain.config_backend.
+   *   However, that has been fully replaced by the settings system since v4.7.
    */
   public static function add(&$params) {
     $domain = new CRM_Core_DAO_Domain();
@@ -85,6 +72,9 @@ class CRM_Core_BAO_ConfigSetting {
    * @param $defaults
    *
    * @return array
+   * @deprecated
+   *   This method was historically used to access civicrm_domain.config_backend.
+   *   However, that has been fully replaced by the settings system since v4.7.
    */
   public static function retrieve(&$defaults) {
     $domain = new CRM_Core_DAO_Domain();
@@ -96,7 +86,8 @@ class CRM_Core_BAO_ConfigSetting {
       $urlVar = 'task';
     }
 
-    if ($isUpgrade && CRM_Core_DAO::checkFieldExists('civicrm_domain', 'config_backend')) {
+    $hasBackend = CRM_Core_BAO_SchemaHandler::checkIfFieldExists('civicrm_domain', 'config_backend');
+    if ($isUpgrade && $hasBackend) {
       $domain->selectAdd('config_backend');
     }
     else {
@@ -105,10 +96,13 @@ class CRM_Core_BAO_ConfigSetting {
 
     $domain->id = CRM_Core_Config::domainID();
     $domain->find(TRUE);
-    if ($domain->config_backend) {
+    if ($hasBackend && $domain->config_backend) {
+      // This whole branch can probably be removed; the transitional loading
+      // is in SettingBag::loadValues(). Moreover, since 4.7.alpha1 dropped
+      // the column, anyone calling ::retrieve() has likely not gotten any data.
       $defaults = unserialize($domain->config_backend);
       if ($defaults === FALSE || !is_array($defaults)) {
-        $defaults = array();
+        $defaults = [];
         return FALSE;
       }
 
@@ -125,111 +119,143 @@ class CRM_Core_BAO_ConfigSetting {
   }
 
   /**
-   * Evaluate locale preferences and activate a chosen locale by
-   * updating session+global variables.
+   * Activate a chosen locale.
+   *
+   * The locale is set by updating the session and global variables.
+   *
+   * When there is a choice of permitted languages (set on the "Administer" ->
+   * "Localisation" -> "Languages, Currency, Locations" screen) the locale to
+   * be applied can come from a variety of sources. The list below is the order
+   * of priority for deciding which of the sources "wins":
+   *
+   * - The request - when the "lcMessages" query variable is present in the URL.
+   * - The session - when the "lcMessages" session variable has been set.
+   * - Inherited from the CMS - when the "inheritLocale" setting is set.
+   * - CiviCRM settings - the fallback when none of the above set the locale.
+   *
+   * Single-language installs skip this and always set the default locale.
    *
    * @param \Civi\Core\SettingsBag $settings
    * @param string $activatedLocales
    *   Imploded list of locales which are supported in the DB.
    */
   public static function applyLocale($settings, $activatedLocales) {
-    // are we in a multi-language setup?
-    $multiLang = $activatedLocales ? TRUE : FALSE;
 
-    // set the current language
-    $chosenLocale = NULL;
+    // Declare access to locale globals.
+    global $dbLocale, $tsLocale;
 
+    // Grab session reference.
     $session = CRM_Core_Session::singleton();
 
-    // on multi-lang sites based on request and civicrm_uf_match
-    if ($multiLang) {
-      $languageLimit = array();
-      if (is_array($settings->get('languageLimit'))) {
-        $languageLimit = $settings->get('languageLimit');
-      }
+    // Initialise the default and chosen locales.
+    $defaultLocale = $settings->get('lcMessages');
+    $chosenLocale = NULL;
 
+    // Parse multi lang locales
+    $multiLangLocales = $activatedLocales ? explode(CRM_Core_DAO::VALUE_SEPARATOR, $activatedLocales) : NULL;
+
+    // On multilang, defaultLocale should be one of the activated locales
+    if ($multiLangLocales && !in_array($defaultLocale, $multiLangLocales)) {
+      $defaultLocale = NULL;
+    }
+
+    // When there is a choice of permitted languages.
+    // Why would this be different from the locales?
+    // @see https://github.com/civicrm/civicrm-core/pull/30533#discussion_r1756400531
+    $permittedLanguages = CRM_Core_I18n::uiLanguages(TRUE);
+    if (count($permittedLanguages) >= 2) {
+
+      // Is the "lcMessages" query variable present in the URL?
       $requestLocale = CRM_Utils_Request::retrieve('lcMessages', 'String');
-      if (in_array($requestLocale, array_keys($languageLimit))) {
+      if (in_array($requestLocale, $permittedLanguages)) {
         $chosenLocale = $requestLocale;
-
-        //CRM-8559, cache navigation do not respect locale if it is changed, so reseting cache.
-        // Ed: This doesn't sound good.
-        CRM_Core_BAO_Cache::deleteGroup('navigation');
-      }
-      else {
-        $requestLocale = NULL;
       }
 
-      if (!$requestLocale) {
+      // Check the session if the chosen locale hasn't been set yet.
+      if (empty($chosenLocale)) {
         $sessionLocale = $session->get('lcMessages');
-        if (in_array($sessionLocale, array_keys($languageLimit))) {
+        if (in_array($sessionLocale, $permittedLanguages)) {
           $chosenLocale = $sessionLocale;
         }
-        else {
-          $sessionLocale = NULL;
+      }
+
+      /*
+       * Maybe inherit the language from the CMS.
+       *
+       * If the language is specified via "lcMessages" we skip this, since the
+       * intention of the URL query var is to override all other sources.
+       */
+      if ($settings->get('inheritLocale')) {
+
+        /*
+         * FIXME: On multi-language installs, CRM_Utils_System::getUFLocale() in
+         * many cases returns nothing if $dbLocale is not set, so set it to the
+         * default - even if it's overridden later.
+         */
+        $dbLocale = $multiLangLocales && $defaultLocale ? "_{$defaultLocale}" : '';
+
+        // Retrieve locale as reported by CMS.
+        $cmsLocale = CRM_Utils_System::getUFLocale();
+        if (in_array($cmsLocale, $permittedLanguages)) {
+          $chosenLocale = $cmsLocale;
+        }
+
+        // Clear chosen locale if not activated in multi-language CiviCRM.
+        if ($multiLangLocales && !in_array($chosenLocale, $multiLangLocales)) {
+          $chosenLocale = NULL;
         }
       }
 
-      if ($requestLocale) {
-        $ufm = new CRM_Core_DAO_UFMatch();
-        $ufm->contact_id = $session->get('userID');
-        if ($ufm->find(TRUE)) {
-          $ufm->language = $chosenLocale;
-          $ufm->save();
-        }
-        $session->set('lcMessages', $chosenLocale);
+      // Assign the system default if the chosen locale hasn't been set.
+      if (empty($chosenLocale)) {
+        $chosenLocale = $defaultLocale;
       }
 
-      if (!$chosenLocale and $session->get('userID')) {
-        $ufm = new CRM_Core_DAO_UFMatch();
-        $ufm->contact_id = $session->get('userID');
-        if ($ufm->find(TRUE) &&
-          in_array($ufm->language, array_keys($languageLimit))
-        ) {
-          $chosenLocale = $ufm->language;
-        }
-        $session->set('lcMessages', $chosenLocale);
-      }
     }
-    global $dbLocale;
-
-    // try to inherit the language from the hosting CMS
-    if ($settings->get('inheritLocale')) {
-      // FIXME: On multilanguage installs, CRM_Utils_System::getUFLocale() in many cases returns nothing if $dbLocale is not set
-      $dbLocale = $multiLang ? ("_" . $settings->get('lcMessages')) : '';
-      $chosenLocale = CRM_Utils_System::getUFLocale();
-      if ($activatedLocales and !in_array($chosenLocale, explode(CRM_Core_DAO::VALUE_SEPARATOR, $activatedLocales))) {
-        $chosenLocale = NULL;
-      }
+    else {
+      // CRM-11993 - Use default when it's a single-language install.
+      $chosenLocale = $defaultLocale;
     }
 
-    if (empty($chosenLocale)) {
-      //CRM-11993 - if a single-lang site, use default
-      $chosenLocale = $settings->get('lcMessages');
+    if ($chosenLocale && ($requestLocale ?? NULL) === $chosenLocale) {
+      // If the locale is passed in via lcMessages key on GET or POST data,
+      // and it's valid against our configured locales, we require the session
+      // to store this, even if that means starting an anonymous session.
+      $session->set('lcMessages', $chosenLocale);
     }
 
-    // set suffix for table names - use views if more than one language
-    $dbLocale = $multiLang ? "_{$chosenLocale}" : '';
+    /*
+     * Set suffix for table names in multi-language installs.
+     * Use views if more than one language.
+     */
+    $dbLocale = $multiLangLocales && $chosenLocale ? "_{$chosenLocale}" : '';
 
-    // FIXME: an ugly hack to fix CRM-4041
-    global $tsLocale;
+    // FIXME: an ugly hack to fix CRM-4041.
     $tsLocale = $chosenLocale;
 
-    // FIXME: as bad aplace as any to fix CRM-5428
-    // (to be moved to a sane location along with the above)
+    /*
+     * FIXME: as bad a place as any to fix CRM-5428.
+     * (to be moved to a sane location along with the above)
+     */
     if (function_exists('mb_internal_encoding')) {
       mb_internal_encoding('UTF-8');
     }
+
   }
 
   /**
    * @param array $defaultValues
+   * @deprecated
+   *
+   * Does anyone use this function? Does it do what you expect?
    *
    * @return string
    * @throws Exception
    */
-  public static function doSiteMove($defaultValues = array()) {
-    $moveStatus = ts('Beginning site move process...') . '<br />';
+  public static function doSiteMove($defaultValues = []) {
+    $deprecatedMessage = ts('WARNING: doSiteMove is deprecated and might not do what you want');
+    \CRM_Core_Error::deprecatedWarning($deprecatedMessage);
+    $moveStatus = ts('Beginning site move process...') . '<br />' . $deprecatedMessage . '<br />';
     $settings = Civi::settings();
 
     foreach (array_merge(self::getPathSettings(), self::getUrlSettings()) as $key) {
@@ -237,15 +263,15 @@ class CRM_Core_BAO_ConfigSetting {
       if ($value && $value != $settings->getDefault($key)) {
         if ($settings->getMandatory($key) === NULL) {
           $settings->revert($key);
-          $moveStatus .= ts("WARNING: The setting (%1) has been reverted.", array(
+          $moveStatus .= ts("WARNING: The setting (%1) has been reverted.", [
             1 => $key,
-          ));
+          ]);
           $moveStatus .= '<br />';
         }
         else {
-          $moveStatus .= ts("WARNING: The setting (%1) is overridden and could not be reverted.", array(
+          $moveStatus .= ts("WARNING: The setting (%1) is overridden and could not be reverted.", [
             1 => $key,
-          ));
+          ]);
           $moveStatus .= '<br />';
         }
       }
@@ -258,21 +284,24 @@ class CRM_Core_BAO_ConfigSetting {
     $moveStatus .= ts('Template cache and upload directory have been cleared.') . '<br />';
 
     // clear all caches
-    CRM_Core_Config::clearDBCache();
+    Civi::rebuild(['tables' => TRUE])->execute();
+    Civi::cache('session')->clear();
     $moveStatus .= ts('Database cache tables cleared.') . '<br />';
 
     $resetSessionTable = CRM_Utils_Request::retrieve('resetSessionTable',
       'Boolean',
-      CRM_Core_DAO::$_nullArray,
+      NULL,
       FALSE,
-      FALSE,
-      'REQUEST'
+      FALSE
     );
-    if ($config->userSystem->is_drupal &&
-      $resetSessionTable
-    ) {
+
+    if ($resetSessionTable && $config->userSystem->is_drupal) {
       db_query("DELETE FROM {sessions} WHERE 1");
       $moveStatus .= ts('Drupal session table cleared.') . '<br />';
+    }
+    elseif (!$resetSessionTable && CIVICRM_UF === 'Standalone') {
+      // dont reset CRM sessions on Standalone unless explicitly requested
+      // as otherwise it will log you out
     }
     else {
       $session = CRM_Core_Session::singleton();
@@ -294,9 +323,9 @@ class CRM_Core_BAO_ConfigSetting {
    *   true if valid component name and enabling succeeds, else false
    */
   public static function enableComponent($componentName) {
-    $config = CRM_Core_Config::singleton();
-    if (in_array($componentName, $config->enableComponents)) {
-      // component is already enabled
+    $enabledComponents = Civi::settings()->get('enable_components');
+    if (in_array($componentName, $enabledComponents, TRUE)) {
+      // Component is already enabled
       return TRUE;
     }
 
@@ -306,12 +335,21 @@ class CRM_Core_BAO_ConfigSetting {
     }
 
     // get enabled-components from DB and add to the list
-    $enabledComponents = Civi::settings()->get('enable_components');
     $enabledComponents[] = $componentName;
-
     self::setEnabledComponents($enabledComponents);
 
     return TRUE;
+  }
+
+  /**
+   * Ensure all components are enabled
+   * @throws CRM_Core_Exception
+   */
+  public static function enableAllComponents() {
+    $allComponents = array_keys(CRM_Core_Component::getComponents());
+    if (Civi::settings()->get('enable_components') != $allComponents) {
+      self::setEnabledComponents($allComponents);
+    }
   }
 
   /**
@@ -322,20 +360,13 @@ class CRM_Core_BAO_ConfigSetting {
    * @return bool
    */
   public static function disableComponent($componentName) {
-    $config = CRM_Core_Config::singleton();
-    if (!in_array($componentName, $config->enableComponents) ||
-      !array_key_exists($componentName, CRM_Core_Component::getComponents())
-    ) {
-      // Post-condition is satisfied.
+    $enabledComponents = Civi::settings()->get('enable_components');
+    if (!in_array($componentName, $enabledComponents, TRUE)) {
+      // Component is already disabled.
       return TRUE;
     }
 
-    // get enabled-components from DB and add to the list
-    $enabledComponents = Civi::settings()->get('enable_components');
-    $enabledComponents = array_diff($enabledComponents, array($componentName));
-
-    self::setEnabledComponents($enabledComponents);
-
+    self::setEnabledComponents(array_diff($enabledComponents, [$componentName]));
     return TRUE;
   }
 
@@ -345,18 +376,15 @@ class CRM_Core_BAO_ConfigSetting {
    * @param array $enabledComponents
    */
   public static function setEnabledComponents($enabledComponents) {
-    // fix the config object. update db.
-    Civi::settings()->set('enable_components', $enabledComponents);
-
-    // also force reset of component array
-    CRM_Core_Component::getEnabledComponents(TRUE);
+    // The post_change trigger on this setting will sync component extensions, which will also flush caches
+    Civi::settings()->set('enable_components', array_values($enabledComponents));
   }
 
   /**
    * @return array
    */
   public static function skipVars() {
-    return array(
+    return [
       'dsn',
       'templateCompileDir',
       'userFrameworkDSN',
@@ -382,7 +410,7 @@ class CRM_Core_BAO_ConfigSetting {
       'autocompleteContactReference',
       'checksumTimeout',
       'checksum_timeout',
-    );
+    ];
   }
 
   /**
@@ -406,26 +434,26 @@ class CRM_Core_BAO_ConfigSetting {
    * @return array
    */
   private static function getUrlSettings() {
-    return array(
+    return [
       'userFrameworkResourceURL',
       'imageUploadURL',
       'customCSSURL',
       'extensionsURL',
-    );
+    ];
   }
 
   /**
    * @return array
    */
   private static function getPathSettings() {
-    return array(
+    return [
       'uploadDir',
       'imageUploadDir',
       'customFileUploadDir',
       'customTemplateDir',
       'customPHPPathDir',
       'extensionsDir',
-    );
+    ];
   }
 
 }

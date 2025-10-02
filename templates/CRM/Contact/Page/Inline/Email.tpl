@@ -1,77 +1,63 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 {* template for building email block*}
 <div id="crm-email-content" {if $permission EQ 'edit'} class="crm-inline-edit" data-edit-params='{ldelim}"cid": "{$contactId}", "class_name": "CRM_Contact_Form_Inline_Email"{rdelim}' data-dependent-fields='["#crm-contact-actions-wrapper"]'{/if}>
-  <div class="crm-clear crm-inline-block-content" {if $permission EQ 'edit'}title="{ts}Add or edit email{/ts}"{/if}>
+  <div class="crm-clear crm-inline-block-content" {if $permission EQ 'edit'}title="{ts escape='htmlattribute'}Add or edit email{/ts}"{/if}>
   {if $permission EQ 'edit'}
     <div class="crm-edit-help">
-      <span class="crm-i fa-pencil"></span> {if empty($email)}{ts}Add email{/ts}{else}{ts}Add or edit email{/ts}{/if}
+      <span class="crm-i fa-pencil" aria-hidden="true"></span> {if empty($email)}{ts}Add email{/ts}{else}{ts}Add or edit email{/ts}{/if}
     </div>
   {/if}
   {if empty($email)}
     <div class="crm-summary-row">
       <div class="crm-label">
         {ts}Email{/ts}
-        {if $privacy.do_not_email}<span class="icon privacy-flag do-not-email" title="{ts}Privacy flag: Do Not Email{/ts}"></span>{/if}
+        {if $privacy.do_not_email}{privacyFlag field=do_not_email}{/if}
       </div>
       <div class="crm-content"></div>
     </div>
   {/if}
   {foreach from=$email key="blockId" item=item}
     {if $item.email}
-    <div class="crm-summary-row {if $item.is_primary eq 1}primary{/if}">
+    <div class="crm-summary-row {if !empty($item.is_primary)}primary{/if}">
       <div class="crm-label">
         {$item.location_type} {ts}Email{/ts}
-        {if $privacy.do_not_email}<span class="icon privacy-flag do-not-email" title="{ts}Privacy flag: Do Not Email{/ts}"></span>{elseif $item.on_hold}<span class="icon privacy-flag email-hold" title="{ts}Email on hold - generally due to bouncing.{/ts}"></span>{/if}
+        {privacyFlag field=do_not_email condition=$privacy.do_not_email}{privacyFlag field=on_hold condition=$item.on_hold}
       </div>
       <div class="crm-content crm-contact_email">
         {if !$item.on_hold and !$privacy.do_not_email}
           {if $mailingOutboundOption == 2} {* Outbound email is disabled, use a mailto link *}
-            <a href="mailto:{$item.email}" title="{ts 1=$item.email}Send email to %1{/ts}">
+            <a href="mailto:{$item.email}" title="{ts escape='htmlattribute' 1=$item.email}Send email to %1{/ts}">
             {$item.email}
             </a>
           {else}
-            <a href="{crmURL p="civicrm/activity/email/add" q="action=add&reset=1&email_id=`$item.id`"}" class="crm-popup" title="{ts 1=$item.email}Send email to %1{/ts}">
+            <a href="{crmURL p="civicrm/activity/email/add" q="action=add&reset=1&email_id=`$item.id`"}" class="crm-popup" title="{ts escape='htmlattribute' 1=$item.email}Send email to %1{/ts}">
             {$item.email}
             </a>
           {/if}
         {else}
           {$item.email}
         {/if}
-        {if $item.on_hold == 2}&nbsp;({ts}On Hold - Opt Out{/ts})&nbsp;{ts}{$item.hold_date|truncate:10:''|crmDate}{/ts}{elseif $item.on_hold}&nbsp;({ts}On Hold{/ts})&nbsp;{ts}{$item.hold_date|truncate:10:''|crmDate}{/ts}{/if}{if $item.is_bulkmail}&nbsp;({ts}Bulk{/ts}){/if}
-        {if $item.signature_text OR $item.signature_html}
+        {crmAPI var='civi_mail' entity='Extension' action='get' full_name="civi_mail" is_active=1}
+        {if $item.on_hold == 2}&nbsp;({ts}On Hold - Opt Out{/ts})&nbsp;{ts}{$item.hold_date|truncate:10:''|crmDate}{/ts}{elseif $item.on_hold}&nbsp;{if $civi_mail.count}<a href="{crmURL p="civicrm/contact/view/bounces" f="?email_id=`$item.id`"}" class="crm-popup" title="{ts escape='htmlattribute' 1=$item.email}Email Bounce History{/ts}">{/if}({ts}On Hold{/ts})&nbsp;{ts}{$item.hold_date|truncate:10:''|crmDate}{/ts}{if $civi_mail.count}&nbsp;<i class="crm-i fa-list-alt" role="img" aria-hidden="true"></i></a>{/if}{/if}{if $item.is_bulkmail}&nbsp;({ts}Bulk{/ts}){/if}
+        {if !empty($item.signature_text) OR !empty($item.signature_html)}
         <span class="signature-link description">
-          <a href="#" title="{ts}Signature{/ts}" onClick="showHideSignature( '{$blockId}' ); return false;">{ts}(signature){/ts}</a>
+          <a href="#" title="{ts escape='htmlattribute'}Signature{/ts}" onClick="showHideSignature( '{$blockId}' ); return false;">{ts}(signature){/ts}</a>
         </span>
         {/if}
         <div id="Email_Block_{$blockId}_signature" class="hiddenElement">
-          <strong>{ts}Signature HTML{/ts}</strong><br />{$item.signature_html}<br /><br />
-        <strong>{ts}Signature Text{/ts}</strong><br />{$item.signature_text|nl2br}</div>
+          <strong>{ts}Signature HTML{/ts}</strong><br />{if !empty($item.signature_html)}{$item.signature_html}{/if}<br /><br />
+        <strong>{ts}Signature Text{/ts}</strong><br />{if !empty($item.signature_text)}{$item.signature_text|nl2br}{/if}</div>
       </div>
     </div>
+      {include file="CRM/Contact/Page/Inline/BlockCustomData.tpl" entity='email' customGroups=$item.custom identifier=$blockId}
     {/if}
   {/foreach}
   </div>

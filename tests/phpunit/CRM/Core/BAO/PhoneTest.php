@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -31,26 +15,21 @@
  */
 class CRM_Core_BAO_PhoneTest extends CiviUnitTestCase {
 
-  public function setUp() {
-    parent::setUp();
-  }
-
   /**
    * Add() method (create and update modes)
    */
-  public function testAdd() {
+  public function testAdd(): void {
     $contactId = $this->individualCreate();
 
-    $params = array();
-    $params = array(
+    $params = [
       'phone' => '(415) 222-1011 x 221',
       'is_primary' => 1,
       'location_type_id' => 1,
       'phone_type' => 'Mobile',
       'contact_id' => $contactId,
-    );
+    ];
 
-    CRM_Core_BAO_Phone::add($params);
+    CRM_Core_BAO_Phone::writeRecord($params);
 
     $phoneId = $this->assertDBNotNull('CRM_Core_DAO_Phone', $contactId, 'id', 'contact_id',
       'Database check for created phone record.'
@@ -60,16 +39,15 @@ class CRM_Core_BAO_PhoneTest extends CiviUnitTestCase {
       "Check if phone field has expected value in new record ( civicrm_phone.id={$phoneId} )."
     );
 
-    // Now call add() to modify the existing phone number
+    // Now call create() to modify the existing phone number
 
-    $params = array();
-    $params = array(
+    $params = [
       'id' => $phoneId,
       'contact_id' => $contactId,
       'phone' => '(415) 222-5432',
-    );
+    ];
 
-    CRM_Core_BAO_Phone::add($params);
+    CRM_Core_BAO_Phone::writeRecord($params);
 
     $this->assertDBCompareValue('CRM_Core_DAO_Phone', $phoneId, 'phone', 'id', '(415) 222-5432',
       "Check if phone field has expected value in updated record ( civicrm_phone.id={$phoneId} )."
@@ -81,13 +59,13 @@ class CRM_Core_BAO_PhoneTest extends CiviUnitTestCase {
   /**
    * AllPhones() method - get all Phones for our contact, with primary Phone first.
    */
-  public function testAllPhones() {
-    $contactParams = array(
+  public function testAllPhones(): void {
+    $contactParams = [
       'first_name' => 'Alan',
       'last_name' => 'Smith',
-      'api.phone.create' => array('phone' => '(415) 222-1011 x 221', 'location_type_id' => 'Home'),
-      'api.phone.create.1' => array('phone' => '(415) 222-5432', 'location_type_id' => 'Work'),
-    );
+      'api.phone.create' => ['phone' => '(415) 222-1011 x 221', 'location_type_id' => 'Home'],
+      'api.phone.create.1' => ['phone' => '(415) 222-5432', 'location_type_id' => 'Work'],
+    ];
 
     $contactId = $this->individualCreate($contactParams);
 
@@ -103,13 +81,6 @@ class CRM_Core_BAO_PhoneTest extends CiviUnitTestCase {
     $this->assertEquals(1, $firstPhoneValue[0]['is_primary'], 'Confirm first Phone is primary.');
 
     $this->contactDelete($contactId);
-  }
-
-  /**
-   * AllEntityPhones() method - get all Phones for a location block, with primary Phone first
-   * @todo FIXME: Fixing this test requires add helper functions in CiviTest to create location block and phone and link them to an event. Punting to 3.1 cycle. DGG
-   */
-  public function SKIPPED_testAllEntityPhones() {
   }
 
 }

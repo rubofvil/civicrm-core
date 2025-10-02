@@ -1,37 +1,21 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
- * $Id$
- *
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
+
+use Civi\Api4\Extension;
 
 /**
  * This class contains generic upgrade logic which runs regardless of version.
@@ -40,21 +24,47 @@ class CRM_Upgrade_Incremental_General {
 
   /**
    * The recommended PHP version.
+   *
+   * The point release will be dropped in recommendations unless it's .1 or
+   * higher.
    */
-  const MIN_RECOMMENDED_PHP_VER = '5.5';
+  const RECOMMENDED_PHP_VER = '8.3.0';
+
+  /**
+   * The minimum recommended PHP version.
+   *
+   * A site running an earlier version will be told to upgrade.
+   */
+  const MIN_RECOMMENDED_PHP_VER = '8.1.0';
 
   /**
    * The minimum PHP version required to install Civi.
-   *
-   * @see install/index.php
    */
-  const MIN_INSTALL_PHP_VER = '5.3.4';
+  const MIN_INSTALL_PHP_VER = '8.0.0';
 
   /**
-   * The minimum PHP version required to avoid known
-   * limits or defects.
+   * The minimum recommended MySQL version.
+   *
+   * A site running an earlier version will be encouraged to upgrade.
    */
-  const MIN_DEFECT_PHP_VER = '5.3.23';
+  const MIN_RECOMMENDED_MYSQL_VER = '5.7';
+
+  /**
+   * The minimum MySQL version required to install Civi.
+   */
+  const MIN_INSTALL_MYSQL_VER = '5.7';
+
+  /**
+   * The minimum recommended MariaDB version.
+   *
+   * A site running an earlier version will be encouraged to upgrade.
+   */
+  const MIN_RECOMMENDED_MARIADB_VER = '10.4';
+
+  /**
+   * The minimum MariaDB version required to install Civi.
+   */
+  const MIN_INSTALL_MARIADB_VER = '10.2';
 
   /**
    * Compute any messages which should be displayed before upgrade.
@@ -65,13 +75,28 @@ class CRM_Upgrade_Incremental_General {
    * @param $latestVer
    */
   public static function setPreUpgradeMessage(&$preUpgradeMessage, $currentVer, $latestVer) {
-    if (version_compare(phpversion(), self::MIN_RECOMMENDED_PHP_VER) < 0) {
-      $preUpgradeMessage .= '<p>' .
-        ts('This webserver is running an outdated version of PHP (%1). It is strongly recommended to upgrade to PHP %2 or later, as older versions can present a security risk.', array(
-          1 => phpversion(),
-          2 => self::MIN_RECOMMENDED_PHP_VER,
-        )) .
-        '</p>';
+    $dateFormat = Civi::Settings()->get('dateformatshortdate');
+    $phpversion = phpversion();
+    if (version_compare($phpversion, self::MIN_RECOMMENDED_PHP_VER) < 0) {
+      $preUpgradeMessage .= '<p>';
+      $preUpgradeMessage .= ts('This system uses PHP v%4. You may proceed with the upgrade, and CiviCRM v%1 will continue working normally. However, future releases will require PHP v%2. We recommend PHP v%3.', [
+        1 => $latestVer,
+        2 => self::MIN_RECOMMENDED_PHP_VER . '+',
+        3 => preg_replace(';^(\d+\.\d+(?:\.[1-9]\d*)?).*$;', '\1', self::RECOMMENDED_PHP_VER) . '+',
+        4 => $phpversion,
+      ]);
+      $preUpgradeMessage .= '</p>';
+    }
+    if (version_compare(CRM_Utils_SQL::getDatabaseVersion(), self::MIN_RECOMMENDED_MYSQL_VER) < 0) {
+      $preUpgradeMessage .= '<p>';
+      $preUpgradeMessage .= ts('This system uses MySQL/MariaDB v%5. You may proceed with the upgrade, and CiviCRM v%1 will continue working normally. However, CiviCRM v%4 will require MySQL v%2 or MariaDB v%3.', [
+        1 => $latestVer,
+        2 => self::MIN_RECOMMENDED_MYSQL_VER . '+',
+        3 => self::MIN_RECOMMENDED_MARIADB_VER . '+',
+        4 => '5.34' . '+',
+        5 => CRM_Utils_SQL::getDatabaseVersion(),
+      ]);
+      $preUpgradeMessage .= '</p>';
     }
 
     // http://issues.civicrm.org/jira/browse/CRM-13572
@@ -82,14 +107,14 @@ class CRM_Upgrade_Incremental_General {
     $ofcFile = "$civicrm_root/packages/OpenFlashChart/php-ofc-library/ofc_upload_image.php";
     if (file_exists($ofcFile)) {
       if (@unlink($ofcFile)) {
-        $preUpgradeMessage .= '<br />' . ts('This system included an outdated, insecure script (%1). The file was automatically deleted.', array(
-            1 => $ofcFile,
-          ));
+        $preUpgradeMessage .= '<br />' . ts('This system included an outdated, insecure script (%1). The file was automatically deleted.', [
+          1 => $ofcFile,
+        ]);
       }
       else {
-        $preUpgradeMessage .= '<br />' . ts('This system includes an outdated, insecure script (%1). Please delete it.', array(
-            1 => $ofcFile,
-          ));
+        $preUpgradeMessage .= '<br />' . ts('This system includes an outdated, insecure script (%1). Please delete it.', [
+          1 => $ofcFile,
+        ]);
       }
     }
 
@@ -103,82 +128,61 @@ class CRM_Upgrade_Incremental_General {
       // ignore the matter and simply run CRM_Core_InnoDBIndexer::fixSchemaDifferences
       // after the upgrade.  But that's speculative.  For now, we'll leave this
       // advanced feature in the hands of the sysadmin.
-      $preUpgradeMessage .= '<br />' . ts('This database uses InnoDB Full Text Search for optimized searching. The upgrade procedure has not been tested with this feature. You should disable (and later re-enable) the feature by navigating to "Administer => System Settings => Miscellaneous".');
+      $preUpgradeMessage .= '<br />' . ts('This database uses InnoDB Full Text Search for optimized searching. The upgrade procedure has not been tested with this feature. You should disable (and later re-enable) the feature by navigating to "Administer => Customize Data and Screens => Search Preferences".');
+    }
+
+    $snapshotIssues = CRM_Upgrade_Snapshot::getActivationIssues();
+    if ($snapshotIssues) {
+      $preUpgradeMessage .= '<details>';
+      $preUpgradeMessage .= '<summary>' . ts('This upgrade will NOT use automatic snapshots.') . '</summary>';
+      $preUpgradeMessage .= '<p>' . ts('If an upgrade problem is discovered in the future, automatic snapshots may help recover. However, they also require additional storage and may not be available or appropriate in all configurations.') . '</p>';
+      $preUpgradeMessage .= ts('Here are the reasons why automatic snapshots are disabled:');
+      $preUpgradeMessage .= '<ul>' . implode("", array_map(
+          function($issue) {
+            return sprintf('<li>%s</li>', $issue);
+          }, $snapshotIssues)) . '</ul>';
+      $preUpgradeMessage .= '<p>' . ts('You may enable snapshots in "<code>%1</code>" by setting the experimental option "<code>%2</code>".', [
+        1 => 'civicrm.settings.php',
+        2 => htmlentities('define(\'CIVICRM_UPGRADE_SNAPSHOT\', TRUE)'),
+      ]) . '</p>';
+      $preUpgradeMessage .= '</details>';
     }
   }
 
   /**
+   * Perform any message template updates. 5.0+.
    * @param $message
-   * @param $latestVer
-   * @param $currentVer
+   * @param $version version we are upgrading to
+   * @param $fromVer version we are upgrading from
    */
-  public static function checkMessageTemplate(&$message, $latestVer, $currentVer) {
-
-    $sql = "SELECT orig.workflow_id as workflow_id,
-             orig.msg_title as title
-            FROM civicrm_msg_template diverted JOIN civicrm_msg_template orig ON (
-                diverted.workflow_id = orig.workflow_id AND
-                orig.is_reserved = 1                    AND (
-                    diverted.msg_subject != orig.msg_subject OR
-                    diverted.msg_text    != orig.msg_text    OR
-                    diverted.msg_html    != orig.msg_html
-                )
-            )";
-
-    $dao = CRM_Core_DAO::executeQuery($sql);
-    while ($dao->fetch()) {
-      $workflows[$dao->workflow_id] = $dao->title;
-    }
-
-    if (empty($workflows)) {
+  public static function updateMessageTemplate(&$message, $version, $fromVer) {
+    if (version_compare($version, 5.0, '<')) {
       return;
     }
-
-    $html = NULL;
-    $pathName = dirname(dirname(__FILE__));
-    $flag = FALSE;
-    foreach ($workflows as $workflow => $title) {
-      $name = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_OptionValue',
-        $workflow,
-        'name',
-        'id'
-      );
-
-      // check if file exists locally
-      $textFileName = implode(DIRECTORY_SEPARATOR,
-        array(
-          $pathName,
-          "{$latestVer}.msg_template",
-          'message_templates',
-          "{$name}_text.tpl",
-        )
-      );
-
-      $htmlFileName = implode(DIRECTORY_SEPARATOR,
-        array(
-          $pathName,
-          "{$latestVer}.msg_template",
-          'message_templates',
-          "{$name}_html.tpl",
-        )
-      );
-
-      if (file_exists($textFileName) ||
-        file_exists($htmlFileName)
-      ) {
-        $flag = TRUE;
-        $html .= "<li>{$title}</li>";
-      }
+    $messageObj = new CRM_Upgrade_Incremental_MessageTemplates($version);
+    $messages = $messageObj->getUpgradeMessages($fromVer);
+    if (empty($messages)) {
+      return;
     }
+    $messagesHtml = array_map(function($k, $v) {
+      return sprintf("<li><em>%s</em> - %s</li>", htmlentities($k), htmlentities($v));
+    }, array_keys($messages), $messages);
 
-    if ($flag == TRUE) {
-      $html = "<ul>" . $html . "<ul>";
+    $message .= '<br />' . ts("The default copies of the message templates listed below will be updated to handle new features or correct a problem. Your installation has customized versions of these message templates, and you will need to apply the updates manually after running this upgrade. <a %1>View detailed instructions</a>.", [
+      1 => 'href="https://docs.civicrm.org/user/en/latest/email/message-templates/#modifying-system-workflow-message-templates" target="_blank"',
+    ]) . '<ul>' . implode('', $messagesHtml) . '</ul>';
 
-      $message .= '<br />' . ts("The default copies of the message templates listed below will be updated to handle new features or correct a problem. Your installation has customized versions of these message templates, and you will need to apply the updates manually after running this upgrade. <a href='%1' style='color:white; text-decoration:underline; font-weight:bold;' target='_blank'>Click here</a> for detailed instructions. %2", array(
-            1 => 'http://wiki.civicrm.org/confluence/display/CRMDOC/Message+Templates#MessageTemplates-UpgradesandCustomizedSystemWorkflowTemplates',
-            2 => $html,
-          ));
-    }
+    $messageObj->updateTemplates();
+  }
+
+  private static function isExtensionInstalled(string $key): bool {
+    $extension = Extension::get(FALSE)
+      ->addWhere('key', '=', $key)
+      ->addWhere('status', '=', 'Installed')
+      ->selectRowCount()
+      ->execute();
+
+    return $extension->countMatched() === 1;
   }
 
 }

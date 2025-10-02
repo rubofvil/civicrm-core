@@ -1,26 +1,10 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 <div class="crm-form-block crm-block crm-contact-task-createsmartgroup-form-block">
@@ -39,7 +23,7 @@
       </ul>
     </div>
     {/if}
-    <p>{docURL page='user/current/organising-your-data/smart-groups/'}</p>
+    <p>{docURL page='user/organising-your-data/smart-groups/'}</p>
   </div>
   <table class="form-layout-compressed">
     <tr class="crm-contact-task-createsmartgroup-form-block-title">
@@ -50,16 +34,19 @@
       <td class="label">{$form.description.label}</td>
       <td>{$form.description.html}</td>
     </tr>
-    {if $form.group_type}
+    {if !empty($form.group_type)}
       <tr class="crm-contact-task-createsmartgroup-form-block-group_type">
         <td class="label">{$form.group_type.label}</td>
         <td>{$form.group_type.html}</td>
+      </tr>
+      <tr>
+        <td colspan=2>{include file="CRM/common/customDataBlock.tpl" groupID='' customDataType='Group' customDataSubType=false cid=false}</td>
       </tr>
     {/if}
   </table>
 
   {*CRM-14190*}
-  {include file="CRM/Group/Form/ParentGroups.tpl"}
+  {include file="CRM/Group/Form/GroupsCommon.tpl"}
 
   <div class="crm-submit-buttons">{include file="CRM/common/formButtons.tpl" location="bottom"}</div>
 </div>

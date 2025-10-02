@@ -1,34 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -50,9 +34,7 @@ class CRM_Contribute_StateMachine_ContributionPage extends CRM_Core_StateMachine
     $session = CRM_Core_Session::singleton();
     $session->set('singleForm', FALSE);
 
-    $config = CRM_Core_Config::singleton();
-
-    $this->_pages = array(
+    $this->_pages = [
       'CRM_Contribute_Form_ContributionPage_Settings' => NULL,
       'CRM_Contribute_Form_ContributionPage_Amount' => NULL,
       'CRM_Member_Form_MembershipBlock' => NULL,
@@ -62,13 +44,16 @@ class CRM_Contribute_StateMachine_ContributionPage extends CRM_Core_StateMachine
       'CRM_Contribute_Form_ContributionPage_Custom' => NULL,
       'CRM_Contribute_Form_ContributionPage_Premium' => NULL,
       'CRM_Contribute_Form_ContributionPage_Widget' => NULL,
-    );
+    ];
 
-    if (!in_array("CiviMember", $config->enableComponents)) {
+    if (!function_exists('tellafriend_civicrm_config')) {
+      unset($this->_pages['CRM_Friend_Form_Contribute']);
+    }
+    if (!CRM_Core_Component::isEnabled('CiviMember')) {
       unset($this->_pages['CRM_Member_Form_MembershipBlock']);
     }
 
-    $this->addSequentialPages($this->_pages, $action);
+    $this->addSequentialPages($this->_pages);
   }
 
 }

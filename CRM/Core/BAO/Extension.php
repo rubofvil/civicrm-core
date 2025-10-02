@@ -1,34 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -37,24 +21,14 @@
 class CRM_Core_BAO_Extension extends CRM_Core_DAO_Extension {
 
   /**
-   * Fetch object based on array of properties.
-   *
+   * @deprecated
    * @param array $params
-   *   (reference ) an assoc array of name/value pairs.
    * @param array $defaults
-   *   (reference ) an assoc array to hold the flattened values.
-   *
-   * @return CRM_Core_BAO_LocationType|null
-   *   object on success, null otherwise
+   * @return self|null
    */
-  public static function retrieve(&$params, &$defaults) {
-    $extension = new CRM_Core_DAO_Extension();
-    $extension->copyValues($params);
-    if ($extension->find(TRUE)) {
-      CRM_Core_DAO::storeValues($extension, $defaults);
-      return $extension;
-    }
-    return NULL;
+  public static function retrieve($params, &$defaults) {
+    CRM_Core_Error::deprecatedFunctionWarning('API');
+    return self::commonRetrieve(self::class, $params, $defaults);
   }
 
   /**
@@ -64,11 +38,12 @@ class CRM_Core_BAO_Extension extends CRM_Core_DAO_Extension {
    *   Id of the extension to be deleted.
    *
    * @return mixed
+   *
+   * @deprecated
    */
   public static function del($id) {
-    $extension = new CRM_Core_DAO_Extension();
-    $extension->id = $id;
-    return $extension->delete();
+    CRM_Core_Error::deprecatedFunctionWarning('deleteRecord');
+    return (bool) static::deleteRecord(['id' => $id]);
   }
 
   /**
@@ -82,10 +57,10 @@ class CRM_Core_BAO_Extension extends CRM_Core_DAO_Extension {
    */
   public static function setSchemaVersion($fullName, $schemaVersion) {
     $sql = 'UPDATE civicrm_extension SET schema_version = %1 WHERE full_name = %2';
-    $params = array(
-      1 => array($schemaVersion, 'String'),
-      2 => array($fullName, 'String'),
-    );
+    $params = [
+      1 => [$schemaVersion, 'String'],
+      2 => [$fullName, 'String'],
+    ];
     return CRM_Core_DAO::executeQuery($sql, $params);
   }
 
@@ -98,9 +73,9 @@ class CRM_Core_BAO_Extension extends CRM_Core_DAO_Extension {
    */
   public static function getSchemaVersion($fullName) {
     $sql = 'SELECT schema_version FROM civicrm_extension WHERE full_name = %1';
-    $params = array(
-      1 => array($fullName, 'String'),
-    );
+    $params = [
+      1 => [$fullName, 'String'],
+    ];
     return CRM_Core_DAO::singleValueQuery($sql, $params);
   }
 

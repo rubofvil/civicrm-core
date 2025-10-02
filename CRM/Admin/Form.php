@@ -1,35 +1,21 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
+
+use Civi\Api4\Utils\ReflectionUtils;
 
 /**
  * Base class for admin forms.
@@ -41,21 +27,27 @@ class CRM_Admin_Form extends CRM_Core_Form {
    *
    * @var int
    */
-  protected $_id;
+  public $_id;
 
   /**
    * The default values for form fields.
    *
-   * @var int
+   * @var array
    */
   protected $_values;
 
   /**
    * The name of the BAO object for this form.
    *
-   * @var string
+   * @var CRM_Core_DAO|string
    */
   protected $_BAOName;
+
+  /**
+   * Whether to use the legacy `retrieve` method or APIv4 to load values.
+   * @var string
+   */
+  protected $retrieveMethod = 'retrieve';
 
   /**
    * Explicitly declare the form context.
@@ -65,19 +57,30 @@ class CRM_Admin_Form extends CRM_Core_Form {
   }
 
   /**
-   * Basic setup.
+   * Note: This type of form was traditionally embedded in a page, with values like _id and _action
+   * being `set()` by the page controller.
+   * Nowadays the preferred approach is to place these forms at their own url.
+   * This function can handle either scenario. It will retrieve `id` either from a value stored by the page controller
+   * if embedded, or from the url if standalone.
    */
   public function preProcess() {
     Civi::resources()->addStyleFile('civicrm', 'css/admin.css');
+    Civi::resources()->addScriptFile('civicrm', 'js/jquery/jquery.crmIconPicker.js');
 
-    $this->_id = $this->get('id');
+    // Lookup id from URL or stored value in controller
+    $this->_id = CRM_Utils_Request::retrieve('id', 'Positive', $this);
+
+    // If embedded in a page, this will have been assigned
     $this->_BAOName = $this->get('BAOName');
-    $this->_values = array();
-    if (isset($this->_id)) {
-      $params = array('id' => $this->_id);
-      // this is needed if the form is outside the CRM name space
-      $baoName = $this->_BAOName;
-      $baoName::retrieve($params, $this->_values);
+    // Otherwise, look it up from the api entity name
+    if (!$this->_BAOName) {
+      $this->_BAOName = CRM_Core_DAO_AllCoreTables::getBAOClassName(CRM_Core_DAO_AllCoreTables::getDAONameForEntity($this->getDefaultEntity()));
+    }
+    $this->retrieveValues();
+    $this->setPageTitle($this->_BAOName::getEntityTitle());
+    // Once form is submitted, user should be redirected back to the "browse" page.
+    if (isset($this->_BAOName::getEntityPaths()['browse'])) {
+      $this->pushUrlToUserContext($this->_BAOName::getEntityPaths()['browse']);
     }
   }
 
@@ -85,26 +88,30 @@ class CRM_Admin_Form extends CRM_Core_Form {
    * Set default values for the form. Note that in edit/view mode
    * the default values are retrieved from the database
    *
-   *
    * @return array
    */
   public function setDefaultValues() {
-    if (isset($this->_id) && empty($this->_values)) {
-      $this->_values = array();
-      $params = array('id' => $this->_id);
-      $baoName = $this->_BAOName;
-      $baoName::retrieve($params, $this->_values);
+    // Fetch defaults from the db if not already retrieved
+    if (empty($this->_values)) {
+      $this->retrieveValues();
     }
     $defaults = $this->_values;
 
-    if ($this->_action == CRM_Core_Action::DELETE &&
-      isset($defaults['name'])
-    ) {
+    // Allow defaults to be set from the url
+    if (empty($this->_id) && $this->_action & CRM_Core_Action::ADD) {
+      foreach ($_GET as $key => $val) {
+        if ($this->elementExists($key)) {
+          $defaults[$key] = $val;
+        }
+      }
+    }
+
+    if ($this->_action == CRM_Core_Action::DELETE && isset($defaults['name'])) {
       $this->assign('delName', $defaults['name']);
     }
 
-    // its ok if there is no element called is_active
-    $defaults['is_active'] = ($this->_id) ? CRM_Utils_Array::value('is_active', $defaults) : 1;
+    // Field is_active should default to TRUE (if there is no such field, this value will be ignored)
+    $defaults['is_active'] = ($this->_id) ? $defaults['is_active'] ?? 1 : 1;
     if (!empty($defaults['parent_id'])) {
       $this->assign('is_parent', TRUE);
     }
@@ -116,29 +123,57 @@ class CRM_Admin_Form extends CRM_Core_Form {
    */
   public function buildQuickForm() {
     if ($this->_action & CRM_Core_Action::VIEW || $this->_action & CRM_Core_Action::PREVIEW) {
-      $this->addButtons(array(
-          array(
-            'type' => 'cancel',
-            'name' => ts('Done'),
-            'isDefault' => TRUE,
-          ),
-        )
-      );
+      $this->addButtons([
+        [
+          'type' => 'cancel',
+          'name' => ts('Done'),
+          'isDefault' => TRUE,
+        ],
+      ]);
     }
     else {
-      $this->addButtons(array(
-          array(
-            'type' => 'next',
-            'name' => $this->_action & CRM_Core_Action::DELETE ? ts('Delete') : ts('Save'),
-            'isDefault' => TRUE,
-          ),
-          array(
-            'type' => 'cancel',
-            'name' => ts('Cancel'),
-          ),
-        )
-      );
+      $this->addButtons([
+        [
+          'type' => 'next',
+          'name' => $this->_action & CRM_Core_Action::DELETE ? ts('Delete') : ts('Save'),
+          'isDefault' => TRUE,
+        ],
+        [
+          'type' => 'cancel',
+          'name' => ts('Cancel'),
+        ],
+      ]);
     }
+  }
+
+  /**
+   * Retrieve entity from the database using legacy retrieve method (default) or APIv4.
+   *
+   * @return array
+   */
+  protected function retrieveValues(): array {
+    $this->_values = [];
+    if (isset($this->_id) && CRM_Utils_Rule::positiveInteger($this->_id)) {
+      if ($this->retrieveMethod === 'retrieve') {
+        $params = ['id' => $this->_id];
+        if (!empty(ReflectionUtils::getCodeDocs((new \ReflectionMethod($this->_BAOName, 'retrieve')), 'Method')['deprecated'])) {
+          CRM_Core_DAO::commonRetrieve($this->_BAOName, $params, $this->_values);
+        }
+        else {
+          // Are there still some out there?
+          $this->_BAOName::retrieve($params, $this->_values);
+        }
+      }
+      elseif ($this->retrieveMethod === 'api4') {
+        $this->_values = civicrm_api4($this->getDefaultEntity(), 'get', [
+          'where' => [['id', '=', $this->_id]],
+        ])->single();
+      }
+      else {
+        throw new CRM_Core_Exception("Unknown retrieve method '$this->retrieveMethod' in " . get_class($this));
+      }
+    }
+    return $this->_values;
   }
 
 }

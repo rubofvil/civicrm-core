@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -31,6 +15,17 @@
  *
  * @package CiviCRM_APIv3
  */
+
+/**
+ * Get mailing event unsubscribe record.
+ *
+ * @param array $params
+ *
+ * @return array
+ */
+function civicrm_api3_mailing_event_unsubscribe_get($params) {
+  return _civicrm_api3_basic_get('CRM_Mailing_Event_BAO_MailingEventUnsubscribe', $params);
+}
 
 /**
  * Unsubscribe from mailing group.
@@ -47,19 +42,19 @@ function civicrm_api3_mailing_event_unsubscribe_create($params) {
   $queue = $params['event_queue_id'];
   $hash = $params['hash'];
   if (empty($params['org_unsubscribe'])) {
-    $groups = CRM_Mailing_Event_BAO_Unsubscribe::unsub_from_mailing($job, $queue, $hash);
-    if (count($groups)) {
-      CRM_Mailing_Event_BAO_Unsubscribe::send_unsub_response($queue, $groups, FALSE, $job);
+    $groups = CRM_Mailing_Event_BAO_MailingEventUnsubscribe::unsub_from_mailing(NULL, $queue, $hash);
+    if (!empty($groups)) {
+      CRM_Mailing_Event_BAO_MailingEventUnsubscribe::send_unsub_response($queue, $groups, FALSE, $job);
       return civicrm_api3_create_success($params);
     }
   }
   else {
-    $unsubs = CRM_Mailing_Event_BAO_Unsubscribe::unsub_from_domain($job, $queue, $hash);
+    $unsubs = CRM_Mailing_Event_BAO_MailingEventUnsubscribe::unsub_from_domain(NULL, $queue, $hash);
     if (!$unsubs) {
       return civicrm_api3_create_error('Domain Queue event could not be found');
     }
 
-    CRM_Mailing_Event_BAO_Unsubscribe::send_unsub_response($queue, NULL, TRUE, $job);
+    CRM_Mailing_Event_BAO_MailingEventUnsubscribe::send_unsub_response($queue, NULL, TRUE, $job);
     return civicrm_api3_create_success($params);
   }
 
@@ -75,19 +70,19 @@ function civicrm_api3_mailing_event_unsubscribe_create($params) {
  *   Array of parameters determined by getfields.
  */
 function _civicrm_api3_mailing_event_unsubscribe_create_spec(&$params) {
-  $params['job_id'] = array(
+  $params['job_id'] = [
     'api.required' => 1,
     'title' => 'Mailing Job ID',
     'type' => CRM_Utils_Type::T_INT,
-  );
-  $params['hash'] = array(
+  ];
+  $params['hash'] = [
     'api.required' => 1,
     'title' => 'Mailing Hash',
     'type' => CRM_Utils_Type::T_STRING,
-  );
-  $params['event_queue_id'] = array(
+  ];
+  $params['event_queue_id'] = [
     'api.required' => 1,
     'title' => 'Mailing Queue ID',
     'type' => CRM_Utils_Type::T_INT,
-  );
+  ];
 }

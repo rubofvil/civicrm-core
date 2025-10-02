@@ -1,33 +1,17 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -43,16 +27,18 @@ class CRM_Utils_Address_USPS {
   protected static $_disabled = FALSE;
 
   /**
-   * @param $disabled
+   * Disable the USPS validation.
    *
-   * @return void
+   * @param bool $disable
    */
   public static function disable($disable = TRUE) {
     self::$_disabled = $disable;
   }
 
   /**
-   * @param $values
+   * Check address against USPS.
+   *
+   * @param array $values
    *
    * @return bool
    */
@@ -82,27 +68,26 @@ class CRM_Utils_Address_USPS {
 
     $XMLQuery = '<AddressValidateRequest USERID="' . $userID . '"><Address ID="0"><Address1>' . CRM_Utils_Array::value('supplemental_address_1', $values, '') . '</Address1><Address2>' . $address2 . '</Address2><City>' . $values['city'] . '</City><State>' . $values['state_province'] . '</State><Zip5>' . $values['postal_code'] . '</Zip5><Zip4>' . CRM_Utils_Array::value('postal_code_suffix', $values, '') . '</Zip4></Address></AddressValidateRequest>';
 
-    require_once 'HTTP/Request.php';
-    $request = new HTTP_Request();
-
-    $request->setURL($url);
-
-    $request->addQueryString('API', 'Verify');
-    $request->addQueryString('XML', $XMLQuery);
-
-    $response = $request->sendRequest();
+    $client = new GuzzleHttp\Client();
+    $request = $client->request('GET', $url, [
+      'query' => [
+        'API' => 'Verify',
+        'XML' => $XMLQuery,
+      ],
+      'timeout' => \Civi::settings()->get('http_timeout'),
+    ]);
 
     $session = CRM_Core_Session::singleton();
 
-    $code = $request->getResponseCode();
+    $code = $request->getStatusCode();
     if ($code != 200) {
       $session->setStatus(ts('USPS Address Lookup Failed with HTTP status code: %1',
-        array(1 => $code)
+        [1 => $code]
       ));
       return FALSE;
     }
 
-    $responseBody = $request->getResponseBody();
+    $responseBody = $request->getBody();
 
     $xml = simplexml_load_string($responseBody);
 
@@ -116,7 +101,7 @@ class CRM_Utils_Address_USPS {
       return FALSE;
     }
 
-    if (array_key_exists('Error', $xml->Address)) {
+    if (property_exists($xml->Address, 'Error')) {
       $session->setStatus(ts('Address not found in USPS database.'));
       return FALSE;
     }
@@ -127,7 +112,7 @@ class CRM_Utils_Address_USPS {
     $values['postal_code'] = (string) $xml->Address->Zip5;
     $values['postal_code_suffix'] = (string) $xml->Address->Zip4;
 
-    if (array_key_exists('Address1', $xml->Address)) {
+    if (property_exists($xml->Address, 'Address1')) {
       $values['supplemental_address_1'] = (string) $xml->Address->Address1;
     }
 

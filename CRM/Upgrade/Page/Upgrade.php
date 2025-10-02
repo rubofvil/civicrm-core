@@ -1,43 +1,20 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 class CRM_Upgrade_Page_Upgrade extends CRM_Core_Page {
-
-  /**
-   * Pre-process.
-   */
-  public function preProcess() {
-    parent::preProcess();
-  }
 
   /**
    * Run upgrade.
@@ -45,29 +22,26 @@ class CRM_Upgrade_Page_Upgrade extends CRM_Core_Page {
    * @throws \Exception
    */
   public function run() {
-    // lets get around the time limit issue if possible for upgrades
-    if (!ini_get('safe_mode')) {
-      set_time_limit(0);
-    }
+    set_time_limit(0);
 
     Civi::resources()->addStyleFile('civicrm', 'css/admin.css');
 
     $upgrade = new CRM_Upgrade_Form();
-    list($currentVer, $latestVer) = $upgrade->getUpgradeVersions();
+    [$currentVer, $latestVer] = $upgrade->getUpgradeVersions();
 
     CRM_Utils_System::setTitle(ts('Upgrade CiviCRM to Version %1',
-      array(1 => $latestVer)
+      [1 => $latestVer]
     ));
 
     $template = CRM_Core_Smarty::singleton();
     $template->assign('pageTitle', ts('Upgrade CiviCRM to Version %1',
-      array(1 => $latestVer)
+      [1 => $latestVer]
     ));
     $template->assign('cancelURL',
       CRM_Utils_System::url('civicrm/dashboard', 'reset=1')
     );
 
-    $action = CRM_Utils_Array::value('action', $_REQUEST, 'intro');
+    $action = $_REQUEST['action'] ?? 'intro';
     switch ($action) {
       case 'intro':
         $this->runIntro();
@@ -82,7 +56,7 @@ class CRM_Upgrade_Page_Upgrade extends CRM_Core_Page {
         break;
 
       default:
-        CRM_Core_Error::fatal(ts('Unrecognized upgrade action'));
+        throw new CRM_Core_Exception(ts('Unrecognized upgrade action'));
     }
   }
 
@@ -92,40 +66,59 @@ class CRM_Upgrade_Page_Upgrade extends CRM_Core_Page {
   public function runIntro() {
     $upgrade = new CRM_Upgrade_Form();
     $template = CRM_Core_Smarty::singleton();
-    list($currentVer, $latestVer) = $upgrade->getUpgradeVersions();
-
-    if ($error = $upgrade->checkUpgradeableVersion($currentVer, $latestVer)) {
-      CRM_Core_Error::fatal($error);
+    [$currentVer, $latestVer] = $upgrade->getUpgradeVersions();
+    CRM_Core_Smarty::singleton()->assign('sid', CRM_Utils_System::getSiteID());
+    // Show success msg if db already upgraded
+    if (version_compare($currentVer, $latestVer) == 0) {
+      $template->assign('message', '');
+      $template->assign('upgraded', TRUE);
+      $template->assign('newVersion', $latestVer);
+      CRM_Utils_System::setTitle(ts('Your database has already been upgraded to CiviCRM %1',
+        [1 => $latestVer]
+      ));
+      $template->assign('pageTitle', ts('Your database has already been upgraded to CiviCRM %1',
+        [1 => $latestVer]
+      ));
     }
 
-    $config = CRM_Core_Config::singleton();
-
-    // All cached content needs to be cleared because the civi codebase was just replaced
-    CRM_Core_Resources::singleton()->flushStrings()->resetCacheCode();
-    CRM_Core_Menu::store();
-
-    // cleanup only the templates_c directory
-    $config->cleanup(1, FALSE);
-
-    $preUpgradeMessage = NULL;
-    $upgrade->setPreUpgradeMessage($preUpgradeMessage, $currentVer, $latestVer);
-
-    $template->assign('currentVersion', $currentVer);
-    $template->assign('newVersion', $latestVer);
-    $template->assign('upgradeTitle', ts('Upgrade CiviCRM from v %1 To v %2',
-      array(1 => $currentVer, 2 => $latestVer)
-    ));
-    $template->assign('upgraded', FALSE);
-
-    // Render page header
-    if (!defined('CIVICRM_UF_HEAD') && $region = CRM_Core_Region::instance('html-header', FALSE)) {
-      CRM_Utils_System::addHTMLHead($region->render(''));
+    // Throw error if db in unexpected condition
+    elseif ($error = $upgrade->checkUpgradeableVersion($currentVer, $latestVer)) {
+      throw new CRM_Core_Exception($error);
     }
 
-    $template->assign('preUpgradeMessage', $preUpgradeMessage);
+    else {
+      $config = CRM_Core_Config::singleton();
+
+      // All cached content needs to be cleared because the civi codebase was just replaced
+      CRM_Core_Resources::singleton()->flushStrings()->resetCacheCode();
+
+      // cleanup only the templates_c directory
+      $config->cleanup(1, FALSE);
+
+      $preUpgradeMessage = NULL;
+      $upgrade->setPreUpgradeMessage($preUpgradeMessage, $currentVer, $latestVer);
+
+      $template->assign('preUpgradeMessage', $preUpgradeMessage);
+      $template->assign('currentVersion', $currentVer);
+      $template->assign('newVersion', $latestVer);
+      $template->assign('upgradeTitle', ts('Upgrade CiviCRM from v %1 To v %2',
+        [1 => $currentVer, 2 => $latestVer]
+      ));
+      $template->assign('upgraded', FALSE);
+    }
 
     $content = $template->fetch('CRM/common/success.tpl');
-    echo CRM_Utils_System::theme($content, $this->_print, TRUE);
+
+    if ($this->_print) {
+      // unexpected - trying to print the output of the upgrader?
+      // @todo remove this case and just ignore $this->_print entirely
+      // for now we use the original call, to maintain preexisting behaviour (however strange that is)
+      \CRM_Core_Error::deprecatedWarning('Calling CRM_Utils_System::theme with $print and $maintenance is unexpected and may behave strangely. This codepath will be removed in a future release. If you need it, please comment on https://lab.civicrm.org/dev/core/-/issues/5803');
+      echo CRM_Utils_System::theme($content, $this->_print, TRUE);
+    }
+    else {
+      echo CRM_Utils_System::renderMaintenanceMessage($content);
+    }
   }
 
   /**
@@ -133,10 +126,10 @@ class CRM_Upgrade_Page_Upgrade extends CRM_Core_Page {
    */
   public function runBegin() {
     $upgrade = new CRM_Upgrade_Form();
-    list($currentVer, $latestVer) = $upgrade->getUpgradeVersions();
+    [$currentVer, $latestVer] = $upgrade->getUpgradeVersions();
 
     if ($error = $upgrade->checkUpgradeableVersion($currentVer, $latestVer)) {
-      CRM_Core_Error::fatal($error);
+      throw new CRM_Core_Exception($error);
     }
 
     $config = CRM_Core_Config::singleton();
@@ -153,16 +146,16 @@ class CRM_Upgrade_Page_Upgrade extends CRM_Core_Page {
     $this->set('postUpgradeMessageFile', CRM_Utils_File::tempnam('civicrm-post-upgrade'));
     file_put_contents($this->get('postUpgradeMessageFile'), $postUpgradeMessage);
 
-    $queueRunner = new CRM_Queue_Runner(array(
+    $queueRunner = new CRM_Queue_Runner([
       'title' => ts('CiviCRM Upgrade Tasks'),
       'queue' => CRM_Upgrade_Form::buildQueue($currentVer, $latestVer, $this->get('postUpgradeMessageFile')),
       'isMinimal' => TRUE,
       'pathPrefix' => 'civicrm/upgrade/queue',
       'onEndUrl' => CRM_Utils_System::url('civicrm/upgrade', 'action=finish', FALSE, NULL, FALSE),
-      'buttons' => array('retry' => $config->debug, 'skip' => $config->debug),
-    ));
+      'buttons' => ['retry' => $config->debug, 'skip' => $config->debug],
+    ]);
     $queueRunner->runAllViaWeb();
-    CRM_Core_Error::fatal(ts('Upgrade failed to redirect'));
+    throw new CRM_Core_Exception(ts('Upgrade failed to redirect'));
   }
 
   /**
@@ -182,26 +175,33 @@ class CRM_Upgrade_Page_Upgrade extends CRM_Core_Page {
       CRM_Upgrade_Form::doFinish();
     }
     else {
-      $postUpgradeMessage = ''; // Session was destroyed! Can't recover messages.
+      // Session was destroyed! Can't recover messages.
+      $postUpgradeMessage = '';
     }
 
     // do a version check - after doFinish() sets the final version
-    list($currentVer, $latestVer) = $upgrade->getUpgradeVersions();
+    [$currentVer, $latestVer] = $upgrade->getUpgradeVersions();
     if ($error = $upgrade->checkCurrentVersion($currentVer, $latestVer)) {
-      CRM_Core_Error::fatal($error);
+      throw new CRM_Core_Exception($error);
     }
 
     $template->assign('message', $postUpgradeMessage);
     $template->assign('upgraded', TRUE);
+    $template->assign('newVersion', $latestVer);
     $template->assign('sid', CRM_Utils_System::getSiteID());
 
-    // Render page header
-    if (!defined('CIVICRM_UF_HEAD') && $region = CRM_Core_Region::instance('html-header', FALSE)) {
-      CRM_Utils_System::addHTMLHead($region->render(''));
-    }
-
     $content = $template->fetch('CRM/common/success.tpl');
-    echo CRM_Utils_System::theme($content, $this->_print, TRUE);
+
+    if ($this->_print) {
+      // unexpected - trying to print the output of the upgrader?
+      // @todo remove this case and just ignore $this->_print entirely
+      // for now we use the original call, to maintain preexisting behaviour (however strange that is)
+      \CRM_Core_Error::deprecatedWarning('Calling CRM_Utils_System::theme with $print and $maintenance is unexpected and may behave strangely. This codepath will be removed in a future release. If you need it, please comment on https://lab.civicrm.org/dev/core/-/issues/5803');
+      echo CRM_Utils_System::theme($content, $this->_print, TRUE);
+    }
+    else {
+      echo CRM_Utils_System::renderMaintenanceMessage($content);
+    }
   }
 
 }

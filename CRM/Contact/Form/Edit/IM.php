@@ -1,34 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -45,9 +29,13 @@ class CRM_Contact_Form_Edit_IM {
    *   Block number to build.
    * @param bool $blockEdit
    *   Is it block edit.
+   *
+   * @deprecated since 6.3 will be removed around 6.10
    */
   public static function buildQuickForm(&$form, $blockCount = NULL, $blockEdit = FALSE) {
+    CRM_Core_Error::deprecatedFunctionWarning('no alternative');
     if (!$blockCount) {
+      CRM_Core_Error::deprecatedWarning('pass in blockCount');
       $blockId = ($form->get('IM_Block_Count')) ? $form->get('IM_Block_Count') : 1;
     }
     else {
@@ -56,14 +44,14 @@ class CRM_Contact_Form_Edit_IM {
     $form->applyFilter('__ALL__', 'trim');
 
     //IM provider select
-    $form->addField("im[$blockId][provider_id]", array('entity' => 'im', 'class' => 'eight', 'placeholder' => NULL));
+    $form->addField("im[$blockId][provider_id]", ['entity' => 'im', 'class' => 'eight', 'placeholder' => NULL, 'title' => ts('IM Type %1', [1 => $blockId])]);
     //Block type select
-    $form->addField("im[$blockId][location_type_id]", array('entity' => 'im', 'class' => 'eight', 'placeholder' => NULL, 'option_url' => NULL));
+    $form->addField("im[$blockId][location_type_id]", ['entity' => 'im', 'class' => 'eight', 'placeholder' => NULL, 'option_url' => NULL, 'title' => ts('IM Location %1', [1 => $blockId])]);
 
     //IM box
-    $form->addField("im[$blockId][name]", array('entity' => 'im'));
+    $form->addField("im[$blockId][name]", ['entity' => 'im', 'aria-label' => ts('Instant Messenger %1', [1 => $blockId])]);
     //is_Primary radio
-    $js = array('id' => 'IM_' . $blockId . '_IsPrimary');
+    $js = ['id' => 'IM_' . $blockId . '_IsPrimary', 'aria-label' => ts('Instant Messenger %1 is primary?', [1 => $blockId])];
     if (!$blockEdit) {
       $js['onClick'] = 'singleSelect( this.id );';
     }

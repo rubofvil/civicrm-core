@@ -1,26 +1,10 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 {* Export Wizard - Step 2 *}
@@ -35,7 +19,6 @@
  {* WizardHeader.tpl provides visual display of steps thru the wizard as well as title for current step *}
  {include file="CRM/common/WizardHeader.tpl"}
 
- <div class="crm-submit-buttons">{include file="CRM/common/formButtons.tpl" location="top"}</div>
  <div id="export-type">
   <div class="crm-section crm-exportOption-section">
     <h3>{ts count=$totalSelectedRecords plural='%count records selected for export.'}One record selected for export.{/ts}</h3>
@@ -45,7 +28,7 @@
   </div>
 
   <div id="map" class="crm-section crm-export-mapping-section">
-      {if $form.mapping }
+      {if !empty($form.mapping)}
         <div class="label crm-label-export-mapping">
             {$form.mapping.label}
         </div>
@@ -56,11 +39,11 @@
       {/if}
   </div>
 
-  {if $taskName eq 'Export Contacts' OR $component eq false}
+  {if $isShowMergeOptions}
   <div class="crm-section crm-export-mergeOptions-section">
-    <div class="label crm-label-mergeOptions">{ts}Merge Options{/ts} {help id="id-export_merge_options"}</div>
+    <div class="label crm-label-mergeOptions">{ts}Merge Options{/ts} {help id="mergeOption"}</div>
     <div class="content crm-content-mergeOptions">
-        &nbsp;{$form.mergeOption.html}
+      {$form.mergeOption.html}
     </div>
     <div id='greetings' class="content crm-content-greetings class='hiddenElement'">
       <table class="form-layout-compressed">
@@ -84,20 +67,10 @@
       </table>
       <div class="clear">&nbsp;</div>
     </div>
-
-    <div class="content crm-content-mergeSameHousehold">
-        &nbsp;{$form.merge_same_household.html}
-    </div>
-    <br/>
     <div class="label crm-label-postalMailingExport">{$form.postal_mailing_export.label}</div>
     <div class="content crm-content-postalMailingExport">
         &nbsp;{$form.postal_mailing_export.html}
         {ts}Exclude contacts with "do not mail" privacy, no street address, or who are deceased.{/ts}
-    </div>
-    <br/>
-    <div class="label crm-label-additionalGroup">{$form.additional_group.label}</div>
-    <div class="content crm-content-additionalGroup">
-        &nbsp;{$form.additional_group.html}
     </div>
   <div class="clear"></div>
   </div>

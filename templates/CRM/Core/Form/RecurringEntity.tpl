@@ -1,77 +1,56 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 
-<div class="crm-core-form-recurringentity-block crm-accordion-wrapper{if $recurringFormIsEmbedded && !$scheduleReminderId} collapsed{/if}" id="recurring-entity-block">
-  <div class="crm-accordion-header">
+<details class="crm-core-form-recurringentity-block crm-accordion-bold" id="recurring-entity-block" {if $recurringFormIsEmbedded && !$scheduleReminderId}{else}open{/if}>
+  <summary>
     {ts 1=$recurringEntityType}Repeat %1{/ts}
-  </div>
+  </summary>
   <div class="crm-accordion-body">
-    {if !$recurringFormIsEmbedded}
-      <div class="crm-submit-buttons">
-        {include file="CRM/common/formButtons.tpl" location="top"}
-      </div>
-    {/if}
     <table class="form-layout-compressed">
-      <tr class="crm-core-form-recurringentity-block-repetition_start_date" id="tr-repetition_start_date">
-        <td class="label">{$form.repetition_start_date.label}</td>
-        <td>{include file="CRM/common/jcalendar.tpl" elementName=repetition_start_date}</td>
-      </tr>
       <tr class="crm-core-form-recurringentity-block-repetition_frequency">
-        <td class="label">{$form.repetition_frequency_unit.label}&nbsp;<span class="crm-marker">*</span>  {help id="id-repeats" entityType=$recurringEntityType file="CRM/Core/Form/RecurringEntity.hlp"}</td>
+        <td class="label">{$form.repetition_frequency_unit.label}&nbsp;<span class="crm-marker">*</span></td>
         <td>{$form.repetition_frequency_interval.html} {$form.repetition_frequency_unit.html}</td>
       </tr>
       <tr class="crm-core-form-recurringentity-block-start_action_condition">
         <td class="label">
-          <label for="repeats_on">{$form.start_action_condition.label} {help id="id-repeats-on" entityType=$recurringEntityType file="CRM/Core/Form/RecurringEntity.hlp"}</label>
+          <label for="repeats_on">{$form.start_action_condition.label}</label>
         </td>
         <td>
           {$form.start_action_condition.html}
         </td>
       </tr>
       <tr class="crm-core-form-recurringentity-block-repeats_by">
-        <td class="label">{$form.repeats_by.label} {help id="id-repeats-by-month" entityType=$recurringEntityType file="CRM/Core/Form/RecurringEntity.hlp"}</td>
-        <td>{$form.repeats_by.1.html}&nbsp;&nbsp;{$form.limit_to.html}
+        <td class="label">{$form.repeats_by.label}&nbsp;<span class="crm-marker">*</span></td>
+        <td>{$form.repeats_by.1.html} {$form.limit_to.html}
         </td>
       </tr>
       <tr class="crm-core-form-recurringentity-block-repeats_by">
-        <td class="label">{help id="id-repeats-by-week" entityType=$recurringEntityType file="CRM/Core/Form/RecurringEntity.hlp"}</td>
-        <td>{$form.repeats_by.2.html}&nbsp;&nbsp;{$form.entity_status_1.html}&nbsp;&nbsp;{$form.entity_status_2.html}
+        <td class="label"></td>
+        <td>{$form.repeats_by.2.html} {$form.entity_status_1.html} {$form.entity_status_2.html}
         </td>
+      </tr>
+      <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
+      <tr class="crm-core-form-recurringentity-block-repetition_start_date" id="tr-repetition_start_date">
+        <td class="label">{$form.repetition_start_date.label}</td>
+        <td>{$form.repetition_start_date.html}</td>
       </tr>
       <tr class="crm-core-form-recurringentity-block-ends">
-        <td class="label">{$form.ends.label}&nbsp;<span class="crm-marker">*</span> {help id="id-ends-after" entityType=$recurringEntityType file="CRM/Core/Form/RecurringEntity.hlp"}</td>
-        <td>{$form.ends.1.html}&nbsp;{$form.start_action_offset.html} {ts}occurrences{/ts}</td>
+        <td class="label">{$form.ends.label}&nbsp;<span class="crm-marker">*</span></td>
+        <td>{$form.ends.1.html} {$form.start_action_offset.html} {ts}occurrences{/ts}</td>
       </tr>
       <tr class="crm-core-form-recurringentity-block-absolute_date">
-        <td class="label"> {help id="id-ends-on" entityType=$recurringEntityType file="CRM/Core/Form/RecurringEntity.hlp"}</td>
-        <td>{$form.ends.2.html}&nbsp;{include file="CRM/common/jcalendar.tpl" elementName=repeat_absolute_date}
-        </td>
+        <td class="label"> </td>
+        <td>{$form.ends.2.html} {$form.repeat_absolute_date.html}</td>
       </tr>
       <tr class="crm-core-form-recurringentity-block-exclude_date">
-        <td class="label">{$form.exclude_date_list.label} {help id="id-exclude-date" entityType=$recurringEntityType file="CRM/Core/Form/RecurringEntity.hlp"}</td>
+        <td class="label">{$form.exclude_date_list.label}</td>
         <td>{$form.exclude_date_list.html}</td>
       </tr>
     </table>
@@ -81,7 +60,7 @@
       </div>
     {/if}
   </div>
-</div>
+</details>
 {literal}
 <script type="text/javascript">
 (function (_) {
@@ -111,19 +90,21 @@
     }
     $('#repetition_frequency_unit', $form).each(changeFrequencyUnit).change(changeFrequencyUnit);
 
-    function disableUnselected() {
-      $('input:radio[name=ends], input[name=repeats_by]', $form).not(':checked').siblings(':input').prop('disabled', true).removeClass('required');
+    function disableEnds() {
+      $("#repeat_absolute_date, #start_action_offset").prop('disabled', true).removeClass('required');
+
+      if ($('input[name=ends][value=2]').prop('checked')) {
+        $("#repeat_absolute_date").prop('disabled', false).addClass('required').focus();
+      }
+      else if ($('input[name=ends][value=1]').prop('checked')) {
+        $('#start_action_offset').prop('disabled', false).addClass('required').focus();
+      }
     }
-    disableUnselected();
 
-    $('input:radio[name=ends], input[name=repeats_by]', $form).click(function() {
-      $(this).siblings(':input').prop('disabled', false).filter(':visible').addClass('required').focus();
-      disableUnselected();
+    $('input[name=ends]').click(function() {
+      disableEnds();
     });
-
-    $('input:radio[name=ends]').siblings('.crm-clear-link').click(function() {
-      $('input:radio[name=ends][value=1]').prop('checked', true).trigger('click');
-    });
+    disableEnds();
 
     function validate() {
       var valid = $(':input', '#recurring-entity-block').valid(),
@@ -231,6 +212,10 @@
         if (validate()) {
           previewDialog();
         }
+      }
+      else {
+        // Avoid jquery validation on required fields if they are visible
+        $('#recurring-entity-block :input').removeClass('required');
       }
     });
 

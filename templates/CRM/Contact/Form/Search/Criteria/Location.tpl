@@ -1,26 +1,10 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 <div id="location" class="form-item">
@@ -32,7 +16,7 @@
           {$form.street_address.html|crmAddClass:big}
           {if $parseStreetAddress}
             <div>
-              <a href="#" title="{ts}Use Address Elements{/ts}" rel="addressElements" class="address-elements-toggle">{ts}Use Address Elements{/ts}</a>
+              <a href="#" title="{ts escape='htmlattribute'}Use Address Elements{/ts}" rel="addressElements" class="address-elements-toggle">{ts}Use Address Elements{/ts}</a>
             </div>
           {/if}
         </div>
@@ -44,11 +28,23 @@
               <td>{$form.street_unit.label}<br />{$form.street_unit.html|crmAddClass:four}</td>
             </tr>
             <tr>
-              <td colspan="3"><a href="#" title="{ts}Use Complete Address{/ts}" rel="streetAddress" class="address-elements-toggle">{ts}Use Street Address{/ts}</a></td>
+              <td colspan="3"><a href="#" title="{ts escape='htmlattribute'}Use Complete Address{/ts}" rel="streetAddress" class="address-elements-toggle">{ts}Use Street Address{/ts}</a></td>
             </tr>
           </table>
         </div>
         {/if}
+        <div class="crm-field-wrapper">
+          {$form.supplemental_address_1.label}<br />
+          {$form.supplemental_address_1.html}
+        </div>
+        <div class="crm-field-wrapper">
+          {$form.supplemental_address_2.label}<br />
+          {$form.supplemental_address_2.html}
+        </div>
+        <div class="crm-field-wrapper">
+          {$form.supplemental_address_3.label}<br />
+          {$form.supplemental_address_3.html}
+        </div>
         <div class="crm-field-wrapper">
           {$form.city.label}<br />
           {$form.city.html}
@@ -73,16 +69,16 @@
 
       <td>
         <div class="crm-field-wrapper">
-          <div>{$form.location_type.label} {help id="location_type" title=$form.location_type.label}</div>
+          <div>{$form.location_type.label} {help id="location_type"}</div>
           {$form.location_type.html}
         </div>
-        {if $form.address_name.html}
+        {if !empty($form.address_name.html)}
           <div class="crm-field-wrapper">
             {$form.address_name.label}<br />
             {$form.address_name.html}
           </div>
         {/if}
-        {if $form.postal_code.html}
+        {if !empty($form.postal_code.html)}
           <div class="crm-field-wrapper">
             {$form.postal_code.label}
             <input type="checkbox" id="postal-code-range-toggle" value="1"/>
@@ -113,7 +109,7 @@
             {/literal}
           </script>
         {/if}
-        {if $form.prox_distance.html}
+        {if !empty($form.prox_distance.html)}
           <div class="crm-field-wrapper">
             {$form.prox_distance.label}<br />
             {$form.prox_distance.html}&nbsp;{$form.prox_distance_unit.html}
@@ -122,7 +118,7 @@
       </td>
     </tr>
 
-    {if $addressGroupTree}
+    {if !empty($addressGroupTree)}
       <tr>
         <td colspan="2">
           {include file="CRM/Custom/Form/Search.tpl" groupTree=$addressGroupTree showHideLinks=false}
@@ -158,5 +154,3 @@
     </script>
   {/literal}
 {/if}
-
-

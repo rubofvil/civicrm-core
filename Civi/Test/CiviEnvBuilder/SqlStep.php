@@ -1,5 +1,6 @@
 <?php
 namespace Civi\Test\CiviEnvBuilder;
+
 class SqlStep implements StepInterface {
   private $sql;
 
@@ -11,7 +12,6 @@ class SqlStep implements StepInterface {
     $this->sql = $sql;
   }
 
-
   public function getSig() {
     return md5($this->sql);
   }
@@ -20,8 +20,11 @@ class SqlStep implements StepInterface {
     return TRUE;
   }
 
+  /**
+   * @param \CiviEnvBuilder $ctx
+   * @throws \RuntimeException
+   */
   public function run($ctx) {
-    /** @var $ctx \CiviEnvBuilder */
     if (\Civi\Test::execute($this->sql) === FALSE) {
       throw new \RuntimeException("Cannot execute: {$this->sql}");
     }

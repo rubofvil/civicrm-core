@@ -1,30 +1,14 @@
 {*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
 
-{if empty($gName)}
+{if !$gName}
   {include file="CRM/Admin/Page/OptionGroup.tpl"}
 
 {elseif $action eq 1 or $action eq 2 or $action eq 8}
@@ -36,7 +20,7 @@
 {else}
 <div class="help">
   {if $gName eq "gender"}
-    {ts}CiviCRM is pre-configured with standard options for individual gender (Male, Female, Transgender). Modify these options as needed for your installation.{/ts}
+    {ts}CiviCRM is pre-configured with standard options for individual gender (Male, Female, Other). Modify these options as needed for your installation.{/ts}
   {elseif $gName eq "individual_prefix"}
       {ts}CiviCRM is pre-configured with standard options for individual contact prefixes (Ms., Mr., Dr. etc.). Customize these options and add new ones as needed for your installation.{/ts}
   {elseif $gName eq "mobile_provider"}
@@ -58,8 +42,6 @@
     {ts}Define participant roles for events here (e.g. Attendee, Host, Speaker...). You can then assign roles and search for participants by role.{/ts}
   {elseif $gName eq 'participant_status'}
     {ts}Define statuses for event participants here (e.g. Registered, Attended, Cancelled...). You can then assign statuses and search for participants by status.{/ts} {ts}"Counted?" controls whether a person with that status is counted as participant for the purpose of controlling the Maximum Number of Participants.{/ts}
-  {elseif $gName eq 'from_email_address'}
-    {ts}By default, CiviCRM uses the primary email address of the logged in user as the FROM address when sending emails to contacts. However, you can use this page to define one or more general Email Addresses that can be selected as an alternative. EXAMPLE: <em>"Client Services" &lt;clientservices@example.org&gt;</em>{/ts}
   {elseif $isLocked}
     {ts}This option group is reserved for system use. You cannot add or delete options in this list.{/ts}
   {else}
@@ -70,11 +52,9 @@
 
 <div class="crm-content-block crm-block">
 {if $rows}
-{if $isLocked ne 1}
-    <div class="action-link">
-        {crmButton p="civicrm/admin/options/$gName" q='action=add&reset=1' class="new-option" icon="plus-circle"}{ts 1=$gLabel}Add %1{/ts}{/crmButton}
-    </div>
-{/if}
+{foreach from=$rows item=row}
+  {if !empty($row.icon)}{assign var='hasIcons' value=true}{/if}
+{/foreach}
 <div id={$gName}>
         {strip}
   {* handle enable/disable actions*}
@@ -82,6 +62,9 @@
         <table id="options" class="row-highlight">
          <thead>
          <tr>
+            {if $hasIcons}
+              <th><span class="sr-only">{ts}Icons{/ts}</span></th>
+            {/if}
             {if $showComponent}
                 <th>{ts}Component{/ts}</th>
             {/if}
@@ -106,24 +89,28 @@
                     {ts}Value{/ts}
                 {/if}
             </th>
-            {if $gName eq "payment_instrument"}<th>Account</th>{/if}
+            {if $gName eq "payment_instrument"}<th>{ts}Account{/ts}</th>{/if}
             {if $showCounted}<th>{ts}Counted?{/ts}</th>{/if}
-            {if $showVisibility}<th>{ts}Visibility{/ts}</th>{/if}
             <th id="nosort">{ts}Description{/ts}</th>
             <th>{ts}Order{/ts}</th>
             {if $showIsDefault}<th>{ts}Default{/ts}</th>{/if}
             <th>{ts}Reserved{/ts}</th>
             <th>{ts}Enabled?{/ts}</th>
-            <th></th>
+            <th><span class="sr-only">{ts}Actions{/ts}</span></th>
           </tr>
           </thead>
           <tbody>
         {foreach from=$rows item=row}
           <tr id="option_value-{$row.id}" class="crm-admin-options crm-admin-options_{$row.id} crm-entity {cycle values="odd-row,even-row"}{if NOT $row.is_active} disabled{/if}">
+            {if $hasIcons}
+              <td class="crm-admin-options-icon"><i class="crm-i {$row.icon}" role="img" aria-hidden="true"></i></td>
+            {/if}
             {if $showComponent}
               <td class="crm-admin-options-component_name">{$row.component_name}</td>
             {/if}
-            <td class="crm-admin-options-label crm-editable" data-field="label">{$row.label}</td>
+            <td class="crm-admin-options-label crm-editable" data-field="label" {if $row.color}style="background-color: {$row.color}; color: {$row.color|colorContrast};"{/if}>
+              {$row.label}
+            </td>
             {if $gName eq "case_status"}
               <td class="crm-admin-options-grouping">{$row.grouping}</td>
             {/if}
@@ -132,17 +119,16 @@
               <td>{$row.financial_account}</td>
             {/if}
             {if $showCounted}
-              <td class="center crm-admin-options-filter">{if $row.filter eq 1}<img src="{$config->resourceBase}i/check.gif" alt="{ts}Counted{/ts}" />{/if}</td>
+              <td class="center crm-admin-options-filter">{icon condition=$row.filter}{ts}Counted{/ts}{/icon}</td>
             {/if}
-            {if $showVisibility}<td class="crm-admin-visibility_label">{$row.visibility_label}</td>{/if}
             <td class="crm-admin-options-description crm-editable" data-field="description" data-type="textarea">{$row.description}</td>
-            <td class="nowrap crm-admin-options-order">{$row.weight}</td>
+            <td class="nowrap crm-admin-options-order">{if $row.weight}{$row.weight|smarty:nodefaults}{/if}</td>
             {if $showIsDefault}
-              <td class="crm-admin-options-is_default" align="center">{if $row.is_default eq 1}<img src="{$config->resourceBase}i/check.gif" alt="{ts}Default{/ts}" />{/if}&nbsp;</td>
+              <td class="crm-admin-options-is_default" align="center">{if $row.is_default}{icon}{ts}Default{/ts}{/icon}{/if}&nbsp;</td>
             {/if}
             <td class="crm-admin-options-is_reserved">{if $row.is_reserved eq 1} {ts}Yes{/ts} {else} {ts}No{/ts} {/if}</td>
             <td class="crm-admin-options-is_active" id="row_{$row.id}_status">{if $row.is_active eq 1} {ts}Yes{/ts} {else} {ts}No{/ts} {/if}</td>
-            <td>{$row.action|replace:'xx':$row.id}</td>
+            <td>{$row.action|smarty:nodefaults|replace:'xx':$row.id}</td>
           </tr>
         {/foreach}
         </tbody>
@@ -152,15 +138,15 @@
 </div>
 {else}
     <div class="messages status no-popup">
-      <img src="{$config->resourceBase}i/Inform.gif" alt="{ts}status{/ts}"/>
+      {icon icon="fa-info-circle"}{/icon}
       {ts}None found.{/ts}
     </div>
 {/if}
     <div class="action-link">
       {if $isLocked ne 1}
-        {crmButton p="civicrm/admin/options/$gName" q='action=add&reset=1' class="new-option" icon="plus-circle"}{ts 1=$gLabel}Add %1{/ts}{/crmButton}
+        {crmButton p="civicrm/admin/options/$gName" q='action=add&reset=1' class="new-option" icon="plus-circle"}{if !$gLabel}{ts}Add Option{/ts}{else}{ts 1=$gLabel}Add %1{/ts}{/if}{/crmButton}
       {/if}
-      {crmButton p="civicrm/admin" q="reset=1" class="cancel" icon="times"}{ts}Done{/ts}{/crmButton}
+      {crmButton p="civicrm/admin/options" q="action=browse&reset=1" class="cancel" icon="check"}{ts}Done{/ts}{/crmButton}
     </div>
 </div>
 {/if}

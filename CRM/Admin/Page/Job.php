@@ -1,34 +1,18 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
 /**
  *
  * @package CRM
- * @copyright CiviCRM LLC (c) 2004-2016
+ * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 
 /**
@@ -41,7 +25,7 @@ class CRM_Admin_Page_Job extends CRM_Core_Page_Basic {
    *
    * @var array
    */
-  static $_links = NULL;
+  public static $_links;
 
   /**
    * Get BAO Name.
@@ -61,42 +45,55 @@ class CRM_Admin_Page_Job extends CRM_Core_Page_Basic {
    */
   public function &links() {
     if (!(self::$_links)) {
-      self::$_links = array(
-        CRM_Core_Action::FOLLOWUP => array(
+      self::$_links = [
+        CRM_Core_Action::FOLLOWUP => [
           'name' => ts('View Job Log'),
           'url' => 'civicrm/admin/joblog',
           'qs' => 'jid=%%id%%&reset=1',
           'title' => ts('See log entries for this Scheduled Job'),
-        ),
-        CRM_Core_Action::UPDATE => array(
+          'weight' => CRM_Core_Action::getWeight(CRM_Core_Action::VIEW),
+        ],
+        CRM_Core_Action::VIEW => [
+          'name' => ts('Execute'),
+          'url' => 'civicrm/admin/job/edit',
+          'qs' => 'action=view&id=%%id%%&reset=1',
+          'title' => ts('Execute Scheduled Job Now'),
+          'weight' => -15,
+        ],
+        CRM_Core_Action::UPDATE => [
           'name' => ts('Edit'),
-          'url' => 'civicrm/admin/job',
+          'url' => 'civicrm/admin/job/edit',
           'qs' => 'action=update&id=%%id%%&reset=1',
           'title' => ts('Edit Scheduled Job'),
-        ),
-        CRM_Core_Action::EXPORT => array(
-          'name' => ts('Execute Now'),
-          'url' => 'civicrm/admin/job',
-          'qs' => 'action=export&id=%%id%%&reset=1',
-          'title' => ts('Execute Scheduled Job Now'),
-        ),
-        CRM_Core_Action::DISABLE => array(
+          'weight' => CRM_Core_Action::getWeight(CRM_Core_Action::UPDATE),
+        ],
+        CRM_Core_Action::DISABLE => [
           'name' => ts('Disable'),
           'ref' => 'crm-enable-disable',
           'title' => ts('Disable Scheduled Job'),
-        ),
-        CRM_Core_Action::ENABLE => array(
+          'weight' => CRM_Core_Action::getWeight(CRM_Core_Action::DISABLE),
+        ],
+        CRM_Core_Action::ENABLE => [
           'name' => ts('Enable'),
           'ref' => 'crm-enable-disable',
           'title' => ts('Enable Scheduled Job'),
-        ),
-        CRM_Core_Action::DELETE => array(
+          'weight' => CRM_Core_Action::getWeight(CRM_Core_Action::ENABLE),
+        ],
+        CRM_Core_Action::DELETE => [
           'name' => ts('Delete'),
-          'url' => 'civicrm/admin/job',
+          'url' => 'civicrm/admin/job/edit',
           'qs' => 'action=delete&id=%%id%%',
           'title' => ts('Delete Scheduled Job'),
-        ),
-      );
+          'weight' => CRM_Core_Action::getWeight(CRM_Core_Action::DELETE),
+        ],
+        CRM_Core_Action::COPY => [
+          'name' => ts('Copy'),
+          'url' => 'civicrm/admin/job/edit',
+          'qs' => 'action=copy&id=%%id%%&qfKey=%%key%%',
+          'title' => ts('Copy Scheduled Job'),
+          'weight' => CRM_Core_Action::getWeight(CRM_Core_Action::COPY),
+        ],
+      ];
     }
     return self::$_links;
   }
@@ -109,17 +106,13 @@ class CRM_Admin_Page_Job extends CRM_Core_Page_Basic {
    * Finally it calls the parent's run method.
    */
   public function run() {
-    // set title and breadcrumb
     CRM_Utils_System::setTitle(ts('Settings - Scheduled Jobs'));
-    $breadCrumb = array(
-      array(
-        'title' => ts('Scheduled Jobs'),
-        'url' => CRM_Utils_System::url('civicrm/admin',
-          'reset=1'
-        ),
-      ),
-    );
-    CRM_Utils_System::appendBreadCrumb($breadCrumb);
+    CRM_Utils_System::appendBreadCrumb([
+      [
+        'title' => ts('Administer'),
+        'url' => CRM_Utils_System::url('civicrm/admin', 'reset=1'),
+      ],
+    ]);
 
     $this->_id = CRM_Utils_Request::retrieve('id', 'String',
       $this, FALSE, 0
@@ -128,9 +121,22 @@ class CRM_Admin_Page_Job extends CRM_Core_Page_Basic {
       $this, FALSE, 0
     );
 
-    if ($this->_action == 'export') {
-      $session = CRM_Core_Session::singleton();
-      $session->pushUserContext(CRM_Utils_System::url('civicrm/admin/job', 'reset=1'));
+    if (($this->_action & CRM_Core_Action::COPY) && (!empty($this->_id))) {
+      $key = $_POST['qfKey'] ?? $_GET['qfKey'] ?? $_REQUEST['qfKey'] ?? NULL;
+      $k = CRM_Core_Key::validate($key, CRM_Utils_System::getClassName($this));
+      if (!$k) {
+        $this->invalidKey();
+      }
+      try {
+        $jobResult = civicrm_api3('Job', 'clone', ['id' => $this->_id]);
+        if ($jobResult['count'] > 0) {
+          CRM_Core_Session::setStatus($jobResult['values'][$jobResult['id']]['name'], ts('Job copied successfully'), 'success');
+        }
+        CRM_Utils_System::redirect(CRM_Utils_System::url('civicrm/admin/job', 'reset=1'));
+      }
+      catch (Exception $e) {
+        CRM_Core_Session::setStatus(ts('Failed to copy job'), 'Error');
+      }
     }
 
     return parent::run();
@@ -138,27 +144,31 @@ class CRM_Admin_Page_Job extends CRM_Core_Page_Basic {
 
   /**
    * Browse all jobs.
-   *
-   * @param null $action
    */
-  public function browse($action = NULL) {
-
-    // using Export action for Execute. Doh.
-    if ($this->_action & CRM_Core_Action::EXPORT) {
-      $jm = new CRM_Core_JobManager();
-      $jm->executeJobById($this->_id);
-
-      CRM_Core_Session::setStatus(ts('Selected Scheduled Job has been executed. See the log for details.'), ts("Executed"), "success");
+  public function browse() {
+    // check if non-prod mode is enabled.
+    if (CRM_Core_Config::environment() != 'Production') {
+      CRM_Core_Session::setStatus(ts('Execution of scheduled jobs has been turned off by default since this is a non-production environment. You can override this for particular jobs by adding runInNonProductionEnvironment=TRUE as a parameter. Note: this will send emails if your <a %1>outbound email</a> is enabled.', [1 => 'href="' . CRM_Utils_System::url('civicrm/admin/setting/smtp', 'reset=1') . '"']), ts('Non-production Environment'), 'warning', ['expires' => 0]);
+    }
+    else {
+      $cronError = Civi\Api4\System::check(FALSE)
+        ->addWhere('name', '=', 'checkLastCron')
+        ->addWhere('severity_id', '>', 1)
+        ->setIncludeDisabled(TRUE)
+        ->execute()
+        ->first();
+      if ($cronError) {
+        CRM_Core_Session::setStatus($cronError['message'], $cronError['title'], 'alert', ['expires' => 0]);
+      }
     }
 
-    $sj = new CRM_Core_JobManager();
-    $rows = $temp = array();
-    foreach ($sj->jobs as $job) {
+    $rows = [];
+    foreach ($this->getJobs() as $job) {
       $action = array_sum(array_keys($this->links()));
 
       // update enable/disable links.
       // CRM-9868- remove enable action for jobs that should never be run automatically via execute action or runjobs url
-      if ($job->api_action == 'process_membership_reminder_date' || $job->api_action == 'update_greeting') {
+      if ($job->api_action === 'process_membership_reminder_date' || $job->api_action === 'update_greeting') {
         $action -= CRM_Core_Action::ENABLE;
         $action -= CRM_Core_Action::DISABLE;
       }
@@ -169,8 +179,8 @@ class CRM_Admin_Page_Job extends CRM_Core_Page_Basic {
         $action -= CRM_Core_Action::DISABLE;
       }
 
-      $job->action = CRM_Core_Action::formLink(self::links(), $action,
-        array('id' => $job->id),
+      $job->action = CRM_Core_Action::formLink($this->links(), $action,
+        ['id' => $job->id, 'key' => CRM_Core_Key::get(CRM_Utils_System::getClassName($this))],
         ts('more'),
         FALSE,
         'job.manage.action',
@@ -180,6 +190,29 @@ class CRM_Admin_Page_Job extends CRM_Core_Page_Basic {
       $rows[] = get_object_vars($job);
     }
     $this->assign('rows', $rows);
+  }
+
+  /**
+   * Retrieves the list of jobs from the database,
+   * populates class param.
+   *
+   * @fixme: Copied from JobManager. We should replace with API
+   *
+   * @return array
+   *   ($id => CRM_Core_ScheduledJob)
+   */
+  private function getJobs(): array {
+    $jobs = [];
+    $dao = new CRM_Core_DAO_Job();
+    $dao->orderBy('name');
+    $dao->domain_id = CRM_Core_Config::domainID();
+    $dao->find();
+    while ($dao->fetch()) {
+      $temp = ['class' => NULL, 'parameters' => NULL, 'last_run' => NULL];
+      CRM_Core_DAO::storeValues($dao, $temp);
+      $jobs[$dao->id] = new CRM_Core_ScheduledJob($temp);
+    }
+    return $jobs;
   }
 
   /**

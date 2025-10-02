@@ -1,27 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 4.7                                                |
- +--------------------------------------------------------------------+
- | Copyright CiviCRM LLC (c) 2004-2016                                |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -39,86 +23,106 @@
  */
 class api_v3_SettingTest extends CiviUnitTestCase {
 
-  protected $_apiversion = 3;
-  protected $_contactID;
-  protected $_params;
-  protected $_currentDomain;
-  protected $_domainID2;
-  protected $_domainID3;
+  protected $currentDomain;
+  protected $domainID2;
+  protected $domainID3;
 
-  public function setUp() {
+  /**
+   * @throws \CRM_Core_Exception
+   */
+  public function setUp(): void {
     parent::setUp();
-    $params = array(
-      'name' => 'Default Domain Name',
-      'domain_version' => '4.7',
-    );
+    $params = [
+      'name' => __CLASS__ . 'Second Domain',
+      'domain_version' => CRM_Utils_System::version(),
+    ];
     $result = $this->callAPISuccess('domain', 'get', $params);
     if (empty($result['id'])) {
       $result = $this->callAPISuccess('domain', 'create', $params);
     }
-
-    $params['name'] = 'Second Domain';
+    $this->domainID2 = $result['id'];
+    $params['name'] = __CLASS__ . 'Third domain';
     $result = $this->callAPISuccess('domain', 'get', $params);
     if (empty($result['id'])) {
       $result = $this->callAPISuccess('domain', 'create', $params);
     }
-    $this->_domainID2 = $result['id'];
-    $params['name'] = 'A-team domain';
-    $result = $this->callAPISuccess('domain', 'get', $params);
-    if (empty($result['id'])) {
-      $result = $this->callAPISuccess('domain', 'create', $params);
-    }
-    $this->_domainID3 = $result['id'];
-    $this->_currentDomain = CRM_Core_Config::domainID();
+    $this->domainID3 = $result['id'];
+    $this->currentDomain = CRM_Core_Config::domainID();
     $this->hookClass = CRM_Utils_Hook::singleton();
   }
 
-  public function tearDown() {
-    CRM_Utils_Hook::singleton()->reset();
+  /**
+   * @throws \CRM_Core_Exception
+   */
+  public function tearDown(): void {
     parent::tearDown();
-    $this->callAPISuccess('system', 'flush', array());
-    $this->quickCleanup(array('civicrm_domain'));
+    try {
+      CRM_Core_DAO::executeQuery('
+        DELETE d, s, n, dc, m
+        FROM civicrm_domain d
+          INNER JOIN civicrm_setting s ON s.domain_id = d.id
+          INNER JOIN civicrm_navigation n ON n.domain_id = d.id
+          INNER JOIN civicrm_menu m ON m.domain_id = d.id
+          INNER JOIN civicrm_dashboard dc ON dc.domain_id = d.id
+        WHERE d.name LIKE "' . __CLASS__ . '%"
+     ');
+    }
+    catch (CRM_Core_Exception $e) {
+      $result = $this->getTablesWithData();
+      throw new CRM_Core_Exception($e->getMessage() . 'look to one of these tables to have the data ...' . print_r($result, TRUE));
+    }
   }
 
   /**
    * Set additional settings into metadata (implements hook)
+   *
    * @param array $metaDataFolders
    */
-  public function setExtensionMetadata(&$metaDataFolders) {
+  public function setExtensionMetadata(array &$metaDataFolders): void {
     global $civicrm_root;
     $metaDataFolders[] = $civicrm_root . '/tests/phpunit/api/v3/settings';
   }
 
   /**
-   * /**
-   * Check getfields works.
+   * @param int $version
+   *
+   * @dataProvider versionThreeAndFour
    */
-  public function testGetFields() {
-    $description = 'Demonstrate return from getfields - see subfolder for variants';
-    $result = $this->callAPIAndDocument('setting', 'getfields', array(), __FUNCTION__, __FILE__, $description);
+  public function testGetFields(int $version): void {
+    $this->_apiversion = $version;
+    $result = $this->callAPISuccess('setting', 'getfields', []);
     $this->assertArrayHasKey('customCSSURL', $result['values']);
 
-    $description = 'Demonstrate return from getfields';
-    $result = $this->callAPISuccess('setting', 'getfields', array());
+    $result = $this->callAPISuccess('setting', 'getfields', []);
     $this->assertArrayHasKey('customCSSURL', $result['values']);
-    $this->callAPISuccess('system', 'flush', array());
+    $this->callAPISuccess('system', 'flush', []);
   }
 
   /**
    * Let's check it's loading from cache by meddling with the cache
+   *
+   * @param int $version
+   *
+   * @dataProvider versionThreeAndFour
    */
-  public function testGetFieldsCaching() {
-    $settingsMetadata = array();
-    Civi::cache('settings')->set('settingsMetadata_' . \CRM_Core_Config::domainID() . '_', $settingsMetadata);
-    Civi::cache('settings')->set(\Civi\Core\SettingsMetadata::ALL, $settingsMetadata);
-    $result = $this->callAPISuccess('setting', 'getfields', array());
+  public function testGetFieldsCaching(int $version): void {
+    $this->_apiversion = $version;
+    $settingsMetadata = [];
+    Civi::cache('settings')->set('settingsMetadata_' . CRM_Core_Config::domainID() . '_', $settingsMetadata);
+    $result = $this->callAPISuccess('setting', 'getfields', []);
     $this->assertArrayNotHasKey('customCSSURL', $result['values']);
-    $this->quickCleanup(array('civicrm_cache'));
+    $this->quickCleanup(['civicrm_cache']);
     Civi::cache('settings')->flush();
   }
 
-  public function testGetFieldsFilters() {
-    $params = array('name' => 'advanced_search_options');
+  /**
+   * @param int $version
+   *
+   * @dataProvider versionThreeAndFour
+   */
+  public function testGetFieldsFilters(int $version): void {
+    $this->_apiversion = $version;
+    $params = ['name' => 'advanced_search_options'];
     $result = $this->callAPISuccess('setting', 'getfields', $params);
     $this->assertArrayNotHasKey('customCSSURL', $result['values']);
     $this->assertArrayHasKey('advanced_search_options', $result['values']);
@@ -127,8 +131,9 @@ class api_v3_SettingTest extends CiviUnitTestCase {
   /**
    * Test that getfields will filter on group.
    */
-  public function testGetFieldsGroupFilters() {
-    $params = array('filters' => array('group' => 'multisite'));
+  public function testGetFieldsGroupFilters(): void {
+    $this->_apiversion = 3;
+    $params = ['filters' => ['group' => 'multisite']];
     $result = $this->callAPISuccess('setting', 'getfields', $params);
     $this->assertArrayNotHasKey('customCSSURL', $result['values']);
     $this->assertArrayHasKey('domain_group_id', $result['values']);
@@ -138,49 +143,55 @@ class api_v3_SettingTest extends CiviUnitTestCase {
    * Ensure that on_change callbacks fire.
    *
    * Note: api_v3_SettingTest::testOnChange and CRM_Core_BAO_SettingTest::testOnChange
-   * are very similar, but they exercise different codepaths. The first uses the API
+   * are very similar, but they exercise different code paths. The first uses the API
    * and setItems [plural]; the second uses setItem [singular].
+   *
+   * @param int $version
+   *
+   * @dataProvider versionThreeAndFour
    */
-  public function testOnChange() {
+  public function testOnChange(int $version): void {
+    $this->_apiversion = $version;
     global $_testOnChange_hookCalls;
-    $this->setMockSettingsMetaData(array(
-      'onChangeExample' => array(
+    $this->setMockSettingsMetaData([
+      'onChangeExample' => [
         'group_name' => 'CiviCRM Preferences',
         'group' => 'core',
         'name' => 'onChangeExample',
         'type' => 'Array',
         'quick_form_type' => 'Element',
         'html_type' => 'advmultiselect',
-        'default' => array('CiviEvent', 'CiviContribute'),
+        'default' => ['CiviEvent', 'CiviContribute'],
         'add' => '4.4',
         'title' => 'List of Components',
         'is_domain' => '1',
         'is_contact' => 0,
         'description' => NULL,
         'help_text' => NULL,
-        'on_change' => array(// list of callbacks
-          array(__CLASS__, '_testOnChange_onChangeExample'),
-        ),
-      ),
-    ));
+        // list of callbacks
+        'on_change' => [
+          [__CLASS__, '_testOnChange_onChangeExample'],
+        ],
+      ],
+    ]);
 
     // set initial value
-    $_testOnChange_hookCalls = array('count' => 0);
-    $this->callAPISuccess('setting', 'create', array(
-      'onChangeExample' => array('First', 'Value'),
-    ));
+    $_testOnChange_hookCalls = ['count' => 0];
+    $this->callAPISuccess('setting', 'create', [
+      'onChangeExample' => ['First', 'Value'],
+    ]);
     $this->assertEquals(1, $_testOnChange_hookCalls['count']);
-    $this->assertEquals(array('First', 'Value'), $_testOnChange_hookCalls['newValue']);
+    $this->assertEquals(['First', 'Value'], $_testOnChange_hookCalls['newValue']);
     $this->assertEquals('List of Components', $_testOnChange_hookCalls['metadata']['title']);
 
     // change value
-    $_testOnChange_hookCalls = array('count' => 0);
-    $this->callAPISuccess('setting', 'create', array(
-      'onChangeExample' => array('Second', 'Value'),
-    ));
+    $_testOnChange_hookCalls = ['count' => 0];
+    $this->callAPISuccess('setting', 'create', [
+      'onChangeExample' => ['Second', 'Value'],
+    ]);
     $this->assertEquals(1, $_testOnChange_hookCalls['count']);
-    $this->assertEquals(array('First', 'Value'), $_testOnChange_hookCalls['oldValue']);
-    $this->assertEquals(array('Second', 'Value'), $_testOnChange_hookCalls['newValue']);
+    $this->assertEquals(['First', 'Value'], $_testOnChange_hookCalls['oldValue']);
+    $this->assertEquals(['Second', 'Value'], $_testOnChange_hookCalls['newValue']);
     $this->assertEquals('List of Components', $_testOnChange_hookCalls['metadata']['title']);
   }
 
@@ -191,7 +202,7 @@ class api_v3_SettingTest extends CiviUnitTestCase {
    * @param $newValue
    * @param $metadata
    */
-  public static function _testOnChange_onChangeExample($oldValue, $newValue, $metadata) {
+  public static function _testOnChange_onChangeExample($oldValue, $newValue, $metadata): void {
     global $_testOnChange_hookCalls;
     $_testOnChange_hookCalls['count']++;
     $_testOnChange_hookCalls['oldValue'] = $oldValue;
@@ -200,288 +211,302 @@ class api_v3_SettingTest extends CiviUnitTestCase {
   }
 
   /**
-   * Check getfields works.
+   * @param int $version
+   *
+   * @dataProvider versionThreeAndFour
    */
-  public function testCreateSetting() {
-    $description = "Shows setting a variable for a given domain - if no domain is set current is assumed.";
-
-    $params = array(
-      'domain_id' => $this->_domainID2,
+  public function testCreateSetting(int $version): void {
+    $this->_apiversion = $version;
+    $params = [
+      'domain_id' => $this->domainID2,
       'uniq_email_per_site' => 1,
-    );
-    $result = $this->callAPIAndDocument('setting', 'create', $params, __FUNCTION__, __FILE__);
+    ];
+    $this->callAPISuccess('setting', 'create', $params);
 
-    $params = array('uniq_email_per_site' => 1);
-    $description = "Shows setting a variable for a current domain.";
-    $result = $this->callAPIAndDocument('setting', 'create', $params, __FUNCTION__, __FILE__, $description, 'CreateSettingCurrentDomain');
+    $params = ['uniq_email_per_site' => 1];
+    $result = $this->callAPISuccess('setting', 'create', $params);
     $this->assertArrayHasKey(CRM_Core_Config::domainID(), $result['values']);
   }
 
   /**
-   * Check getfields works.
+   * @param int $version
+   *
+   * @dataProvider versionThreeAndFour
    */
-  public function testCreateInvalidSettings() {
-    $params = array(
-      'domain_id' => $this->_domainID2,
+  public function testCreateInvalidSettings(int $version): void {
+    $this->_apiversion = $version;
+    $params = [
+      'domain_id' => $this->domainID2,
       'invalid_key' => 1,
-    );
-    $result = $this->callAPIFailure('setting', 'create', $params);
+    ];
+    $this->callAPIFailure('Setting', 'create', $params);
   }
 
   /**
    * Check invalid settings rejected -
+   *
+   * @param int $version
+   *
+   * @dataProvider versionThreeAndFour
    */
-  public function testCreateInvalidURLSettings() {
-    $params = array(
-      'domain_id' => $this->_domainID2,
-      'userFrameworkResourceURL' => 'dfhkd hfd',
-    );
-    $result = $this->callAPIFailure('setting', 'create', $params);
-    $params = array(
-      'domain_id' => $this->_domainID2,
-      'userFrameworkResourceURL' => 'http://blah.com',
-    );
-    $result = $this->callAPISuccess('setting', 'create', $params);
+  public function testCreateInvalidURLSettings(int $version): void {
+    $this->_apiversion = $version;
+    $params = [
+      'domain_id' => $this->domainID2,
+      'userFrameworkResourceURL' => 'blah blah',
+    ];
+    $this->callAPIFailure('Setting', 'create', $params);
+    $params = [
+      'domain_id' => $this->domainID2,
+      'userFrameworkResourceURL' => 'https://blah.com',
+    ];
+    $this->callAPISuccess('Setting', 'create', $params);
   }
 
   /**
-   * Check getfields works.
+   * @param int $version
+   *
+   * @dataProvider versionThreeAndFour
    */
-  public function testCreateInvalidBooleanSettings() {
-    $params = array(
-      'domain_id' => $this->_domainID2,
-      'track_civimail_replies' => 'dfhkdhfd',
-    );
-    $result = $this->callAPIFailure('setting', 'create', $params);
+  public function testCreateInvalidBooleanSettings(int $version): void {
+    $this->_apiversion = $version;
+    $params = [
+      'domain_id' => $this->domainID2,
+      'contact_undelete' => 'blah',
+    ];
+    $this->callAPIFailure('Setting', 'create', $params);
 
-    $params = array('track_civimail_replies' => '0');
-    $result = $this->callAPISuccess('setting', 'create', $params);
-    $getResult = $this->callAPISuccess('setting', 'get', $params);
-    $this->assertEquals(0, $getResult['values'][$this->_currentDomain]['track_civimail_replies']);
+    $params = ['contact_undelete' => '0'];
+    $this->callAPISuccess('Setting', 'create', $params);
+    $getResult = $this->callAPISuccess('Setting', 'get');
+    $this->assertEquals(0, $getResult['values'][$this->currentDomain]['contact_undelete']);
 
-    $getResult = $this->callAPISuccess('setting', 'get', $params);
-    $this->assertEquals(0, $getResult['values'][$this->_currentDomain]['track_civimail_replies']);
-    $params = array(
-      'domain_id' => $this->_domainID2,
-      'track_civimail_replies' => '1',
-    );
-    $result = $this->callAPISuccess('setting', 'create', $params);
-    $getResult = $this->callAPISuccess('setting', 'get', $params);
-    $this->assertEquals(1, $getResult['values'][$this->_domainID2]['track_civimail_replies']);
+    $getResult = $this->callAPISuccess('Setting', 'get');
+    $this->assertEquals(0, $getResult['values'][$this->currentDomain]['contact_undelete']);
+    $params = [
+      'domain_id' => $this->domainID2,
+      'contact_undelete' => '1',
+    ];
+    $this->callAPISuccess('Setting', 'create', $params);
+    $getResult = $this->callAPISuccess('Setting', 'get', ['domain_id' => $this->domainID2]);
+    $this->assertEquals(1, $getResult['values'][$this->domainID2]['contact_undelete']);
 
-    $params = array(
-      'domain_id' => $this->_domainID2,
-      'track_civimail_replies' => 'TRUE',
-    );
-    $result = $this->callAPISuccess('setting', 'create', $params);
-    $getResult = $this->callAPISuccess('setting', 'get', $params);
+    $params = [
+      'domain_id' => $this->domainID2,
+      'contact_undelete' => 'TRUE',
+    ];
+    $this->callAPISuccess('Setting', 'create', $params);
+    $getResult = $this->callAPISuccess('Setting', 'get', ['domain_id' => $this->domainID2]);
 
-    $this->assertEquals(1, $getResult['values'][$this->_domainID2]['track_civimail_replies'], "check TRUE is converted to 1");
+    $this->assertEquals(1, $getResult['values'][$this->domainID2]['contact_undelete'], 'check TRUE is converted to 1');
   }
 
   /**
-   * Check getfields works.
+   * @param int $version
+   *
+   * @dataProvider versionThreeAndFour
    */
-  public function testCreateSettingMultipleDomains() {
-    $description = "Shows setting a variable for all domains.";
-
-    $params = array(
+  public function testCreateSettingMultipleDomains(int $version): void {
+    $this->_apiversion = $version;
+    $params = [
       'domain_id' => 'all',
       'uniq_email_per_site' => 1,
-    );
-    $result = $this->callAPIAndDocument('setting', 'create', $params, __FUNCTION__, __FILE__, $description, 'CreateAllDomains');
+    ];
+    $result = $this->callAPISuccess('setting', 'create', $params);
 
-    $this->assertEquals(1, $result['values'][2]['uniq_email_per_site']);
-    $this->assertEquals(1, $result['values'][1]['uniq_email_per_site']);
-    $this->assertArrayHasKey(3, $result['values'], 'Domain create probably failed Debug this IF domain test is passing');
-    $this->assertEquals(1, $result['values'][3]['uniq_email_per_site'], 'failed to set setting for domain 3.');
+    $this->assertEquals(1, $result['values'][$this->domainID2]['uniq_email_per_site']);
+    $this->assertEquals(1, $result['values'][$this->currentDomain]['uniq_email_per_site']);
+    $this->assertArrayHasKey($this->domainID3, $result['values'], 'Domain create probably failed Debug this IF domain test is passing');
+    $this->assertEquals(1, $result['values'][$this->domainID3]['uniq_email_per_site'], 'failed to set setting for domain 3.');
 
-    $params = array(
+    $params = [
       'domain_id' => 'all',
       'return' => 'uniq_email_per_site',
-    );
+    ];
     // we'll check it with a 'get'
-    $description = "Shows getting a variable for all domains.";
-    $result = $this->callAPIAndDocument('setting', 'get', $params, __FUNCTION__, __FILE__, $description, 'GetAllDomains');
+    $result = $this->callAPISuccess('setting', 'get', $params);
 
-    $this->assertEquals(1, $result['values'][2]['uniq_email_per_site']);
-    $this->assertEquals(1, $result['values'][1]['uniq_email_per_site']);
-    $this->assertEquals(1, $result['values'][3]['uniq_email_per_site']);
+    $this->assertEquals(1, $result['values'][$this->domainID2]['uniq_email_per_site']);
+    $this->assertEquals(1, $result['values'][$this->currentDomain]['uniq_email_per_site']);
+    $this->assertEquals(1, $result['values'][$this->domainID3]['uniq_email_per_site']);
 
-    $params = array(
-      'domain_id' => array(1, 3),
+    $params = [
+      'domain_id' => [$this->currentDomain, $this->domainID3],
       'uniq_email_per_site' => 0,
-    );
-    $description = "Shows setting a variable for specified domains.";
-    $result = $this->callAPIAndDocument('setting', 'create', $params, __FUNCTION__, __FILE__, $description, 'CreateSpecifiedDomains');
+    ];
+    $result = $this->callAPISuccess('setting', 'create', $params);
 
-    $this->assertEquals(0, $result['values'][3]['uniq_email_per_site']);
-    $this->assertEquals(0, $result['values'][1]['uniq_email_per_site']);
-    $params = array(
-      'domain_id' => array(1, 2),
-      'return' => array('uniq_email_per_site'),
-    );
-    $description = "Shows getting a variable for specified domains.";
-    $result = $this->callAPIAndDocument('setting', 'get', $params, __FUNCTION__, __FILE__, $description, 'GetSpecifiedDomains');
-    $this->assertEquals(1, $result['values'][2]['uniq_email_per_site']);
-    $this->assertEquals(0, $result['values'][1]['uniq_email_per_site']);
+    $this->assertEquals(0, $result['values'][$this->domainID3]['uniq_email_per_site']);
+    $this->assertEquals(0, $result['values'][$this->currentDomain]['uniq_email_per_site']);
+    $params = [
+      'domain_id' => [$this->currentDomain, $this->domainID2],
+      'return' => ['uniq_email_per_site'],
+    ];
+    $result = $this->callAPISuccess('setting', 'get', $params);
+    $this->assertEquals(1, $result['values'][$this->domainID2]['uniq_email_per_site']);
+    $this->assertEquals(0, $result['values'][$this->currentDomain]['uniq_email_per_site']);
 
   }
 
-  public function testGetSetting() {
-    $params = array(
-      'domain_id' => $this->_domainID2,
+  /**
+   * @param int $version
+   *
+   * @dataProvider versionThreeAndFour
+   */
+  public function testGetSetting(int $version): void {
+    $this->_apiversion = $version;
+    $params = [
+      'domain_id' => $this->domainID2,
       'return' => 'uniq_email_per_site',
-    );
-    $description = "Shows get setting a variable for a given domain - if no domain is set current is assumed.";
+    ];
 
-    $result = $this->callAPIAndDocument('setting', 'get', $params, __FUNCTION__, __FILE__);
+    $this->callAPISuccess('Setting', 'get', $params);
 
-    $params = array(
+    $params = [
       'return' => 'uniq_email_per_site',
-    );
-    $description = "Shows getting a variable for a current domain.";
-    $result = $this->callAPIAndDocument('setting', 'get', $params, __FUNCTION__, __FILE__, $description, 'GetSettingCurrentDomain');
+    ];
+    $result = $this->callAPISuccess('Setting', 'get', $params);
     $this->assertArrayHasKey(CRM_Core_Config::domainID(), $result['values']);
   }
 
   /**
    * Check that setting defined in extension can be retrieved.
+   *
+   * @param int $version
+   *
+   * @dataProvider versionThreeAndFour
    */
-  public function testGetExtensionSetting() {
-    $this->hookClass->setHook('civicrm_alterSettingsFolders', array($this, 'setExtensionMetadata'));
-    $data = NULL;
-    // the caching of data to all duplicates the caching of data to the empty string
-    CRM_Core_BAO_Cache::setItem($data, 'CiviCRM setting Spec', 'All');
-    CRM_Core_BAO_Cache::setItem($data, 'CiviCRM setting Specs', 'settingsMetadata__');
+  public function testGetExtensionSetting(int $version): void {
+    $this->_apiversion = $version;
+    $this->hookClass->setHook('civicrm_alterSettingsFolders', [$this, 'setExtensionMetadata']);
     Civi::cache('settings')->flush();
-    $fields = $this->callAPISuccess('setting', 'getfields', array('filters' => array('group_name' => 'Test Settings')));
+    $fields = $this->callAPISuccess('setting', 'getfields');
     $this->assertArrayHasKey('test_key', $fields['values']);
-    $this->callAPISuccess('setting', 'create', array('test_key' => 'keyset'));
-    $this->assertEquals('keyset', Civi::settings()->get('test_key'));
-    $result = $this->callAPISuccess('setting', 'getvalue', array('name' => 'test_key', 'group' => 'Test Settings'));
-    $this->assertEquals('keyset', $result);
+    $this->callAPISuccess('setting', 'create', ['test_key' => 'key_set']);
+    $this->assertEquals('key_set', Civi::settings()->get('test_key'));
+    $result = $this->callAPISuccess('setting', 'getvalue', ['name' => 'test_key']);
+    $this->assertEquals('key_set', $result);
   }
 
   /**
    * Setting api should set & fetch settings stored in config as well as those in settings table
+   *
+   * @param int $version
+   *
+   * @dataProvider versionThreeAndFour
    */
-  public function testSetConfigSetting() {
-    $config = CRM_Core_Config::singleton();
-    $this->assertFalse($config->debug == 1);
-
-    $params = array(
-      'domain_id' => $this->_domainID2,
-      'debug_enabled' => 1,
-    );
-    $result = $this->callAPISuccess('setting', 'create', $params);
-
-    $this->assertEquals(1, Civi::settings($this->_domainID2)->get('debug_enabled'));
-
-    CRM_Core_BAO_Domain::setDomain($this->_domainID2);
-    $config = CRM_Core_Config::singleton(TRUE, TRUE);
-    CRM_Core_BAO_Domain::resetDomain();
-    $this->assertEquals(1, $config->debug);
-  }
-
-  /**
-   * Setting api should set & fetch settings stored in config as well as those in settings table
-   */
-  public function testGetConfigSetting() {
-    $settings = $this->callAPISuccess('setting', 'get', array(
-        'name' => 'defaultCurrency',
-        'sequential' => 1,
-      )
-    );
+  public function testGetConfigSetting(int $version): void {
+    $this->_apiversion = $version;
+    $settings = $this->callAPISuccess('setting', 'get', [
+      'name' => 'defaultCurrency',
+      'sequential' => 1,
+    ]);
     $this->assertEquals('USD', $settings['values'][0]['defaultCurrency']);
   }
 
   /**
    * Setting api should set & fetch settings stored in config as well as those in settings table
+   *
+   * @param int $version
+   *
+   * @dataProvider versionThreeAndFour
    */
-  public function testGetSetConfigSettingMultipleDomains() {
-    $settings = $this->callAPISuccess('setting', 'create', array(
-        'defaultCurrency' => 'USD',
-        'domain_id' => $this->_currentDomain,
-      )
-    );
-    $settings = $this->callAPISuccess('setting', 'create', array(
-        'defaultCurrency' => 'CAD',
-        'domain_id' => $this->_domainID2,
-      )
-    );
-    $settings = $this->callAPISuccess('setting', 'get', array(
-        'return' => 'defaultCurrency',
-        'domain_id' => 'all',
-      )
-    );
-    $this->assertEquals('USD', $settings['values'][$this->_currentDomain]['defaultCurrency']);
-    $this->assertEquals('CAD', $settings['values'][$this->_domainID2]['defaultCurrency'],
-      "second domain (id {$this->_domainID2} ) should be set to CAD. First dom was {$this->_currentDomain} & was USD");
+  public function testGetSetConfigSettingMultipleDomains(int $version): void {
+    $this->_apiversion = $version;
+    $this->callAPISuccess('setting', 'create', [
+      'defaultCurrency' => 'USD',
+      'domain_id' => $this->currentDomain,
+    ]);
+    $this->callAPISuccess('setting', 'create', [
+      'defaultCurrency' => 'CAD',
+      'domain_id' => $this->domainID2,
+    ]);
+    $settings = $this->callAPISuccess('setting', 'get', [
+      'return' => 'defaultCurrency',
+      'domain_id' => 'all',
+    ]);
+    $this->assertEquals('USD', $settings['values'][$this->currentDomain]['defaultCurrency']);
+    $this->assertEquals('CAD', $settings['values'][$this->domainID2]['defaultCurrency'],
+      "second domain (id $this->domainID2 ) should be set to CAD. First dom was $this->currentDomain & was USD");
 
   }
 
   /**
    * Use getValue against a config setting.
+   *
+   * @param int $version
+   *
+   * @dataProvider versionThreeAndFour
    */
-  public function testGetValueConfigSetting() {
-    $params = array(
+  public function testGetValueConfigSetting(int $version): void {
+    $this->_apiversion = $version;
+    $params = [
       'name' => 'monetaryThousandSeparator',
       'group' => 'Localization Setting',
-    );
+    ];
     $result = $this->callAPISuccess('setting', 'getvalue', $params);
     $this->assertEquals(',', $result);
   }
 
-  public function testGetValue() {
-    $params = array(
-      'name' => 'petition_contacts',
-      'group' => 'Campaign Preferences',
-    );
-    $description = "Demonstrates getvalue action - intended for runtime use as better caching than get.";
+  /**
+   * @param int $version
+   *
+   * @dataProvider versionThreeAndFour
+   */
+  public function testGetValue(int $version): void {
+    $this->_apiversion = $version;
+    $params = [
+      'name' => 'menubar_color',
+      'group' => 'CiviCRM Preferences',
+    ];
 
-    $result = $this->callAPIAndDocument('setting', 'getvalue', $params, __FUNCTION__, __FILE__, $description);
-    $this->assertEquals('Petition Contacts', $result);
+    $result = $this->callAPISuccess('setting', 'getvalue', $params);
+    $this->assertEquals('#1b1b1b', $result);
   }
 
-  public function testGetDefaults() {
-    $description = "Gets defaults setting a variable for a given domain - if no domain is set current is assumed.";
-
-    $params = array(
+  /**
+   * V3 only - no api4 equivalent.
+   */
+  public function testGetDefaults(): void {
+    $params = [
       'name' => 'address_format',
-    );
-    $result = $this->callAPIAndDocument('setting', 'getdefaults', $params, __FUNCTION__, __FILE__, $description, 'GetDefaults');
-    $this->assertEquals("{contact.address_name}\n{contact.street_address}\n{contact.supplemental_address_1}\n{contact.supplemental_address_2}\n{contact.city}{, }{contact.state_province}{ }{contact.postal_code}\n{contact.country}", $result['values'][CRM_Core_Config::domainID()]['address_format']);
-    $params = array('name' => 'mailing_format');
+    ];
+    $result = $this->callAPISuccess('Setting', 'getdefaults', $params);
+    $this->assertEquals("{contact.address_name}\n{contact.street_address}\n{contact.supplemental_address_1}\n{contact.supplemental_address_2}\n{contact.supplemental_address_3}\n{contact.city}{, }{contact.state_province}{ }{contact.postal_code}\n{contact.country}", $result['values'][CRM_Core_Config::domainID()]['address_format']);
+    $params = ['name' => 'mailing_format'];
     $result = $this->callAPISuccess('setting', 'getdefaults', $params);
-    $this->assertEquals("{contact.addressee}\n{contact.street_address}\n{contact.supplemental_address_1}\n{contact.supplemental_address_2}\n{contact.city}{, }{contact.state_province}{ }{contact.postal_code}\n{contact.country}", $result['values'][CRM_Core_Config::domainID()]['mailing_format']);
+    $this->assertEquals("{contact.addressee}\n{contact.street_address}\n{contact.supplemental_address_1}\n{contact.supplemental_address_2}\n{contact.supplemental_address_3}\n{contact.city}{, }{contact.state_province}{ }{contact.postal_code}\n{contact.country}", $result['values'][CRM_Core_Config::domainID()]['mailing_format']);
     $this->assertArrayHasKey(CRM_Core_Config::domainID(), $result['values']);
   }
 
   /**
    * Function tests reverting a specific parameter.
+   *
+   * @param int $version
+   *
+   * @dataProvider versionThreeAndFour
    */
-  public function testRevert() {
-    $params = array(
+  public function testRevert(int $version): void {
+    $this->_apiversion = $version;
+    $params = [
       'address_format' => 'xyz',
       'mailing_format' => 'bcs',
-    );
+    ];
     $result = $this->callAPISuccess('setting', 'create', $params);
-    $this->assertAPISuccess($result, "in line " . __LINE__);
-    $revertParams = array(
+    $this->assertAPISuccess($result, 'in line ' . __LINE__);
+    $revertParams = [
       'name' => 'address_format',
-    );
-    $result = $this->callAPISuccess('setting', 'get', $params);
+    ];
+    $result = $this->callAPISuccess('setting', 'get');
     //make sure it's set
     $this->assertEquals('xyz', $result['values'][CRM_Core_Config::domainID()]['address_format']);
-    $description = "Demonstrates reverting a parameter to default value.";
-    $result = $this->callAPIAndDocument('setting', 'revert', $revertParams, __FUNCTION__, __FILE__, $description, '');
+    $this->callAPISuccess('setting', 'revert', $revertParams);
     //make sure it's reverted
-    $result = $this->callAPISuccess('setting', 'get', $params);
-    $this->assertEquals("{contact.address_name}\n{contact.street_address}\n{contact.supplemental_address_1}\n{contact.supplemental_address_2}\n{contact.city}{, }{contact.state_province}{ }{contact.postal_code}\n{contact.country}", $result['values'][CRM_Core_Config::domainID()]['address_format']);
-    $params = array(
-      'return' => array('mailing_format'),
-    );
+    $result = $this->callAPISuccess('setting', 'get');
+    $this->assertEquals("{contact.address_name}\n{contact.street_address}\n{contact.supplemental_address_1}\n{contact.supplemental_address_2}\n{contact.supplemental_address_3}\n{contact.city}{, }{contact.state_province}{ }{contact.postal_code}\n{contact.country}", $result['values'][CRM_Core_Config::domainID()]['address_format']);
+    $params = [
+      'return' => ['mailing_format'],
+    ];
     $result = $this->callAPISuccess('setting', 'get', $params);
     //make sure it's unchanged
     $this->assertEquals('bcs', $result['values'][CRM_Core_Config::domainID()]['mailing_format']);
@@ -489,63 +514,93 @@ class api_v3_SettingTest extends CiviUnitTestCase {
 
   /**
    * Tests reverting ALL parameters (specific domain)
+   * Api3 only.
    */
-  public function testRevertAll() {
-    $params = array(
+  public function testRevertAll(): void {
+    $params = [
       'address_format' => 'xyz',
       'mailing_format' => 'bcs',
-    );
-    $result = $this->callAPISuccess('setting', 'create', $params);
-    $revertParams = array();
-    $result = $this->callAPISuccess('setting', 'get', $params);
+    ];
+    $this->callAPISuccess('Setting', 'create', $params);
+    $revertParams = [];
+    $result = $this->callAPISuccess('Setting', 'get', $params);
     //make sure it's set
     $this->assertEquals('xyz', $result['values'][CRM_Core_Config::domainID()]['address_format']);
 
-    $this->callAPISuccess('setting', 'revert', $revertParams);
+    $this->callAPISuccess('Setting', 'revert', $revertParams);
     //make sure it's reverted
-    $result = $this->callAPISuccess('setting', 'get', array('group' => 'core'));
-    $this->assertEquals("{contact.address_name}\n{contact.street_address}\n{contact.supplemental_address_1}\n{contact.supplemental_address_2}\n{contact.city}{, }{contact.state_province}{ }{contact.postal_code}\n{contact.country}", $result['values'][CRM_Core_Config::domainID()]['address_format']);
-    $this->assertEquals("{contact.addressee}\n{contact.street_address}\n{contact.supplemental_address_1}\n{contact.supplemental_address_2}\n{contact.city}{, }{contact.state_province}{ }{contact.postal_code}\n{contact.country}", $result['values'][CRM_Core_Config::domainID()]['mailing_format']);
+    $result = $this->callAPISuccess('setting', 'get', ['group' => 'core']);
+    $this->assertEquals("{contact.address_name}\n{contact.street_address}\n{contact.supplemental_address_1}\n{contact.supplemental_address_2}\n{contact.supplemental_address_3}\n{contact.city}{, }{contact.state_province}{ }{contact.postal_code}\n{contact.country}", $result['values'][CRM_Core_Config::domainID()]['address_format']);
+    $this->assertEquals("{contact.addressee}\n{contact.street_address}\n{contact.supplemental_address_1}\n{contact.supplemental_address_2}\n{contact.supplemental_address_3}\n{contact.city}{, }{contact.state_province}{ }{contact.postal_code}\n{contact.country}", $result['values'][CRM_Core_Config::domainID()]['mailing_format']);
   }
 
   /**
    * Settings should respect their defaults
+   * V3 only - no fill action in v4
+   *
+   * @throws \CRM_Core_Exception
    */
-  public function testDefaults() {
-    $domparams = array(
-      'name' => 'B Team Domain',
-      'domain_version' => '4.7',
-    );
-    $dom = $this->callAPISuccess('domain', 'create', $domparams);
-    $params = array(
-      'domain_id' => 'all',
-    );
-    $result = $this->callAPISuccess('setting', 'get', $params);
-    $params = array(
+  public function testDefaults(): void {
+    $domain = $this->callAPISuccess('Domain', 'create', [
+      'name' => __CLASS__ . 'B Team Domain',
+      'domain_version' => CRM_Utils_System::version(),
+    ]);
+
+    $this->callAPISuccess('Setting', 'get', ['domain_id' => 'all']);
+    $params = [
       'address_format' => 'xyz',
       'mailing_format' => 'bcs',
-      'domain_id' => $this->_domainID2,
-    );
-    $result = $this->callAPISuccess('setting', 'create', $params);
-    $params = array(
-      'domain_id' => $dom['id'],
-    );
+      'domain_id' => $this->domainID2,
+    ];
+    $this->callAPISuccess('Setting', 'create', $params);
+    $params = [
+      'domain_id' => $domain['id'],
+    ];
     $result = $this->callAPISuccess('setting', 'get', $params);
-    $this->assertAPISuccess($result, "in line " . __LINE__);
-    $this->assertEquals('Unconfirmed', $result['values'][$dom['id']]['tag_unconfirmed']);
+    $this->assertAPISuccess($result);
+    $this->assertEquals('over-cms-menu', $result['values'][$domain['id']]['menubar_position']);
 
     // The 'fill' operation is no longer necessary, but third parties might still use it, so let's
     // make sure it doesn't do anything weird (crashing or breaking values).
-    $result = $this->callAPISuccess('setting', 'fill', $params);
-    $this->assertAPISuccess($result, "in line " . __LINE__);
-    $result = $this->callAPISuccess('setting', 'get', $params);
-    $this->assertAPISuccess($result, "in line " . __LINE__);
-    $this->assertArrayHasKey('tag_unconfirmed', $result['values'][$dom['id']]);
+    $result = $this->callAPISuccess('Setting', 'fill', $params);
+    $this->assertAPISuccess($result);
+    $result = $this->callAPISuccess('Setting', 'get', $params);
+    $this->assertAPISuccess($result);
+    $this->assertArrayHasKey('menubar_position', $result['values'][$domain['id']]);
 
     // Setting has NULL default. Not returned.
     //$this->assertArrayHasKey('extensionsDir', $result['values'][$dom['id']]);
 
-    $this->assertEquals('Unconfirmed', $result['values'][$dom['id']]['tag_unconfirmed']);
+    $this->assertEquals('over-cms-menu', $result['values'][$domain['id']]['menubar_position']);
+  }
+
+  /**
+   * Test to set isProductionEnvironment
+   *
+   * @param int $version
+   *
+   * @dataProvider versionThreeAndFour
+   */
+  public function testSetCivicrmEnvironment(int $version): void {
+    $this->_apiversion = $version;
+    global $civicrm_setting;
+    unset($civicrm_setting[CRM_Core_BAO_Setting::DEVELOPER_PREFERENCES_NAME]['environment']);
+    Civi::service('settings_manager')->useMandatory();
+    $params = [
+      'environment' => 'Staging',
+    ];
+    $this->callAPISuccess('Setting', 'create', $params);
+    $params = [
+      'name' => 'environment',
+      'group' => 'Developer Preferences',
+    ];
+    $result = $this->callAPISuccess('Setting', 'getvalue', $params);
+    $this->assertEquals('Staging', $result);
+
+    $civicrm_setting[CRM_Core_BAO_Setting::DEVELOPER_PREFERENCES_NAME]['environment'] = 'Production';
+    Civi::service('settings_manager')->useMandatory();
+    $result = $this->callAPISuccess('Setting', 'getvalue', $params);
+    $this->assertEquals('Production', $result);
   }
 
 }
